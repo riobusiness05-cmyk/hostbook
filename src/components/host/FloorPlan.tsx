@@ -48,23 +48,39 @@ export function FloorPlan({
   const [room, setRoom] = useState<string>(rooms[0] ?? "Main Room");
   const currentRoom = rooms.includes(room) ? room : rooms[0] ?? "Main Room";
 
-  const tables = useMemo(
+  // Which single section to zoom into, if any — null shows every section in
+  // the room at once (the original behaviour). Reset whenever the room
+  // changes so a stale section from another room can't stay selected.
+  const [sectionFilter, setSectionFilter] = useState<string | null>(null);
+  const selectRoom = (r: string) => {
+    setRoom(r);
+    setSectionFilter(null);
+  };
+
+  const roomTables = useMemo(
     () => allTables.filter((t) => t.section && roomBySection.get(t.section.id) === currentRoom),
     [allTables, roomBySection, currentRoom]
   );
 
-  const sections = useMemo(() => {
+  const roomSections = useMemo(() => {
     return allSections
       .filter((sec) => sec.room === currentRoom)
       .map((sec) => {
-        const secTables = tables.filter((t) => t.section?.id === sec.id);
+        const secTables = roomTables.filter((t) => t.section?.id === sec.id);
         if (secTables.length === 0) return null;
         return { ...sec, bounds: sectionBounds(secTables) };
       })
       .filter(Boolean) as Array<(typeof allSections)[number] & { bounds: ReturnType<typeof sectionBounds> }>;
-  }, [allSections, tables, currentRoom]);
+  }, [allSections, roomTables, currentRoom]);
 
-  // Dynamic viewBox from the visible room's tables.
+  const activeSection = sectionFilter ? roomSections.find((s) => s.id === sectionFilter) ?? null : null;
+  const sections = activeSection ? [activeSection] : roomSections;
+  const tables = activeSection ? roomTables.filter((t) => t.section?.id === activeSection.id) : roomTables;
+
+  // Dynamic viewBox from whatever's visible — the whole room, or just the
+  // zoomed-in section. Isolating a section gives it the full frame instead
+  // of sharing space with the others, which is what makes it worth tapping
+  // into on a phone.
   const viewBox = useMemo(() => {
     if (tables.length === 0) return "0 0 1000 700";
     const pad = 30;
@@ -78,66 +94,104 @@ export function FloorPlan({
   }, [tables]);
 
   return (
-    <div className="relative h-full w-full overflow-hidden rounded-2xl border border-black/5 bg-gradient-to-br from-neutral-50 to-neutral-100 dark:border-white/10 dark:from-neutral-900 dark:to-neutral-950">
-      {/* Room switcher */}
-      {rooms.length > 1 && (
-        <div className="absolute right-2 top-2 z-10 flex gap-1 rounded-xl border border-black/5 bg-white/80 p-1 shadow-sm backdrop-blur dark:border-white/10 dark:bg-black/40">
-          {rooms.map((r) => (
+    <div className="flex h-full w-full flex-col overflow-hidden rounded-2xl border border-black/5 bg-gradient-to-br from-neutral-50 to-neutral-100 dark:border-white/10 dark:from-neutral-900 dark:to-neutral-950">
+      {/* Toolbar: section chips (zoom into one area, or "All") + room switcher */}
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-black/5 p-2 dark:border-white/10">
+        <div className="flex flex-1 flex-wrap gap-1">
+          <button
+            onClick={() => setSectionFilter(null)}
+            className={cx(
+              "rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors",
+              !sectionFilter
+                ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-900"
+                : "text-neutral-500 hover:bg-black/5 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-white/10 dark:hover:text-white"
+            )}
+          >
+            All
+          </button>
+          {roomSections.map((sec) => (
             <button
-              key={r}
-              onClick={() => setRoom(r)}
+              key={sec.id}
+              onClick={() => setSectionFilter(sec.id)}
               className={cx(
-                "rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors",
-                r === currentRoom
+                "flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors",
+                sectionFilter === sec.id
                   ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-900"
-                  : "text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white"
+                  : "text-neutral-500 hover:bg-black/5 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-white/10 dark:hover:text-white"
               )}
             >
-              {r}
+              <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: sec.color }} />
+              {sec.name}
             </button>
           ))}
         </div>
-      )}
 
-      <svg viewBox={viewBox} className="h-full w-full" role="img" aria-label={`Floor plan — ${currentRoom}`}>
-        {/* Area zones — a soft tinted background + label per section. The
-            seed lays each area out in its own band (terrace left · restaurant
-            top · bar bottom · back terrace right) with clear gaps, so these
-            zone boxes never overlap. */}
-        {sections.map((sec) => (
-          <g key={sec.id}>
-            <rect
-              x={sec.bounds.x}
-              y={sec.bounds.y}
-              width={sec.bounds.w}
-              height={sec.bounds.h}
-              rx={20}
-              fill={`${sec.color}12`}
-              stroke={`${sec.color}66`}
-              strokeWidth={1.5}
-            />
-            <circle cx={sec.bounds.x + 16} cy={sec.bounds.y + 17} r={5} fill={sec.color} />
-            <text
-              x={sec.bounds.x + 28}
-              y={sec.bounds.y + 22}
-              fontSize={15}
-              fontWeight={800}
-              fill={sec.color}
-              className="uppercase"
-              style={{ letterSpacing: "0.09em" }}
+        {rooms.length > 1 && (
+          <div className="flex shrink-0 gap-1 rounded-xl border border-black/5 bg-white/80 p-1 dark:border-white/10 dark:bg-black/40">
+            {rooms.map((r) => (
+              <button
+                key={r}
+                onClick={() => selectRoom(r)}
+                className={cx(
+                  "rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors",
+                  r === currentRoom
+                    ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-900"
+                    : "text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white"
+                )}
+              >
+                {r}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="relative min-h-0 flex-1">
+        <svg viewBox={viewBox} className="h-full w-full" role="img" aria-label={`Floor plan — ${activeSection?.name ?? currentRoom}`}>
+          {/* Area zones — a soft tinted background + label per section. The
+              seed lays each area out in its own band (terrace left · restaurant
+              top · bar bottom · back terrace right) with clear gaps, so these
+              zone boxes never overlap. Tapping a zone (when more than one is
+              visible) zooms straight into it, same as its chip above. */}
+          {sections.map((sec) => (
+            <g
+              key={sec.id}
+              onClick={roomSections.length > 1 && !activeSection ? () => setSectionFilter(sec.id) : undefined}
+              className={roomSections.length > 1 && !activeSection ? "cursor-pointer" : undefined}
             >
-              {sec.name}
-            </text>
-          </g>
-        ))}
+              <rect
+                x={sec.bounds.x}
+                y={sec.bounds.y}
+                width={sec.bounds.w}
+                height={sec.bounds.h}
+                rx={20}
+                fill={`${sec.color}12`}
+                stroke={`${sec.color}66`}
+                strokeWidth={1.5}
+              />
+              <circle cx={sec.bounds.x + 16} cy={sec.bounds.y + 17} r={5} fill={sec.color} />
+              <text
+                x={sec.bounds.x + 28}
+                y={sec.bounds.y + 22}
+                fontSize={15}
+                fontWeight={800}
+                fill={sec.color}
+                className="uppercase"
+                style={{ letterSpacing: "0.09em" }}
+              >
+                {sec.name}
+              </text>
+            </g>
+          ))}
 
-        {/* Tables */}
-        {tables.map((t) => (
-          <TableGlyph key={t.id} table={t} selected={t.id === selectedId} onSelect={() => onSelect(t.id)} />
-        ))}
-      </svg>
+          {/* Tables */}
+          {tables.map((t) => (
+            <TableGlyph key={t.id} table={t} selected={t.id === selectedId} onSelect={() => onSelect(t.id)} />
+          ))}
+        </svg>
 
-      <Legend />
+        <Legend />
+      </div>
     </div>
   );
 }

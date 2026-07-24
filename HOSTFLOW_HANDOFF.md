@@ -99,12 +99,38 @@ Deployed to Vercel for real-world phone testing at The Colonial: **https://hostf
 - **Verified live:** logged in as The Colonial (`colonial@hostflow.app` / `colonial123`) against production —
   full floor dashboard renders with real seeded data (41 covers, 21 tables, live metrics). The Harbour's login
   is `harbour@hostflow.app` / `harbour123`.
+- **Fixed: root domain was showing The Colonial's guest site instead of Host Flow.** The legacy single-tenant
+  template's homepage owned `/`, rendering whichever restaurant `NEXT_PUBLIC_RESTAURANT_SLUG` points to — so
+  visiting the bare domain (or any link to `/`) showed The Colonial's branded guest page, not the Host Flow
+  product, and pages under `/hostflow/*`/`/host/*` inherited its title too. Fixed: guest page moved to
+  `/booking` (still fully working), `/` now redirects to `/hostflow`, and `/hostflow`/`/host` got their own
+  layout-level metadata so their titles read "Host Flow" instead of "The Colonial." Verified live on all three
+  paths.
 - **⚠️ Local dev is now broken on this Mac** until `.env`'s `DATABASE_URL` is updated: the schema provider is
   now `"postgresql"` project-wide (shared by local dev and prod — there's only one schema file), but the local
   `.env` still points at `file:./dev.db` (SQLite), which no longer matches. To fix: get the real Postgres
   connection string from the Vercel dashboard (Settings → Environment Variables → reveal `DATABASE_URL`) and
   paste it into local `.env`, replacing the `file:./dev.db` line — I can't safely fetch that value myself (see
   gotcha below). Until fixed, `npm run dev` will fail on any DB query.
+
+## Mobile improvements (2026-07-24)
+
+The `/host` dashboard is now built for phone use, not just desktop:
+
+- **Floor plan section zoom** (`src/components/host/FloorPlan.tsx`) — previously every section in a room (e.g.
+  Main Terrace, Restaurant, Back Terrace, Bar) rendered together in one shared SVG viewBox, so on a phone all
+  the tables were tiny and hard to tap. Added a chip row (All + one chip per section) above the plan — tapping
+  a section (or its zone label directly on the plan) zooms the view to just that section, filling the frame
+  with much larger, legible tables. "All" returns to the combined view. Works alongside the existing room
+  switcher (Main Room / Lounge).
+- **Floor/List mobile toggle** (`src/components/host/HostApp.tsx`) — below the `lg` breakpoint, the floor plan
+  and the waitlist/reservations rail used to both render at nearly full viewport height, stacked, forcing a
+  very long scroll. Added a mobile-only segmented toggle so only one shows at a time; selecting a table
+  automatically switches to the List view to show its panel, and closing the panel switches back to Floor.
+  Desktop (`lg+`) is unchanged — both panels still show side by side.
+- Verified on a 375×812 mobile viewport: dashboard metrics, floor plan + section zoom + table tap, waitlist
+  add-walk-in form, new-reservation form, AI assistant, and alerts all render cleanly with no overflow or
+  broken layout. Desktop layout re-verified unaffected at 1280×800.
 
 ## Still open (needs the user — I can't do these)
 

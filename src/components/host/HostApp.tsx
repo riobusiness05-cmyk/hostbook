@@ -72,6 +72,16 @@ export function HostApp({
   const [viewDate, setViewDate] = useState<string>(todayStr());
   const isToday = viewDate === todayStr();
 
+  // Below `lg`, the floor plan and the waitlist/reservations rail can't sit
+  // side by side, so only one shows at a time — this picks which. Selecting
+  // a table (from the floor or from search/lists) jumps to "list" so its
+  // panel is immediately visible instead of requiring an extra tap.
+  const [mobileView, setMobileView] = useState<"floor" | "list">("floor");
+  const selectTable = (id: string | null) => {
+    setSelectedId(id);
+    setMobileView(id ? "list" : "floor");
+  };
+
   const selected = useMemo(
     () => state.tables.find((t) => t.id === selectedId) ?? null,
     [state.tables, selectedId]
@@ -137,23 +147,35 @@ export function HostApp({
           <>
           <DashboardMetrics state={state} />
 
+          {/* Floor / List switcher — mobile only; lg+ shows both side by side */}
+          <div className="flex gap-1 rounded-xl border border-black/5 bg-white/60 p-1 dark:border-white/10 dark:bg-white/[0.03] lg:hidden">
+            <RailTabButton active={mobileView === "floor"} onClick={() => setMobileView("floor")}>
+              Floor
+            </RailTabButton>
+            <RailTabButton active={mobileView === "list"} onClick={() => setMobileView("list")}>
+              List {!selected && state.walkins.length + state.reservations.length > 0 && (
+                <Badge>{state.walkins.length + state.reservations.length}</Badge>
+              )}
+            </RailTabButton>
+          </div>
+
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_384px]">
             {/* Floor plan */}
-            <div className="h-[62vh] min-h-[420px] lg:h-[calc(100vh-230px)]">
-              <FloorPlan tables={state.tables} sections={state.sections} selectedId={selectedId} onSelect={setSelectedId} />
+            <div className={cx(mobileView === "floor" ? "block" : "hidden", "lg:block h-[68vh] min-h-[420px] lg:h-[calc(100vh-230px)]")}>
+              <FloorPlan tables={state.tables} sections={state.sections} selectedId={selectedId} onSelect={selectTable} />
             </div>
 
             {/* Right rail */}
-            <div className="h-[70vh] min-h-[480px] lg:h-[calc(100vh-230px)]">
+            <div className={cx(mobileView === "list" ? "block" : "hidden", "lg:block h-[68vh] min-h-[420px] lg:h-[calc(100vh-230px)]")}>
               {selected ? (
                 <div className="h-full overflow-hidden rounded-2xl border border-black/5 shadow-sm dark:border-white/10">
-                  <TablePanel table={selected} state={state} onClose={() => setSelectedId(null)} refresh={refresh} />
+                  <TablePanel table={selected} state={state} onClose={() => selectTable(null)} refresh={refresh} />
                 </div>
               ) : (
                 <div className="flex h-full flex-col gap-3">
                   {state.waitingToMoveOutside.length > 0 && (
                     <div className="max-h-[42%] shrink-0 overflow-y-auto">
-                      <OutdoorQueue state={state} refresh={refresh} onSelectTable={setSelectedId} />
+                      <OutdoorQueue state={state} refresh={refresh} onSelectTable={selectTable} />
                     </div>
                   )}
                   <div className="flex shrink-0 gap-1 rounded-xl border border-black/5 bg-white/60 p-1 dark:border-white/10 dark:bg-white/[0.03]">
@@ -172,7 +194,7 @@ export function HostApp({
                   </div>
                   <div className="min-h-0 flex-1">
                     {tab === "waitlist" && <WaitlistPanel state={state} refresh={refresh} />}
-                    {tab === "reservations" && <ReservationsPanel state={state} refresh={refresh} onSelectTable={setSelectedId} setPaused={setPaused} />}
+                    {tab === "reservations" && <ReservationsPanel state={state} refresh={refresh} onSelectTable={selectTable} setPaused={setPaused} />}
                     {tab === "assistant" && <AssistantPanel refresh={refresh} />}
                     {tab === "alerts" && <NotificationsPanel notifications={state.notifications} refresh={refresh} />}
                   </div>
