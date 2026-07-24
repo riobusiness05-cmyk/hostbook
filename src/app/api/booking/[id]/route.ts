@@ -1,0 +1,114 @@
+import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
+import { prisma } from "@/lib/prisma";
+import { getActiveRestaurant } from "@/lib/restaurant";
+import {
+  combineDateAndTime,
+  findAvailableTable,
+  toLocalDateStr,
+  toLocalTimeStr,
+} from "@/lib/availability";
+import { dateStrSchema, timeStrSchema } from "@/types";
+import { updateReservationStatus } from "@/lib/hostflow/actions";
+import { emitFloorChange } from "@/lib/hostflow/events";
+
+// Public, token-secured booking management. A guest reaches this via the
+// unguessable `manageToken` printed on their confirmation link — no login.
+// Every handler requires the token to match the reservation, so knowing an
+// id alone is never enough to view or change a booking.
+
+async function loadOwned(id: string, token: string | null) {
+  if (!token) return { error: NextResponse.json({ error: "Missing token" }, { status: 401 }) };
+  const restaurant = await getActiveRestaurant();
+  const reservation = await prisma.reservation.findUnique({ where: { id }, include: { table: true } });
+  if (!reservation || reservation.restaurantId !== restaurant.id || reservation.manageToken !== token) {
+    return { error: NextResponse.json({ error: "Booking not found" }, { status: 404 }) };
+  }
+  return { restaurant, reservation };
+}
+
+function publicView(r: Awaited<ReturnType<typeof loadOwned>>["reservation"]) {
+  if (!r) return null;
+  return {
+    id: r.id,
+    customerName: r.customerName,
+    partySize: r.partySize,
+    date: toLocalDateStr(r.reservationTime),
+    time: toLocalTimeStr(r.reservationTime),
+    status: r.status,
+    tableNumber: r.table?.tableNumber ?? null,
+    occasion: r.occasion,
+    seatingPreference: r.seatingPreference,
+    accessibilityNeeds: r.accessibilityNeeds,
+    notes: r.notes,
+  };
+}
+
+export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+  const token = new URL(req.url).searchParams.get("t");
+  const res = await loadOwned(params.id, token);
+  if ("error" in res) return res.error;
+  return NextResponse.json({ reservation: publicView(res.reservation) });
+}
+
+const patchSchema = z.object({
+  token: z.string().min(1),
+  date: dateStrSchema.optional(),
+  time: timeStrSchema.optional(),
+  partySize: z.number().int().min(1).max(30).optional(),
+});
+
+export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+  const body = await req.json().catch(() => null);
+  const parsed = patchSchema.safeParse(body);
+  if (!parsed.success) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+
+  const res = await loadOwned(params.id, parsed.data.token);
+  if ("error" in res) return res.error;
+  const { restaurant, reservation } = res;
+
+  if (["CANCELLED", "COMPLETED", "NO_SHOW", "SEATED"].includes(reservation.status)) {
+    return NextResponse.json({ error: "This booking can no longer be changed online." }, { status: 409 });
+  }
+
+  const newDate = parsed.data.date ?? toLocalDateStr(reservation.reservationTime);
+  const newTime = parsed.data.time ?? toLocalTimeStr(reservation.reservationTime);
+  const newParty = parsed.data.partySize ?? reservation.partySize;
+
+  const table = await findAvailableTable({
+    restaurant,
+    dateStr: newDate,
+    time: newTime,
+    partySize: newParty,
+    seatingPreference: reservation.seatingPreference ?? undefined,
+  });
+  if (!table) {
+    return NextResponse.json({ error: "That new date/time isn't available. Try another time." }, { status: 409 });
+  }
+
+  const updated = await prisma.reservation.update({
+    where: { id: reservation.id },
+    data: {
+      reservationTime: combineDateAndTime(newDate, newTime),
+      partySize: newParty,
+      tableId: table.id,
+    },
+    include: { table: true },
+  });
+  emitFloorChange(restaurant.id, "reservation");
+  return NextResponse.json({ reservation: publicView(updated) });
+}
+
+export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+  const token = new URL(req.url).searchParams.get("t");
+  const res = await loadOwned(params.id, token);
+  if ("error" in res) return res.error;
+
+  if (res.reservation.status === "CANCELLED") {
+    return NextResponse.json({ ok: true });
+  }
+  // Reuse the host action so a guest cancellation also frees any held table
+  // on the live floor plan and emits a realtime update.
+  await updateReservationStatus(res.restaurant.id, res.reservation.id, "CANCELLED");
+  return NextResponse.json({ ok: true });
+}

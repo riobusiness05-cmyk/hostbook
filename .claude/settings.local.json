@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm -v)",
+      "Read(//Users/riohernandez/**)",
+      "Bash(which brew; which fnm; which volta; which asdf; ls /usr/local/bin 2>/dev/null | grep -iE 'node|npm'; ls /opt/homebrew/bin 2>/dev/null | grep -iE 'node|npm')",
+      "mcp__6a8db16e-f3fb-45a2-b146-14186ec98fd1__models_explore",
+      "mcp__6a8db16e-f3fb-45a2-b146-14186ec98fd1__generate_video",
+      "mcp__6a8db16e-f3fb-45a2-b146-14186ec98fd1__balance",
+      "Bash(npm install *)",
+      "Bash(brew --version)",
+      "Read(//usr/local/**)",
+      "Bash(zsh -lc 'which node npm; node --version; npm --version')",
+      "Bash(curl -sI https://nodejs.org)",
+      "Bash(mkdir -p /private/tmp/claude-501/-Users-riohernandez-Downloads-hostflow-booking/48971aa6-76d6-4e92-bfc6-53fc6533d97d/scratchpad/node)",
+      "Bash(curl -sLo node.tar.gz https://nodejs.org/dist/v20.18.1/node-v20.18.1-darwin-arm64.tar.gz)",
+      "Bash(tar -xzf node.tar.gz)",
+      "mcp__6a8db16e-f3fb-45a2-b146-14186ec98fd1__job_display"
+    ]
+  }
+}

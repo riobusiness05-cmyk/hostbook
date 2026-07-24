@@ -1,0 +1,486 @@
+// Host Flow AI — Booking App schema
+//
+// Design note: every business-data model is scoped by `restaurantId`, even
+// though this template is deployed as ONE instance per client. That's
+// intentional — it means the schema can be lifted into a true multi-tenant
+// SaaS platform later (Phase 5 in the plan) without a rewrite, just a
+// consolidation of many single-tenant databases into one.
+//
+// Dev uses SQLite (zero setup). Swap `provider` + `DATABASE_URL` to
+// "postgresql" for production / Supabase — see README.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Restaurant {
+  id              String   @id @default(cuid())
+  slug            String   @unique
+  name            String
+  tagline         String?
+  timezone        String   @default("Atlantic/Canary")
+  address         String?
+  phone           String?
+  email           String?
+  brandColor      String   @default("#c9611f")
+  logoUrl         String?
+  welcomeMessage  String   @default("Hey! I can help you book a table, answer questions about the menu, hours, or anything else. What can I do for you?")
+  defaultReservationMinutes Int @default(90)
+  maxPartySize    Int      @default(12)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  openingHours    OpeningHour[]
+  tables          DiningTable[]
+  reservations    Reservation[]
+  blackoutDates   BlackoutDate[]
+  faqEntries      FaqEntry[]
+  menuItems       MenuItem[]
+  chatSessions    ChatSession[]
+
+  // ── Host Flow ─────────────────────────────────────────────────────────
+  accounts            Account[]
+  sections            Section[]
+  staff               StaffMember[]
+  tableSessions       TableSession[]
+  walkins             Walkin[]
+  notifications       Notification[]
+  tableStatusHistory  TableStatusHistory[]
+  settings            RestaurantSettings?
+
+  // ── Billing (SaaS subscription) ─────────────────────────────────────────
+  subscription        Subscription?
+  billingEvents        BillingEvent[]
+}
+
+// ── Host Flow: a staff login for a specific venue (multi-tenant) ─────────
+// role: OWNER | MANAGER | HOST
+model Account {
+  id           String     @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  email        String     @unique
+  passwordHash String
+  name         String
+  role         String     @default("MANAGER")
+  createdAt    DateTime   @default(now())
+  lastLoginAt  DateTime?
+
+  // ── Email verification (self-serve registration) ──────────────────────
+  emailVerified        Boolean   @default(false)
+  emailVerifyToken      String?  @unique
+  emailVerifyExpiresAt  DateTime?
+
+  @@index([restaurantId])
+}
+
+// ── Host Flow: floor sections (e.g. Terrace, Main, Bar, Garden) ──────────
+model Section {
+  id           String     @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  name         String
+  color        String     @default("#64748b") // section accent, used on floor plan
+  sortOrder    Int        @default(0)
+  isOutdoor    Boolean    @default(false) // Terrace / Garden — a valid "move outside to eat" destination
+  room         String     @default("Main Room") // physical room this section belongs to (floor-plan switcher)
+
+  tables       DiningTable[]
+  staff        StaffMember[]
+
+  @@unique([restaurantId, name])
+}
+
+// ── Host Flow: staff members / servers ───────────────────────────────────
+// role: HOST | SERVER | MANAGER | RUNNER
+model StaffMember {
+  id           String     @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  name         String
+  role         String     @default("SERVER")
+  color        String     @default("#6366f1") // avatar / section-fill accent
+  isActive     Boolean    @default(true)
+  // A server is (soft) assigned to a section for the current service.
+  sectionId    String?
+  section      Section?   @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+
+  tables        DiningTable[]
+  tableSessions TableSession[]
+}
+
+// 0 = Sunday ... 6 = Saturday
+model OpeningHour {
+  id           String     @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  dayOfWeek    Int
+  openTime     String     // "HH:MM" 24h
+  closeTime    String     // "HH:MM" 24h
+  isClosed     Boolean    @default(false)
+
+  @@unique([restaurantId, dayOfWeek])
+}
+
+// status: AVAILABLE | OCCUPIED | RESERVED | ARRIVING_SOON | LATE | DIRTY | CLEANING | BLOCKED
+// shape:  ROUND | RECT | SQUARE
+model DiningTable {
+  id           String     @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  name         String     // e.g. "Patio 3", "Bar 1"
+  tableNumber  Int        @default(0) // host-facing table number, unique per restaurant
+  capacityMin  Int        @default(1)
+  capacityMax  Int
+  isActive     Boolean    @default(true)
+
+  // ── Floor-plan geometry (SVG coordinate space, 0..1000 x 0..700) ──────
+  x            Float      @default(0)
+  y            Float      @default(0)
+  width        Float      @default(80)
+  height       Float      @default(80)
+  shape        String     @default("ROUND")
+  rotation     Float      @default(0)
+
+  // ── Live state ────────────────────────────────────────────────────────
+  status       String     @default("AVAILABLE")
+  notes        String?
+  isJoinable   Boolean    @default(true) // can be merged with neighbours
+
+  sectionId    String?
+  section      Section?     @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+  serverId     String?
+  server       StaffMember? @relation(fields: [serverId], references: [id], onDelete: SetNull)
+
+  // The table this one is currently merged INTO (null if standalone/primary).
+  mergedIntoId String?
+  mergedInto   DiningTable?  @relation("TableMerge", fields: [mergedIntoId], references: [id], onDelete: SetNull)
+  mergedTables DiningTable[] @relation("TableMerge")
+
+  reservations   Reservation[]
+  tableSessions  TableSession[]
+  statusHistory  TableStatusHistory[]
+
+  @@unique([restaurantId, tableNumber])
+  @@index([restaurantId, status])
+}
+
+// status: PENDING | CONFIRMED | CANCELLED | COMPLETED | NO_SHOW
+// source:  WEB_CHAT | WEB_FORM | PHONE | ADMIN
+model Reservation {
+  id               String       @id @default(cuid())
+  restaurantId     String
+  restaurant       Restaurant   @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  tableId          String?
+  table            DiningTable? @relation(fields: [tableId], references: [id])
+
+  customerName     String
+  customerEmail    String?
+  customerPhone    String?
+  partySize        Int
+  reservationTime  DateTime     // combined date + time, stored UTC
+  durationMinutes  Int          @default(90)
+  // status: PENDING | CONFIRMED | ARRIVED | SEATED | COMPLETED | CANCELLED | NO_SHOW
+  status           String       @default("PENDING")
+  source           String       @default("WEB_CHAT")
+  notes            String?
+
+  // ── Guest / occasion context (surfaced on the host floor plan) ────────
+  isVip            Boolean      @default(false)
+  occasion         String?      // "Birthday", "Anniversary", "Business", etc.
+  seatingPreference String?     // "Window", "Outdoor", "Booth", "High chair", ...
+  accessibilityNeeds String?
+  // Unguessable token so a guest can view/modify/cancel their own booking
+  // from the confirmation link without logging in.
+  manageToken      String?      @unique
+
+  confirmationSentAt DateTime?
+  reminderSentAt     DateTime?
+
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  tableSession     TableSession?
+
+  @@index([restaurantId, reservationTime])
+  @@index([restaurantId, status])
+}
+
+// ── Host Flow: an active/closed seating of a table ────────────────────────
+// status: SEATED | FINISHED
+// One row per party actually sat at a table. This is what powers "current
+// guests", dining duration, expected-finish and table-turn analytics.
+model TableSession {
+  id             String       @id @default(cuid())
+  restaurantId   String
+  restaurant     Restaurant   @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  tableId        String
+  table          DiningTable  @relation(fields: [tableId], references: [id], onDelete: Cascade)
+
+  guestName      String
+  partySize      Int
+  status         String       @default("SEATED")
+  source         String       @default("WALKIN") // WALKIN | RESERVATION
+
+  seatedAt       DateTime     @default(now())
+  expectedFinishAt DateTime
+  finishedAt     DateTime?
+
+  isVip          Boolean      @default(false)
+  occasion       String?
+  notes          String?
+  currentBill    Float?
+  // Party is seated (typically at the bar) but waiting for an outdoor table
+  // to free up so they can move outside to eat.
+  waitingForOutdoor Boolean   @default(false)
+
+  serverId       String?
+  server         StaffMember? @relation(fields: [serverId], references: [id], onDelete: SetNull)
+
+  // Link back to the reservation (if this seating came from a booking) or
+  // the walk-in that produced it.
+  reservationId  String?      @unique
+  reservation    Reservation? @relation(fields: [reservationId], references: [id], onDelete: SetNull)
+  walkinId       String?      @unique
+  walkin         Walkin?      @relation(fields: [walkinId], references: [id], onDelete: SetNull)
+
+  @@index([restaurantId, status])
+  @@index([tableId, status])
+}
+
+// ── Host Flow: walk-ins & waitlist ────────────────────────────────────────
+// status: WAITING | SEATED | LEFT | CANCELLED
+// priority: NORMAL | HIGH | VIP
+model Walkin {
+  id                 String    @id @default(cuid())
+  restaurantId       String
+  restaurant         Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  name               String
+  phone              String?
+  partySize          Int
+  priority           String    @default("NORMAL")
+  quotedWaitMinutes  Int       @default(15)
+  notes              String?
+  accessibilityNeeds String?
+  status             String    @default("WAITING")
+
+  createdAt          DateTime  @default(now())
+  seatedAt           DateTime?
+  notifiedAt         DateTime?
+
+  session            TableSession?
+
+  @@index([restaurantId, status])
+}
+
+// ── Host Flow: live notifications ─────────────────────────────────────────
+// type: TABLE_AVAILABLE | RESERVATION_LATE | WALKIN_WAITING | VIP_ARRIVED |
+//       RUSH_SOON | KITCHEN_HIGH | TABLE_DIRTY | SERVER_OVERLOADED | DINING_OVERRUN
+// severity: INFO | WARNING | CRITICAL
+model Notification {
+  id           String     @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  type         String
+  severity     String     @default("INFO")
+  title        String
+  body         String?
+  tableId      String?
+  isRead       Boolean    @default(false)
+  createdAt    DateTime   @default(now())
+
+  @@index([restaurantId, isRead, createdAt])
+}
+
+// ── Host Flow: table status audit trail (turns / heat maps) ──────────────
+model TableStatusHistory {
+  id           String      @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant  @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  tableId      String
+  table        DiningTable @relation(fields: [tableId], references: [id], onDelete: Cascade)
+  fromStatus   String?
+  toStatus     String
+  note         String?
+  changedAt    DateTime    @default(now())
+
+  @@index([restaurantId, changedAt])
+  @@index([tableId, changedAt])
+}
+
+// ── Host Flow: manager-configurable service settings ─────────────────────
+model RestaurantSettings {
+  id                    String     @id @default(cuid())
+  restaurantId          String     @unique
+  restaurant            Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  maxBookingsPer15Min   Int        @default(6)
+  walkinAllocationPct   Int        @default(25) // % of capacity reserved for walk-ins
+  avgDiningMinutes      Int        @default(90)
+  cleaningMinutes       Int        @default(12)
+  lateThresholdMinutes  Int        @default(10)
+  noShowThresholdMinutes Int       @default(20)
+  bookingWindowDays     Int        @default(60)
+  maxOnlinePartySize    Int        @default(10)
+  maxOccupancyPct       Int        @default(90)
+  peakStart             String     @default("19:00")
+  peakEnd               String     @default("21:30")
+  autoOptimise          Boolean    @default(true)
+  aiAssistantEnabled    Boolean    @default(true)
+
+  updatedAt             DateTime   @updatedAt
+}
+
+// ── Billing: subscription plans (code-facing catalogue) ──────────────────
+// One row per plan tier. `features` is a JSON-encoded string[] (portable
+// across SQLite dev / Postgres prod without relying on native JSON columns).
+// Adding a new plan later — e.g. "Starter" or "Enterprise" — is just a new
+// row; nothing in the application logic is keyed to a specific plan.
+model Plan {
+  id                    String   @id @default(cuid())
+  key                   String   @unique // stable code-facing id, e.g. "professional"
+  name                  String
+  description           String?
+  monthlyPriceCents     Int
+  annualPriceCents      Int?     // null until an annual price is defined for this plan
+  stripeProductId       String?
+  stripeMonthlyPriceId  String?
+  stripeAnnualPriceId   String?
+  isActive              Boolean  @default(true)
+  sortOrder             Int      @default(0)
+  features              String   // JSON-encoded string[]
+
+  createdAt             DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  subscriptions          Subscription[]
+}
+
+// ── Billing: one subscription per restaurant ──────────────────────────────
+// status: COMPLIMENTARY | TRIAL | ACTIVE | PAST_DUE | CANCELLED | EXPIRED
+// billingInterval: MONTH | YEAR
+//
+// Complimentary accounts (isComplimentary=true) get full access regardless
+// of `status`/trial/Stripe fields — see hasAccess() in
+// src/lib/billing/subscription.ts, the single place that interprets this
+// row. Nothing here is specific to any one restaurant; any tenant can be
+// granted complimentary access via the same mechanism.
+model Subscription {
+  id                      String     @id @default(cuid())
+  restaurantId            String     @unique
+  restaurant              Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  planId                  String?
+  plan                    Plan?      @relation(fields: [planId], references: [id])
+
+  status                  String     @default("TRIAL")
+  billingInterval         String     @default("MONTH")
+
+  trialStartedAt          DateTime?
+  trialEndsAt              DateTime?
+
+  currentPeriodStart       DateTime?
+  currentPeriodEnd          DateTime?
+  cancelAtPeriodEnd         Boolean   @default(false)
+  cancelledAt                DateTime?
+
+  isComplimentary            Boolean   @default(false)
+  complimentaryReason         String?
+  complimentaryGrantedBy       String?
+  complimentaryGrantedAt        DateTime?
+
+  stripeCustomerId                String?  @unique
+  stripeSubscriptionId             String?  @unique
+  stripePriceId                     String?
+  lastPaymentStatus                  String?
+
+  createdAt                           DateTime @default(now())
+  updatedAt                            DateTime @updatedAt
+
+  events                               BillingEvent[]
+
+  @@index([status])
+}
+
+// ── Billing: append-only lifecycle / audit log ────────────────────────────
+// type: TRIAL_STARTED | TRIAL_EXPIRED | CHECKOUT_COMPLETED | SUBSCRIPTION_CREATED |
+//       SUBSCRIPTION_UPDATED | PAYMENT_FAILED | PAYMENT_SUCCEEDED | CANCELLED |
+//       REACTIVATED | COMPLIMENTARY_GRANTED | COMPLIMENTARY_CONVERTED | ADMIN_SUSPENDED
+model BillingEvent {
+  id             String        @id @default(cuid())
+  restaurantId   String
+  restaurant     Restaurant    @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  subscriptionId String?
+  subscription   Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  type           String
+  message        String?
+  stripeEventId  String?       @unique // idempotency guard for webhook replay
+  createdAt      DateTime      @default(now())
+
+  @@index([restaurantId, createdAt])
+}
+
+model BlackoutDate {
+  id           String     @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  date         DateTime   // day this applies to
+  fullDay      Boolean    @default(true)
+  startTime    String?    // "HH:MM" — only used if fullDay = false
+  endTime      String?    // "HH:MM" — only used if fullDay = false
+  reason       String?    // e.g. "Private event", "Closed for holiday"
+
+  @@index([restaurantId, date])
+}
+
+model FaqEntry {
+  id           String     @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  question     String
+  answer       String
+  category     String     @default("General")
+  sortOrder    Int        @default(0)
+}
+
+model MenuItem {
+  id           String     @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  name         String
+  description  String?
+  price        Float?
+  category     String     @default("Menu")
+  allergens    String?    // comma-separated, e.g. "gluten,dairy"
+  isAvailable  Boolean    @default(true)
+  sortOrder    Int        @default(0)
+}
+
+// Lightweight transcript log — lets the restaurant owner (and you, the
+// agency) review what customers are actually asking the bot. Also useful
+// as a sales artifact ("look how many bookings the bot handled this week").
+model ChatSession {
+  id           String        @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant    @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  channel      String        @default("WEB") // WEB | SMS | WHATSAPP
+  customerRef  String?       // phone/email/anon id, if known
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  messages     ChatMessage[]
+}
+
+// role: user | assistant | tool
+model ChatMessage {
+  id            String      @id @default(cuid())
+  sessionId     String
+  session       ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  role          String
+  content       String
+  createdAt     DateTime    @default(now())
+}
