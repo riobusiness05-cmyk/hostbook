@@ -300,11 +300,26 @@ export async function getFloorState(restaurantId: string): Promise<FloorState> {
           waitingForOutdoor: s.waitingForOutdoor,
         }
       : null;
+    const reservation = r ? toReservationDTO(r) : null;
+
+    // A table sitting on the stored AVAILABLE status with an upcoming
+    // reservation should read as reserved on the floor, not free — this is
+    // what makes booking a table visibly change its colour instead of
+    // silently leaving it green until a host manually seats it later.
+    // Never overrides a real operational state (OCCUPIED/DIRTY/BLOCKED/etc.)
+    // — only steps in when the table would otherwise show as free.
+    // 60-minute "arriving soon" cutoff matches the dashboard's own
+    // "arrivals ≤1h" stat below, so the two never disagree.
+    let status = t.status as TableStatus;
+    if (status === "AVAILABLE" && reservation) {
+      status = reservation.isLate ? "LATE" : reservation.minutesUntil <= 60 ? "ARRIVING_SOON" : "RESERVED";
+    }
+
     return {
       id: t.id,
       tableNumber: t.tableNumber,
       name: t.name,
-      status: t.status as TableStatus,
+      status,
       seatsMin: t.capacityMin,
       seatsMax: t.capacityMax,
       shape: t.shape,
@@ -318,7 +333,7 @@ export async function getFloorState(restaurantId: string): Promise<FloorState> {
       section: t.section ? { id: t.section.id, name: t.section.name, color: t.section.color } : null,
       server: t.server ? { id: t.server.id, name: t.server.name, color: t.server.color } : null,
       session,
-      reservation: r ? toReservationDTO(r) : null,
+      reservation,
     };
   });
 

@@ -2,6 +2,8 @@ import crypto from "crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { findAvailableTable, combineDateAndTime } from "@/lib/availability";
+import { notify } from "@/lib/hostflow/actions";
+import { emitFloorChange } from "@/lib/hostflow/events";
 import type { Restaurant } from "@prisma/client";
 import type { CreateReservationInput } from "@/types";
 
@@ -90,6 +92,18 @@ export async function createReservationForRestaurant(
       return { reservation, table };
     });
 
+    // The table's colour on the floor plan is derived from live reservation
+    // data (see getFloorState), so this is what actually makes booking a
+    // table visibly change its colour — plus a notification so staff see it
+    // without having to be staring at the floor when it happens.
+    await notify(restaurant.id, {
+      type: "RESERVATION_MADE",
+      title: `New booking: ${input.customerName} (${input.partySize})`,
+      body: `Table ${table.tableNumber} · ${input.date} ${input.time}`,
+      tableId: table.id,
+    });
+    emitFloorChange(restaurant.id, "reservation");
+
     return {
       ok: true,
       data: {
@@ -149,6 +163,7 @@ export async function cancelReservationById(
     where: { id: reservationId },
     data: { status: "CANCELLED" },
   });
+  emitFloorChange(restaurant.id, "reservation"); // table reverts from reserved-colour back to available
 
   return { ok: true, data: { id: reservationId } };
 }
@@ -184,6 +199,7 @@ export async function rescheduleReservationById(
         },
       });
     });
+    emitFloorChange(restaurant.id, "reservation"); // old + new table colours both need to update
 
     return { ok: true, data: { id: reservationId, date: newDate, time: newTime } };
   } catch (err) {

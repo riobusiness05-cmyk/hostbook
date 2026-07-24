@@ -68,10 +68,19 @@ NOT a blanket rewrite. What actually shipped:
 - **Tenant isolation**: audited (not changed) — every restaurant-scoped model has a required `restaurantId`,
   and every `/api/host/*` route that looks up a record by bare `id` immediately checks
   `record.restaurantId !== ctx.restaurantId` before acting. No gaps found.
-- **Live table-status colors / realtime**: audited (not changed) — already fully working (SSE, 8 distinct
-  statuses with distinct colors, no page refresh needed). The spec's simplified 5-color scheme maps cleanly
-  onto the existing richer palette; "Selected" already has its own visual treatment (a highlight outline, not a
-  fill color) which is better than overloading a status color for it.
+- **Live table-status colors / realtime**: the SSE push mechanism itself was already fully working (confirmed
+  and left unchanged) — but a real gap was found and fixed in a follow-up round: **booking a table didn't
+  actually change its colour**. `createReservationForRestaurant` created a `Reservation` row but never touched
+  `DiningTable.status`, so a booked table stayed green until a host manually seated it — there was dead-code
+  evidence this was meant to work (a `TABLE_COUNTS` tally with `RESERVED`/`ARRIVING_SOON` keys that could never
+  be non-zero from real bookings, and a code comment about a "4h service window"). Fixed in
+  `src/lib/hostflow/floor.ts`: an `AVAILABLE` table with an upcoming reservation in the next 4h now displays as
+  `RESERVED` (>60 min out) / `ARRIVING_SOON` (≤60 min) / `LATE` (overdue) instead of green — computed live on
+  every read, so it naturally transitions as time passes. Added `notify()` + `emitFloorChange()` calls to
+  booking, cancelling, and rescheduling in `src/lib/reservationActions.ts` (none of the three touched the
+  realtime/notification system before, despite it being used everywhere else in Host Flow). Verified live:
+  booked a table via a raw API call while a host dashboard tab sat open — stat tiles and the table's colour
+  updated within ~2s with zero manual refresh, and a "New booking" notification appeared in Alerts.
 - **What was intentionally NOT done**: a blanket "fix every bug" sweep (unbounded, not verifiable as
   "complete"), a full performance profiling pass (no profiler was run — don't trust unverified performance
   claims), and a "remove all dead code across the whole app" audit beyond what surfaced naturally while working
