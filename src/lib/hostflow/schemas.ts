@@ -61,6 +61,7 @@ export const settingsSchema = z.object({
   walkinAllocationPct: z.number().int().min(0).max(100).optional(),
   avgDiningMinutes: z.number().int().min(30).max(240).optional(),
   cleaningMinutes: z.number().int().min(0).max(60).optional(),
+  arrivingSoonThresholdMinutes: z.number().int().min(1).max(120).optional(),
   lateThresholdMinutes: z.number().int().min(1).max(120).optional(),
   noShowThresholdMinutes: z.number().int().min(1).max(120).optional(),
   bookingWindowDays: z.number().int().min(1).max(365).optional(),

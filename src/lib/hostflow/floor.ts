@@ -165,6 +165,7 @@ export type SettingsDTO = {
   walkinAllocationPct: number;
   avgDiningMinutes: number;
   cleaningMinutes: number;
+  arrivingSoonThresholdMinutes: number;
   lateThresholdMinutes: number;
   noShowThresholdMinutes: number;
   bookingWindowDays: number;
@@ -190,6 +191,7 @@ export async function getSettings(restaurantId: string): Promise<SettingsDTO> {
     walkinAllocationPct: s.walkinAllocationPct,
     avgDiningMinutes: s.avgDiningMinutes,
     cleaningMinutes: s.cleaningMinutes,
+    arrivingSoonThresholdMinutes: s.arrivingSoonThresholdMinutes,
     lateThresholdMinutes: s.lateThresholdMinutes,
     noShowThresholdMinutes: s.noShowThresholdMinutes,
     bookingWindowDays: s.bookingWindowDays,
@@ -308,11 +310,15 @@ export async function getFloorState(restaurantId: string): Promise<FloorState> {
     // silently leaving it green until a host manually seats it later.
     // Never overrides a real operational state (OCCUPIED/DIRTY/BLOCKED/etc.)
     // — only steps in when the table would otherwise show as free.
-    // 60-minute "arriving soon" cutoff matches the dashboard's own
-    // "arrivals ≤1h" stat below, so the two never disagree.
+    // Thresholds are per-restaurant settings (General tab): defaults are
+    // "arriving soon" at 5 min out, "late" 15 min after the booked time.
     let status = t.status as TableStatus;
     if (status === "AVAILABLE" && reservation) {
-      status = reservation.isLate ? "LATE" : reservation.minutesUntil <= 60 ? "ARRIVING_SOON" : "RESERVED";
+      status = reservation.isLate
+        ? "LATE"
+        : reservation.minutesUntil <= settings.arrivingSoonThresholdMinutes
+        ? "ARRIVING_SOON"
+        : "RESERVED";
     }
 
     return {

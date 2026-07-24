@@ -323,7 +323,8 @@ model RestaurantSettings {
   walkinAllocationPct   Int        @default(25) // % of capacity reserved for walk-ins
   avgDiningMinutes      Int        @default(90)
   cleaningMinutes       Int        @default(12)
-  lateThresholdMinutes  Int        @default(10)
+  arrivingSoonThresholdMinutes Int @default(5)
+  lateThresholdMinutes  Int        @default(15)
   noShowThresholdMinutes Int       @default(20)
   bookingWindowDays     Int        @default(60)
   maxOnlinePartySize    Int        @default(10)

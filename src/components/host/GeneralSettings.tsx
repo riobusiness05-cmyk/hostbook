@@ -36,6 +36,7 @@ export function GeneralSettings({ initialSettings }: { initialSettings: Settings
       const updated = await api.updateSettings({
         avgDiningMinutes: form.avgDiningMinutes,
         cleaningMinutes: form.cleaningMinutes,
+        arrivingSoonThresholdMinutes: form.arrivingSoonThresholdMinutes,
         lateThresholdMinutes: form.lateThresholdMinutes,
         maxOccupancyPct: form.maxOccupancyPct,
         maxBookingsPer15Min: form.maxBookingsPer15Min,
@@ -74,6 +75,9 @@ export function GeneralSettings({ initialSettings }: { initialSettings: Settings
           </Field>
           <Field label="Cleaning time between seatings (minutes)">
             <input type="number" min={0} max={60} className={inputCls} value={form.cleaningMinutes} onChange={(e) => set("cleaningMinutes", Number(e.target.value))} />
+          </Field>
+          <Field label="Arriving soon threshold (minutes)" hint="How close to their booking time a table turns 'arriving soon' on the floor plan.">
+            <input type="number" min={1} max={120} className={inputCls} value={form.arrivingSoonThresholdMinutes} onChange={(e) => set("arrivingSoonThresholdMinutes", Number(e.target.value))} />
           </Field>
           <Field label="Late threshold (minutes)" hint="How late a reservation can run before it's flagged.">
             <input type="number" min={1} max={120} className={inputCls} value={form.lateThresholdMinutes} onChange={(e) => set("lateThresholdMinutes", Number(e.target.value))} />
