@@ -136,19 +136,35 @@ async function answerFromEngine(
     const next = walkins[0];
     if (!next) return { reply: "The waitlist is empty — no walk-ins to seat.", source: "engine" };
     const rec = recommendSeating(state, next.partySize);
-    if (!rec.best) return { reply: `No free table can seat ${next.name} (${next.partySize}) right now. ${rec.message}`, source: "engine" };
+    if (!rec.best && !rec.combo) {
+      return { reply: `No free table can seat ${next.name} (${next.partySize}) right now. ${rec.message}`, source: "engine" };
+    }
     const walkinRow = await prisma.walkin.findUnique({ where: { id: next.id } });
     if (!walkinRow || walkinRow.status !== "WAITING")
       return { reply: "That walk-in is no longer waiting.", source: "engine" };
+
+    let tableId: string;
+    let tableLabelText: string;
+    if (rec.best) {
+      tableId = rec.best.tableId;
+      tableLabelText = `Table ${rec.best.tableNumber}`;
+    } else {
+      // No single table fits — merge the suggested pair and seat there.
+      const [primaryId, otherId] = rec.combo!.tableIds;
+      await mergeTables(restaurantId, primaryId, otherId);
+      tableId = primaryId;
+      tableLabelText = `Table ${rec.combo!.tableNumbers.join(" + Table ")} (combined)`;
+    }
+
     await seatParty(restaurantId, {
-      tableId: rec.best.tableId,
+      tableId,
       guestName: next.name,
       partySize: next.partySize,
       source: "WALKIN",
       walkinId: next.id,
       isVip: next.priority === "VIP",
     });
-    return { reply: `Seated ${next.name} (${next.partySize}) at Table ${rec.best.tableNumber}.`, source: "engine", action: "seat" };
+    return { reply: `Seated ${next.name} (${next.partySize}) at ${tableLabelText}.`, source: "engine", action: "seat" };
   }
 
   // ── Questions ───────────────────────────────────────────────────────────

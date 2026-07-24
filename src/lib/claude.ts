@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/prisma";
 import { getAvailableSlots, toLocalDateStr, toLocalTimeStr } from "@/lib/availability";
+import { getSettings } from "@/lib/hostflow/floor";
 import {
   cancelReservationById,
   createReservationForRestaurant,
@@ -196,14 +197,27 @@ async function executeTool(
 }
 
 async function buildSystemPrompt(restaurant: Restaurant): Promise<string> {
-  const [hours, faqs, menuItems] = await Promise.all([
+  const [hours, faqs, menuItems, settings] = await Promise.all([
     prisma.openingHour.findMany({ where: { restaurantId: restaurant.id }, orderBy: { dayOfWeek: "asc" } }),
     prisma.faqEntry.findMany({ where: { restaurantId: restaurant.id }, orderBy: { sortOrder: "asc" } }),
     prisma.menuItem.findMany({
       where: { restaurantId: restaurant.id, isAvailable: true },
       orderBy: { sortOrder: "asc" },
     }),
+    getSettings(restaurant.id),
   ]);
+
+  const bookingPolicyLines = [
+    "- All bookings require a card to secure the reservation.",
+    "- The card is not charged when the booking is made.",
+    settings.depositPerPersonCents
+      ? `- A €${(settings.depositPerPersonCents / 100).toFixed(2)} per person no-show deposit is only charged if guests fail to attend their reservation or do not cancel within the required notice period (if applicable).`
+      : "- No deposit is required to book.",
+    settings.serviceChargePct
+      ? `- A ${settings.serviceChargePct}% service charge is added to the final bill for larger tables.`
+      : null,
+    settings.cancellationPolicy ? `- Cancellation policy: ${settings.cancellationPolicy}` : null,
+  ].filter((line): line is string => Boolean(line));
 
   const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
   const hoursText = hours
@@ -267,10 +281,7 @@ Do not ask the customer for booking details yourself.
 
 Booking Policy
 If customers ask about booking conditions, explain:
-- All bookings require a card to secure the reservation.
-- The card is not charged when the booking is made.
-- A €10 per person no-show deposit is only charged if guests fail to attend their reservation or do not cancel within the required notice period (if applicable).
-- Tables of more than 8 guests are subject to a 10% service charge, which is added to the final bill.
+${bookingPolicyLines.join("\n")}
 Only mention these policies when relevant or when discussing bookings.
 
 Menu Questions

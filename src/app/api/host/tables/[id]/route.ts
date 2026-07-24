@@ -9,6 +9,7 @@ import {
   moveParty,
   releaseTable,
   seatParty,
+  setTableActive,
   setTableStatus,
   setWaitingForOutdoor,
   splitTable,
@@ -68,6 +69,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         break;
       case "waitOutside":
         await setWaitingForOutdoor(ctx.restaurantId, tableId, a.waiting);
+        break;
+      case "setActive":
+        await setTableActive(ctx.restaurantId, tableId, a.isActive);
         break;
     }
     return NextResponse.json({ ok: true });

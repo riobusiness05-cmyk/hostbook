@@ -136,6 +136,17 @@ export async function blockTable(restaurantId: string, tableId: string, note?: s
   emitFloorChange(restaurantId, "table");
 }
 
+// Takes a table in/out of service entirely — an inactive table is excluded
+// from the floor plan, from `getAvailableSlots`/`findAvailableTable`, and
+// from the seating engine, unlike BLOCKED (which is still visible, just
+// unusable). Used by the settings page's per-table availability toggle.
+export async function setTableActive(restaurantId: string, tableId: string, isActive: boolean) {
+  const table = await prisma.diningTable.findUnique({ where: { id: tableId } });
+  if (!table || table.restaurantId !== restaurantId) throw new HostFlowError("Table not found", 404);
+  await prisma.diningTable.update({ where: { id: tableId }, data: { isActive } });
+  emitFloorChange(restaurantId, "table");
+}
+
 // ── Seating ────────────────────────────────────────────────────────────────
 
 export async function seatParty(
@@ -161,8 +172,18 @@ export async function seatParty(
   const seatedAt = new Date();
   const duration = params.durationMinutes ?? settings.avgDiningMinutes;
 
-  await prisma.$transaction([
-    prisma.tableSession.create({
+  // Two concurrent seat attempts on the same table can both pass the checks
+  // above before either write lands — the conditional `updateMany` re-checks
+  // status under the row lock at write time, so only one of them can win.
+  await prisma.$transaction(async (tx) => {
+    const claimed = await tx.diningTable.updateMany({
+      where: { id: params.tableId, status: { notIn: ["OCCUPIED", "BLOCKED"] } },
+      data: { status: "OCCUPIED" },
+    });
+    if (claimed.count === 0) {
+      throw new HostFlowError("Someone just seated this table — pick another.", 409);
+    }
+    await tx.tableSession.create({
       data: {
         restaurantId,
         tableId: params.tableId,
@@ -178,12 +199,11 @@ export async function seatParty(
         reservationId: params.reservationId,
         walkinId: params.walkinId,
       },
-    }),
-    prisma.diningTable.update({ where: { id: params.tableId }, data: { status: "OCCUPIED" } }),
-    prisma.tableStatusHistory.create({
+    });
+    await tx.tableStatusHistory.create({
       data: { restaurantId, tableId: params.tableId, fromStatus: table.status, toStatus: "OCCUPIED" },
-    }),
-  ]);
+    });
+  });
 
   if (params.reservationId) {
     await prisma.reservation.update({
@@ -216,21 +236,30 @@ export async function moveParty(restaurantId: string, fromTableId: string, toTab
   if (to.status === "OCCUPIED" || to.status === "BLOCKED")
     throw new HostFlowError("Destination table is not free");
 
-  await prisma.$transaction([
-    prisma.tableSession.update({
-      where: { id: session.id },
+  await prisma.$transaction(async (tx) => {
+    const claimed = await tx.diningTable.updateMany({
+      where: { id: toTableId, status: { notIn: ["OCCUPIED", "BLOCKED"] } },
+      data: { status: "OCCUPIED" },
+    });
+    if (claimed.count === 0) {
+      throw new HostFlowError("That table was just taken — pick another.", 409);
+    }
+    const moved = await tx.tableSession.updateMany({
+      where: { id: session.id, status: "SEATED" },
       // Moving to an outdoor table fulfils an "waiting for outdoor" request.
       data: { tableId: toTableId, serverId: to.serverId, waitingForOutdoor: to.section?.isOutdoor ? false : session.waitingForOutdoor },
-    }),
-    prisma.diningTable.update({ where: { id: toTableId }, data: { status: "OCCUPIED" } }),
-    prisma.diningTable.update({ where: { id: fromTableId }, data: { status: "DIRTY" } }),
-    prisma.tableStatusHistory.create({
+    });
+    if (moved.count === 0) {
+      throw new HostFlowError("That party already finished or moved — refresh and try again.", 409);
+    }
+    await tx.diningTable.update({ where: { id: fromTableId }, data: { status: "DIRTY" } });
+    await tx.tableStatusHistory.create({
       data: { restaurantId, tableId: toTableId, fromStatus: to.status, toStatus: "OCCUPIED", note: `Moved from T${from.tableNumber}` },
-    }),
-    prisma.tableStatusHistory.create({
+    });
+    await tx.tableStatusHistory.create({
       data: { restaurantId, tableId: fromTableId, fromStatus: "OCCUPIED", toStatus: "DIRTY", note: `Moved to T${to.tableNumber}` },
-    }),
-  ]);
+    });
+  });
   emitFloorChange(restaurantId, "table");
 }
 
@@ -242,17 +271,27 @@ export async function mergeTables(restaurantId: string, primaryId: string, other
   if (!primary || !other || primary.restaurantId !== restaurantId || other.restaurantId !== restaurantId)
     throw new HostFlowError("Table not found", 404);
   if (!other.isJoinable) throw new HostFlowError(`Table ${other.tableNumber} can't be joined`);
+  if (other.mergedIntoId) throw new HostFlowError(`Table ${other.tableNumber} is already merged into another table`, 409);
 
-  await prisma.$transaction([
-    prisma.diningTable.update({ where: { id: otherId }, data: { mergedIntoId: primaryId, status: "BLOCKED" } }),
-    prisma.diningTable.update({
-      where: { id: primaryId },
+  await prisma.$transaction(async (tx) => {
+    const claimed = await tx.diningTable.updateMany({
+      where: { id: otherId, mergedIntoId: null, isJoinable: true },
+      data: { mergedIntoId: primaryId, status: "BLOCKED" },
+    });
+    if (claimed.count === 0) {
+      throw new HostFlowError(`Table ${other.tableNumber} was just merged elsewhere — refresh and try again.`, 409);
+    }
+    const primaryClaimed = await tx.diningTable.updateMany({
+      where: { id: primaryId, capacityMax: primary.capacityMax },
       data: { capacityMax: primary.capacityMax + other.capacityMax },
-    }),
-    prisma.tableStatusHistory.create({
+    });
+    if (primaryClaimed.count === 0) {
+      throw new HostFlowError(`Table ${primary.tableNumber} just changed — refresh and try again.`, 409);
+    }
+    await tx.tableStatusHistory.create({
       data: { restaurantId, tableId: otherId, fromStatus: other.status, toStatus: "BLOCKED", note: `Merged into T${primary.tableNumber}` },
-    }),
-  ]);
+    });
+  });
   emitFloorChange(restaurantId, "table");
 }
 

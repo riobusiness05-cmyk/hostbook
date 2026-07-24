@@ -1,8 +1,9 @@
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getServerHostSession } from "@/lib/hostAuth";
-import { getBillingState, listActivePlans } from "@/lib/billing/subscription";
-import { BillingSection } from "@/components/host/BillingSection";
+import { getBillingState, listActivePlans, TRIAL_DAYS } from "@/lib/billing/subscription";
+import { getSettings } from "@/lib/hostflow/floor";
+import { SettingsShell } from "@/components/host/SettingsShell";
 
 export const dynamic = "force-dynamic";
 
@@ -20,16 +21,35 @@ export default async function HostSettingsPage({
   const restaurant = await prisma.restaurant.findUnique({ where: { id: session.restaurantId } });
   if (!restaurant) redirect("/hostflow/login");
 
-  const [billing, plans] = await Promise.all([
+  const [billing, plans, settings, hours, tables] = await Promise.all([
     getBillingState(restaurant.id),
     listActivePlans(),
+    getSettings(restaurant.id),
+    prisma.openingHour.findMany({ where: { restaurantId: restaurant.id }, orderBy: { dayOfWeek: "asc" } }),
+    prisma.diningTable.findMany({
+      where: { restaurantId: restaurant.id },
+      include: { section: true },
+      orderBy: { tableNumber: "asc" },
+    }),
   ]);
 
   return (
-    <BillingSection
+    <SettingsShell
+      restaurantName={restaurant.name}
       initialBilling={billing}
       initialPlans={plans}
-      restaurantName={restaurant.name}
+      trialDays={TRIAL_DAYS}
+      initialSettings={settings}
+      initialHours={hours.map((h) => ({ dayOfWeek: h.dayOfWeek, openTime: h.openTime, closeTime: h.closeTime, isClosed: h.isClosed }))}
+      initialTables={tables.map((t) => ({
+        id: t.id,
+        tableNumber: t.tableNumber,
+        name: t.name,
+        capacityMin: t.capacityMin,
+        capacityMax: t.capacityMax,
+        isActive: t.isActive,
+        sectionName: t.section?.name ?? null,
+      }))}
       blocked={searchParams.blocked === "1"}
       checkoutResult={searchParams.checkout === "success" || searchParams.checkout === "cancelled" ? searchParams.checkout : null}
     />

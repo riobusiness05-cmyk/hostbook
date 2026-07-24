@@ -2,11 +2,11 @@
 // host component can call it. Every mutation resolves after the server has
 // emitted its realtime change, so callers can also optimistically refetch.
 
-import type { FloorState } from "@/lib/hostflow/floor";
+import type { FloorState, SettingsDTO } from "@/lib/hostflow/floor";
 import type { DayPlan } from "@/lib/hostflow/dayplan";
 import type { TableAction } from "@/lib/hostflow/schemas";
 import type { BillingState, PlanDTO } from "@/lib/billing/subscription";
-import type { InvoiceSummary } from "@/lib/stripe";
+import type { InvoiceSummary, PaymentMethodSummary } from "@/lib/stripe";
 
 async function jsonOrThrow<T>(res: Response): Promise<T> {
   const data = await res.json().catch(() => ({}));
@@ -134,6 +134,7 @@ export async function askAssistant(message: string): Promise<{ reply: string; so
 
 export type SeatingRec = {
   best: { tableId: string; tableNumber: number; name: string; reasons: string[] } | null;
+  combo: { tableIds: string[]; tableNumbers: number[]; totalSeats: number; sectionName: string | null } | null;
   estimatedWaitMinutes: number;
   message: string;
 };
@@ -150,7 +151,12 @@ export async function recommendSeating(partySize: number, sectionId?: string): P
 
 // ── Billing ─────────────────────────────────────────────────────────────
 
-export type BillingSummary = { billing: BillingState; invoices: InvoiceSummary[]; plans: PlanDTO[] };
+export type BillingSummary = {
+  billing: BillingState;
+  invoices: InvoiceSummary[];
+  paymentMethod: PaymentMethodSummary | null;
+  plans: PlanDTO[];
+};
 
 export async function fetchBillingSummary(signal?: AbortSignal): Promise<BillingSummary> {
   const res = await fetch("/api/host/billing", { signal, cache: "no-store" });
@@ -171,4 +177,66 @@ export async function openBillingPortal(): Promise<string> {
   const res = await fetch("/api/host/billing/portal", { method: "POST" });
   const data = await jsonOrThrow<{ url: string }>(res);
   return data.url;
+}
+
+export async function cancelSubscription(): Promise<BillingState> {
+  const res = await fetch("/api/host/billing/cancel", { method: "POST" });
+  const data = await jsonOrThrow<{ billing: BillingState }>(res);
+  return data.billing;
+}
+
+export async function resumeSubscription(): Promise<BillingState> {
+  const res = await fetch("/api/host/billing/resume", { method: "POST" });
+  const data = await jsonOrThrow<{ billing: BillingState }>(res);
+  return data.billing;
+}
+
+export async function fetchSettings(): Promise<SettingsDTO> {
+  const res = await fetch("/api/host/settings", { cache: "no-store" });
+  const data = await jsonOrThrow<{ settings: SettingsDTO }>(res);
+  return data.settings;
+}
+
+export async function updateSettings(patch: Partial<SettingsDTO>): Promise<SettingsDTO> {
+  const res = await fetch("/api/host/settings", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  const data = await jsonOrThrow<{ settings: SettingsDTO }>(res);
+  return data.settings;
+}
+
+export type HourRow = { dayOfWeek: number; openTime: string; closeTime: string; isClosed: boolean };
+
+export async function fetchHours(): Promise<HourRow[]> {
+  const res = await fetch("/api/host/hours", { cache: "no-store" });
+  const data = await jsonOrThrow<{ hours: HourRow[] }>(res);
+  return data.hours;
+}
+
+export async function updateHours(hours: HourRow[]): Promise<HourRow[]> {
+  const res = await fetch("/api/host/hours", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ hours }),
+  });
+  const data = await jsonOrThrow<{ hours: HourRow[] }>(res);
+  return data.hours;
+}
+
+export type TableRow = {
+  id: string;
+  tableNumber: number;
+  name: string;
+  capacityMin: number;
+  capacityMax: number;
+  isActive: boolean;
+  sectionName: string | null;
+};
+
+export async function fetchAllTables(): Promise<TableRow[]> {
+  const res = await fetch("/api/host/tables", { cache: "no-store" });
+  const data = await jsonOrThrow<{ tables: TableRow[] }>(res);
+  return data.tables;
 }

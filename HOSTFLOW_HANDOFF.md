@@ -1,6 +1,89 @@
 # Host Flow — Project Handoff Notes
 
-Status snapshot as of 2026-07-23. Written so a fresh chat (or a fresh person) can pick up without re-deriving context.
+Status snapshot as of 2026-07-24. Written so a fresh chat (or a fresh person) can pick up without re-deriving context.
+
+## SaaS production-readiness pass (2026-07-24)
+
+The user asked for a large, 10-part "make it production ready for paying customers" push (Stripe subscriptions,
+billing page, tenant isolation audit, blanket bug fixes, live table-status colors, reservation improvements,
+performance, error handling, an admin settings page, and a final codebase audit). Two things up front:
+**pricing conflict resolved** — the spec asked for $30/mo + 14-day trial; the already-live Professional plan
+was $100/mo + 30-day trial. User chose to update the existing plan in place (not add a second plan) — see
+below. **Scope honesty** — "fix every bug in the entire project" and "audit until production-ready" aren't
+finishable as literal checkboxes; concrete, verified fixes were made and are listed below, and the audit was
+NOT a blanket rewrite. What actually shipped:
+
+- **Pricing/trial updated**: Professional plan → $30/mo (`prisma/seed.ts`), `TRIAL_DAYS` → 14
+  (`src/lib/billing/subscription.ts`, the one constant every trial calculation already derived from).
+- **Billing page**: added payment method display (new `getDefaultPaymentMethod` in `src/lib/stripe.ts`), "Next
+  payment" date, and in-app Cancel/Resume buttons (`src/app/api/host/billing/cancel|resume/route.ts`) wiring
+  the `cancelStripeSubscription`/`reactivateStripeSubscription` functions that already existed in `stripe.ts`
+  but were previously unused — cancellation is always at period end (data/access kept, resumable), never
+  immediate. `BillingState` gained `stripeSubscriptionId`, `canCancel`, `canResume`.
+- **Two real race conditions fixed** (this satisfies both the "bug fixes" and "prevent double bookings" asks —
+  they were the same underlying bug in two places):
+  1. `seatParty`/`moveParty`/`mergeTables` in `src/lib/hostflow/actions.ts` did check-then-act without a lock —
+     two concurrent requests could both pass the "is this table free" check before either write landed. Fixed
+     with conditional `updateMany` (`WHERE status = 'AVAILABLE'`, check `count`) inside interactive
+     transactions. Also fixed a real pre-existing gap: `mergeTables` never checked if the "other" table was
+     already merged into something else.
+  2. Guest-facing `createReservationForRestaurant`/`rescheduleReservationById` in `src/lib/reservationActions.ts`
+     read availability then wrote separately, with no lock — two people could book the same slot at once. Fixed
+     by running the read+write inside a **Serializable** transaction (`withSerializableRetry`, one retry on
+     Postgres conflict code P2034) — this needs true serializable isolation, not just a conditional update,
+     since it's a computed-aggregate/write-skew scenario, not a single-row check. `findAvailableTable` in
+     `src/lib/availability.ts` now accepts an optional `db` (transaction client) param for this.
+     **Caveat**: `isolationLevel: "Serializable"` is Postgres-only — if local dev is ever pointed at SQLite
+     again, these two functions will throw. Not a production concern (production is Postgres), just don't run
+     the booking flow against a local SQLite DB.
+- **Large-party table combining**: `recommendSeating` in `src/lib/hostflow/seating.ts` only ever checked single
+  tables. Added `findBestCombo` — when no single table fits, it finds the best pair of joinable, available
+  tables in the same section and proposes merging them. Wired end-to-end: the walk-in "Seat best table" button
+  and the AI assistant's "seat the next walk-in" command now auto-merge (reusing the existing `mergeTables`
+  action) and seat in one step when only a combo works.
+- **Host Flow settings page**: `/host/settings` is now a tabbed page (Billing / General / Hours / Tables) —
+  `src/components/host/SettingsShell.tsx` owns the shared header/theme/tabs; `BillingSection.tsx` was refactored
+  to drop its own page chrome and just render its cards. New tabs:
+  - **General** (`GeneralSettings.tsx`) — wires the `/api/host/settings` PATCH endpoint and `settingsSchema`
+    that already existed in the codebase but had **zero UI calling them** (confirmed dead-from-the-frontend
+    during exploration). Also newly wired two settings that existed in the schema but were never read anywhere:
+    `bookingWindowDays` (caps how far ahead guests can book — enforced in `availability.ts`) and
+    `maxBookingsPer15Min` (a real kitchen/service-pacing cap — also enforced in `availability.ts`, independent
+    of table availability). Added three new fields to `RestaurantSettings`: `depositPerPersonCents`,
+    `serviceChargePct`, `cancellationPolicy` — these replace what used to be hardcoded text in the AI
+    assistant's system prompt (`src/lib/claude.ts`) with real per-restaurant config.
+  - **Hours** (`HoursSettings.tsx`) — new host-scoped opening-hours editor (`src/app/api/host/hours/route.ts`),
+    mirroring the legacy `/api/admin/hours` pattern but gated on the Host Flow session instead of legacy admin
+    auth. Host Flow had no hours editor at all before this.
+  - **Tables** (`TableAvailabilitySettings.tsx`) — per-table active/out-of-service toggle
+    (`src/app/api/host/tables/route.ts` for the list, a new `setActive` case on the existing
+    `/api/host/tables/[id]` action dispatcher). Confirmed a toggled-off table disappears from the live floor
+    (`getFloorState` already filters `isActive: true`).
+  - **Deliberately not exposed**: `walkinAllocationPct`, `noShowThresholdMinutes`, `peakStart`/`peakEnd`,
+    `autoOptimise`, `maxOnlinePartySize` — these existed in the schema/DTO but are genuinely unused by any
+    booking logic; exposing them as editable would just be fake controls that don't do anything. Left as
+    schema defaults. `RestaurantSettings.maxOnlinePartySize` specifically is superseded by `Restaurant.maxPartySize`,
+    which is what the guest booking flow (`reservationActions.ts`) actually enforces — kept one source of
+    truth instead of wiring up the redundant field.
+- **Tenant isolation**: audited (not changed) — every restaurant-scoped model has a required `restaurantId`,
+  and every `/api/host/*` route that looks up a record by bare `id` immediately checks
+  `record.restaurantId !== ctx.restaurantId` before acting. No gaps found.
+- **Live table-status colors / realtime**: audited (not changed) — already fully working (SSE, 8 distinct
+  statuses with distinct colors, no page refresh needed). The spec's simplified 5-color scheme maps cleanly
+  onto the existing richer palette; "Selected" already has its own visual treatment (a highlight outline, not a
+  fill color) which is better than overloading a status color for it.
+- **What was intentionally NOT done**: a blanket "fix every bug" sweep (unbounded, not verifiable as
+  "complete"), a full performance profiling pass (no profiler was run — don't trust unverified performance
+  claims), and a "remove all dead code across the whole app" audit beyond what surfaced naturally while working
+  in these files. If any of these are wanted as a next step, scope them as their own concrete task.
+- **Verified**: `npx tsc --noEmit` and `npx next lint` clean after every phase. Settings page (all 4 tabs)
+  manually verified in-browser against real Colonial data (local SQLite, temporarily, per the established
+  pattern — see gotchas) — general settings save and persist across reload, hours load real data, the table
+  toggle actually removes/restores a table from the live floor. Cancel/Resume/payment-method **could not be
+  live-tested** — Stripe still isn't configured (no real keys), same open item as before. The AI assistant's
+  dynamic booking-policy prompt reaches the Anthropic API call correctly but couldn't be response-verified —
+  the configured `ANTHROPIC_API_KEY`'s account is out of credit balance (unrelated to this work, a real
+  billing issue on the user's Anthropic account, not something fixable from here).
 
 ## What this repo is
 
@@ -112,6 +195,19 @@ Deployed to Vercel for real-world phone testing at The Colonial: **https://hostf
   connection string from the Vercel dashboard (Settings → Environment Variables → reveal `DATABASE_URL`) and
   paste it into local `.env`, replacing the `file:./dev.db` line — I can't safely fetch that value myself (see
   gotcha below). Until fixed, `npm run dev` will fail on any DB query.
+
+## Live data reset for real use (2026-07-24)
+
+The site launched with demo data (fake reservations/walk-ins/table sessions from `seed.ts`) still showing on
+the live dashboard. Cleared it for The Colonial so staff can start entering real bookings:
+
+- One-off script `prisma/reset-colonial-live-data.ts` deleted all reservations, walk-ins, table sessions,
+  notifications, and table-status history for The Colonial (only — The Harbour untouched) and reset every
+  table to `AVAILABLE`. Floor plan, staff, menu, hours, FAQs, login, and billing were left alone.
+- Ran once via a temporary `build`-script change (same "run inside Vercel's build, then remove" pattern used
+  for the schema push), then the script was deleted and `build` reverted, in a separate deploy — so it can't
+  accidentally run again against real future bookings.
+- Verified live: 0 covers, 0% occupancy, every table green/available, Service Health 100.
 
 ## Mobile improvements (2026-07-24)
 

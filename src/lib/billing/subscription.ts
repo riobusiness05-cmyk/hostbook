@@ -14,7 +14,7 @@ import type { Subscription } from "@prisma/client";
  * restaurant" pattern already used in src/lib/hostflow/floor.ts.
  */
 
-export const TRIAL_DAYS = 30;
+export const TRIAL_DAYS = 14;
 export const DEFAULT_PLAN_KEY = "professional";
 
 export type BillingStatus = "COMPLIMENTARY" | "TRIAL" | "ACTIVE" | "PAST_DUE" | "CANCELLED" | "EXPIRED";
@@ -44,10 +44,13 @@ export type BillingState = {
   cancelAtPeriodEnd: boolean;
   lastPaymentStatus: string | null;
   stripeCustomerId: string | null;
+  stripeSubscriptionId: string | null;
   stripeConfigured: boolean;
   hasAccess: boolean;
   canStartCheckout: boolean;
   canManageBilling: boolean;
+  canCancel: boolean;
+  canResume: boolean;
 };
 
 function toPlanDTO(plan: { id: string; key: string; name: string; description: string | null; monthlyPriceCents: number; annualPriceCents: number | null; features: string } | null): PlanDTO | null {
@@ -130,10 +133,13 @@ export async function getBillingState(restaurantId: string): Promise<BillingStat
     cancelAtPeriodEnd: sub.cancelAtPeriodEnd,
     lastPaymentStatus: sub.lastPaymentStatus,
     stripeCustomerId: sub.stripeCustomerId,
+    stripeSubscriptionId: sub.stripeSubscriptionId,
     stripeConfigured: isStripeConfigured(),
     hasAccess,
     canStartCheckout: !sub.isComplimentary && status !== "ACTIVE" && status !== "PAST_DUE",
     canManageBilling: !!sub.stripeCustomerId && isStripeConfigured(),
+    canCancel: !sub.isComplimentary && !!sub.stripeSubscriptionId && !sub.cancelAtPeriodEnd && (status === "ACTIVE" || status === "TRIAL" || status === "PAST_DUE"),
+    canResume: !!sub.stripeSubscriptionId && sub.cancelAtPeriodEnd,
   };
 }
 

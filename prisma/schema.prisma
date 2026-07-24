@@ -333,6 +333,12 @@ model RestaurantSettings {
   autoOptimise          Boolean    @default(true)
   aiAssistantEnabled    Boolean    @default(true)
 
+  // ── Booking policy (guest-facing — surfaced by the AI assistant and the
+  //    booking confirmation) ────────────────────────────────────────────
+  depositPerPersonCents Int?       // null = no deposit required
+  serviceChargePct      Int?       // null = no service charge added
+  cancellationPolicy    String?    // free text, e.g. notice period required
+
   updatedAt             DateTime   @updatedAt
 }
 

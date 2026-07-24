@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
-import type { Restaurant } from "@prisma/client";
+import type { Restaurant, Prisma } from "@prisma/client";
+import { getSettings } from "@/lib/hostflow/floor";
 
 /**
  * Core reservation engine: opening hours + tables + existing bookings +
@@ -81,6 +82,22 @@ function rangesOverlap(aStart: number, aEnd: number, bStart: number, bEnd: numbe
   return aStart < bEnd && bStart < aEnd;
 }
 
+/** Whole calendar days between today and `dateStr` (0 = today), for the
+ *  `bookingWindowDays` cap — how far ahead guests may book online. */
+function daysUntil(dateStr: string): number {
+  const today = combineDateAndTime(toLocalDateStr(new Date()), "00:00");
+  const target = combineDateAndTime(dateStr, "00:00");
+  return Math.round((target.getTime() - today.getTime()) / 86400000);
+}
+
+/** Reservations already starting in the same 15-minute bucket as `slotStart`,
+ *  restaurant-wide — the `maxBookingsPer15Min` service-pacing cap. A table
+ *  can be physically free and a slot can still be closed if the kitchen is
+ *  already at its intake limit for that window. */
+function bucketStart(minute: number): number {
+  return Math.floor(minute / 15) * 15;
+}
+
 /**
  * Guards against booking a time that's already gone. Returns:
  *  - null if `dateStr` is a calendar day strictly before today — nothing on
@@ -109,6 +126,9 @@ export async function getAvailableSlots(params: {
 }): Promise<string[]> {
   const { restaurant, dateStr, partySize, intervalMinutes = 30 } = params;
 
+  const settings = await getSettings(restaurant.id);
+  if (daysUntil(dateStr) > settings.bookingWindowDays) return []; // beyond how far ahead online booking is allowed
+
   const earliestMinute = earliestBookableMinute(dateStr);
   if (earliestMinute === null) return []; // date has already passed
 
@@ -118,7 +138,7 @@ export async function getAvailableSlots(params: {
   const blackouts = await getBlackoutForDate(restaurant.id, dateStr);
   if (blackouts.some((b) => b.fullDay)) return [];
 
-  return computeSlots({ restaurant, dateStr, partySize, intervalMinutes, hours, blackouts, earliestMinute });
+  return computeSlots({ restaurant, dateStr, partySize, intervalMinutes, hours, blackouts, earliestMinute, maxBookingsPer15Min: settings.maxBookingsPer15Min });
 }
 
 // Split out from getAvailableSlots for clarity/testability.
@@ -130,8 +150,9 @@ async function computeSlots(params: {
   hours: { openTime: string; closeTime: string };
   blackouts: { fullDay: boolean; startTime: string | null; endTime: string | null }[];
   earliestMinute: number;
+  maxBookingsPer15Min: number;
 }): Promise<string[]> {
-  const { restaurant, dateStr, partySize, intervalMinutes, hours, blackouts, earliestMinute } = params;
+  const { restaurant, dateStr, partySize, intervalMinutes, hours, blackouts, earliestMinute, maxBookingsPer15Min } = params;
 
   const tables = await prisma.diningTable.findMany({
     where: {
@@ -180,6 +201,13 @@ async function computeSlots(params: {
     );
     if (blockedByBlackout) continue;
 
+    const bucket = bucketStart(slotStart);
+    const bucketCount = existingReservations.filter((r) => {
+      const rStart = r.reservationTime.getHours() * 60 + r.reservationTime.getMinutes();
+      return bucketStart(rStart) === bucket;
+    }).length;
+    if (bucketCount >= maxBookingsPer15Min) continue; // kitchen/service pacing cap for this window
+
     const hasFreeTable = tables.some((table) => {
       const conflicting = existingReservations.filter((r) => r.tableId === table.id);
       return !conflicting.some((r) => {
@@ -199,8 +227,11 @@ async function computeSlots(params: {
  * Finds one specific free table for a requested date/time/party size.
  * Used at reservation-creation time (in addition to getAvailableSlots,
  * which is used to show options) as the source of truth right before
- * booking, to reduce race conditions between two people booking the same
- * slot at once.
+ * booking. Pass `db` (a `tx` from an interactive `prisma.$transaction`,
+ * ideally Serializable) to run this check in the same transaction as the
+ * `reservation.create` that follows it — see `createReservationForRestaurant`
+ * in reservationActions.ts — so a second, concurrent booking for the same
+ * table/slot is rejected by Postgres instead of silently double-booking.
  */
 export async function findAvailableTable(params: {
   restaurant: Restaurant;
@@ -208,8 +239,12 @@ export async function findAvailableTable(params: {
   time: string;
   partySize: number;
   seatingPreference?: string;
+  db?: Prisma.TransactionClient;
 }) {
-  const { restaurant, dateStr, time, partySize, seatingPreference } = params;
+  const { restaurant, dateStr, time, partySize, seatingPreference, db = prisma } = params;
+
+  const settings = await getSettings(restaurant.id);
+  if (daysUntil(dateStr) > settings.bookingWindowDays) return null; // beyond how far ahead online booking is allowed
 
   const earliestMinute = earliestBookableMinute(dateStr);
   if (earliestMinute === null) return null; // date has already passed
@@ -236,7 +271,7 @@ export async function findAvailableTable(params: {
     .some((b) => rangesOverlap(slotStart, slotEnd, timeToMinutes(b.startTime!), timeToMinutes(b.endTime!)));
   if (blockedByBlackout) return null;
 
-  const tables = await prisma.diningTable.findMany({
+  const tables = await db.diningTable.findMany({
     where: {
       restaurantId: restaurant.id,
       isActive: true,
@@ -263,13 +298,20 @@ export async function findAvailableTable(params: {
 
   const dayStart = combineDateAndTime(dateStr, "00:00");
   const dayEnd = combineDateAndTime(dateStr, "23:59");
-  const existingReservations = await prisma.reservation.findMany({
+  const existingReservations = await db.reservation.findMany({
     where: {
       restaurantId: restaurant.id,
       status: { in: ACTIVE_STATUSES },
       reservationTime: { gte: dayStart, lte: dayEnd },
     },
   });
+
+  const bucket = bucketStart(slotStart);
+  const bucketCount = existingReservations.filter((r) => {
+    const rStart = r.reservationTime.getHours() * 60 + r.reservationTime.getMinutes();
+    return bucketStart(rStart) === bucket;
+  }).length;
+  if (bucketCount >= settings.maxBookingsPer15Min) return null; // kitchen/service pacing cap for this window
 
   for (const table of orderedTables) {
     const conflicting = existingReservations.filter((r) => r.tableId === table.id);

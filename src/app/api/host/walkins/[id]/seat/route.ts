@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { hostContext, handleActionError } from "@/lib/hostflow/apiContext";
 import { seatWalkinSchema } from "@/lib/hostflow/schemas";
-import { seatParty, HostFlowError } from "@/lib/hostflow/actions";
+import { seatParty, mergeTables, HostFlowError } from "@/lib/hostflow/actions";
 import { getFloorState } from "@/lib/hostflow/floor";
 import { recommendSeating } from "@/lib/hostflow/seating";
 
@@ -26,8 +26,18 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     if (!tableId) {
       const state = await getFloorState(ctx.restaurantId);
       const rec = recommendSeating(state, walkin.partySize);
-      if (!rec.best) throw new HostFlowError(rec.message, 409);
-      tableId = rec.best.tableId;
+      if (rec.best) {
+        tableId = rec.best.tableId;
+      } else if (rec.combo) {
+        // No single table fits — push the two suggested tables together and
+        // seat the party at the resulting merged table, instead of leaving
+        // the host to do it as two separate manual steps.
+        const [primaryId, otherId] = rec.combo.tableIds;
+        await mergeTables(ctx.restaurantId, primaryId, otherId);
+        tableId = primaryId;
+      } else {
+        throw new HostFlowError(rec.message, 409);
+      }
     }
 
     await seatParty(ctx.restaurantId, {

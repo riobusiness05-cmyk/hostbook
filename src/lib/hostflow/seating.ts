@@ -13,10 +13,19 @@ export type SeatingCandidate = {
   reasons: string[];
 };
 
+export type SeatingCombo = {
+  tableIds: string[];
+  tableNumbers: number[];
+  totalSeats: number;
+  sectionName: string | null;
+  waste: number;
+};
+
 export type SeatingRecommendation = {
   partySize: number;
   immediate: SeatingCandidate[]; // can seat right now, best first
   best: SeatingCandidate | null;
+  combo: SeatingCombo | null; // two tables to merge, when no single table fits
   estimatedWaitMinutes: number; // 0 if a table is free now
   nextFreeTableNumber: number | null;
   message: string;
@@ -98,9 +107,27 @@ export function recommendSeating(
       partySize,
       immediate: candidates,
       best,
+      combo: null,
       estimatedWaitMinutes: 0,
       nextFreeTableNumber: best.tableNumber,
       message: `Seat at Table ${best.tableNumber} (${best.name}) — ${best.reasons[0] ?? "good fit"}.`,
+    };
+  }
+
+  // No single table fits — before falling back to a wait estimate, see if
+  // two joinable tables in the same section can be pushed together. Large
+  // parties are usually seated this way in practice, not by holding out for
+  // one giant table to free up.
+  const combo = findBestCombo(state, partySize, opts);
+  if (combo) {
+    return {
+      partySize,
+      immediate: [],
+      best: null,
+      combo,
+      estimatedWaitMinutes: 0,
+      nextFreeTableNumber: null,
+      message: `Combine Table ${combo.tableNumbers.join(" + Table ")} (${combo.totalSeats} seats) for this party.`,
     };
   }
 
@@ -110,12 +137,58 @@ export function recommendSeating(
     partySize,
     immediate: [],
     best: null,
+    combo: null,
     estimatedWaitMinutes: wait.minutes,
     nextFreeTableNumber: wait.tableNumber,
     message:
       wait.tableNumber != null
         ? `No table free now. Table ${wait.tableNumber} should open in ~${wait.minutes} min (incl. cleaning).`
         : `No table can seat a party of ${partySize} right now.`,
+  };
+}
+
+/** Best pair of joinable, available tables in the same section that
+ *  together seat `partySize` with the least wasted capacity. Deliberately
+ *  scoped to pairs (not larger combinations) — that covers the realistic
+ *  "push two tables together" case without a combinatorial search over a
+ *  large floor. */
+function findBestCombo(
+  state: FloorState,
+  partySize: number,
+  opts: { sectionId?: string }
+): SeatingCombo | null {
+  const pool = state.tables.filter(
+    (t) => t.status === "AVAILABLE" && t.isJoinable && (opts.sectionId ? t.section?.id === opts.sectionId : true)
+  );
+
+  const bySection = new Map<string, TableDTO[]>();
+  for (const t of pool) {
+    const key = t.section?.id ?? "__none__";
+    const group = bySection.get(key);
+    if (group) group.push(t);
+    else bySection.set(key, [t]);
+  }
+
+  let best: { a: TableDTO; b: TableDTO; waste: number } | null = null;
+  for (const tables of bySection.values()) {
+    for (let i = 0; i < tables.length; i++) {
+      for (let j = i + 1; j < tables.length; j++) {
+        const total = tables[i].seatsMax + tables[j].seatsMax;
+        if (total < partySize) continue;
+        const waste = total - partySize;
+        if (!best || waste < best.waste) best = { a: tables[i], b: tables[j], waste };
+      }
+    }
+  }
+  if (!best) return null;
+
+  const [first, second] = [best.a, best.b].sort((x, y) => x.tableNumber - y.tableNumber);
+  return {
+    tableIds: [first.id, second.id],
+    tableNumbers: [first.tableNumber, second.tableNumber],
+    totalSeats: first.seatsMax + second.seatsMax,
+    sectionName: first.section?.name ?? null,
+    waste: best.waste,
   };
 }
 

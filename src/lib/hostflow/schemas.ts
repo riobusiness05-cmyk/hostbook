@@ -21,6 +21,7 @@ export const tableActionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("block"), note: z.string().max(200).optional() }),
   z.object({ action: z.literal("setStatus"), status: z.enum(TABLE_STATUSES) }),
   z.object({ action: z.literal("waitOutside"), waiting: z.boolean() }),
+  z.object({ action: z.literal("setActive"), isActive: z.boolean() }),
 ]);
 
 export type TableAction = z.infer<typeof tableActionSchema>;
@@ -69,6 +70,9 @@ export const settingsSchema = z.object({
   peakEnd: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),
   autoOptimise: z.boolean().optional(),
   aiAssistantEnabled: z.boolean().optional(),
+  depositPerPersonCents: z.number().int().min(0).max(100000).nullable().optional(),
+  serviceChargePct: z.number().int().min(0).max(100).nullable().optional(),
+  cancellationPolicy: z.string().max(2000).nullable().optional(),
 });
 
 export const assistantSchema = z.object({

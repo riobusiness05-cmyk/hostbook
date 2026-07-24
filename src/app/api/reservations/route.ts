@@ -46,7 +46,17 @@ export async function POST(req: NextRequest) {
   }
 
   const restaurant = await getActiveRestaurant();
-  const result = await createReservationForRestaurant(restaurant, parsed.data);
+
+  let result;
+  try {
+    result = await createReservationForRestaurant(restaurant, parsed.data);
+  } catch (err) {
+    console.error("[reservations] booking failed", err);
+    return NextResponse.json(
+      { error: "We couldn't complete that booking — please try again in a moment." },
+      { status: 500 }
+    );
+  }
 
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: 409 });

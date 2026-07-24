@@ -24,21 +24,21 @@ async function seedPlans() {
       key: DEFAULT_PLAN_KEY,
       name: "Professional",
       description: "Everything a high-volume restaurant or bar needs to run its floor.",
-      monthlyPriceCents: 10000,
+      monthlyPriceCents: 3000,
       sortOrder: 0,
       features: JSON.stringify(PROFESSIONAL_FEATURES),
     },
     update: {
       name: "Professional",
       description: "Everything a high-volume restaurant or bar needs to run its floor.",
-      monthlyPriceCents: 10000,
+      monthlyPriceCents: 3000,
       features: JSON.stringify(PROFESSIONAL_FEATURES),
     },
   });
 }
 
 /** Seeds a restaurant's Subscription row — complimentary for early partners
- *  (The Colonial), an ordinary 30-day trial for everyone else (The Harbour),
+ *  (The Colonial), an ordinary trial (TRIAL_DAYS) for everyone else (The Harbour),
  *  via the exact same reusable functions the platform admin panel and
  *  self-serve registration flow call. Nothing here is Colonial-specific. */
 async function seedBilling(restaurantId: string, opts: { complimentary: boolean; reason?: string }) {

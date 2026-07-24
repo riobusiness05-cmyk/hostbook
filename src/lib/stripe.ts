@@ -130,7 +130,44 @@ export async function listRecentInvoices(customerId: string, limit = 10): Promis
   }));
 }
 
-// ── Subscription lifecycle helpers (used by the webhook handler) ─────────
+// ── Payment method ───────────────────────────────────────────────────────
+
+export type PaymentMethodSummary = {
+  brand: string;
+  last4: string;
+  expMonth: number;
+  expYear: number;
+};
+
+/** The card Stripe will charge next — the subscription's own default payment
+ *  method if set, else the customer's account-level default. */
+export async function getDefaultPaymentMethod(
+  customerId: string,
+  stripeSubscriptionId?: string | null
+): Promise<PaymentMethodSummary | null> {
+  const stripe = getClient();
+
+  let paymentMethodId: string | null = null;
+  if (stripeSubscriptionId) {
+    const sub = await stripe.subscriptions.retrieve(stripeSubscriptionId);
+    paymentMethodId = typeof sub.default_payment_method === "string" ? sub.default_payment_method : sub.default_payment_method?.id ?? null;
+  }
+  if (!paymentMethodId) {
+    const customer = await stripe.customers.retrieve(customerId);
+    if (customer.deleted) return null;
+    paymentMethodId =
+      typeof customer.invoice_settings.default_payment_method === "string"
+        ? customer.invoice_settings.default_payment_method
+        : customer.invoice_settings.default_payment_method?.id ?? null;
+  }
+  if (!paymentMethodId) return null;
+
+  const pm = await stripe.paymentMethods.retrieve(paymentMethodId);
+  if (!pm.card) return null;
+  return { brand: pm.card.brand, last4: pm.card.last4, expMonth: pm.card.exp_month, expYear: pm.card.exp_year };
+}
+
+// ── Subscription lifecycle helpers (webhook handler + in-app Cancel/Resume) ─
 
 export async function cancelStripeSubscription(stripeSubscriptionId: string, atPeriodEnd = true): Promise<void> {
   const stripe = getClient();

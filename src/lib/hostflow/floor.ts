@@ -174,6 +174,9 @@ export type SettingsDTO = {
   peakEnd: string;
   autoOptimise: boolean;
   aiAssistantEnabled: boolean;
+  depositPerPersonCents: number | null;
+  serviceChargePct: number | null;
+  cancellationPolicy: string | null;
 };
 
 const minutesBetween = (a: Date, b: Date) => Math.round((a.getTime() - b.getTime()) / 60000);
@@ -196,6 +199,9 @@ export async function getSettings(restaurantId: string): Promise<SettingsDTO> {
     peakEnd: s.peakEnd,
     autoOptimise: s.autoOptimise,
     aiAssistantEnabled: s.aiAssistantEnabled,
+    depositPerPersonCents: s.depositPerPersonCents,
+    serviceChargePct: s.serviceChargePct,
+    cancellationPolicy: s.cancellationPolicy,
   };
 }
 
