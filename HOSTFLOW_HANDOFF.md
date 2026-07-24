@@ -77,6 +77,35 @@ still reach `/host/settings` to fix their subscription. Layout only checks the s
 access → billing page → checkout/portal graceful-degradation (when Stripe isn't configured) → platform admin
 actions → access-block/reactivate cycle → cross-tenant isolation.
 
+## Live deployment (2026-07-24)
+
+Deployed to Vercel for real-world phone testing at The Colonial: **https://hostflow-booking.vercel.app**
+
+- **Hosting:** Vercel project `hostflow/hostflow-booking`, linked via `vercel link` (this repo is now also a
+  local git repo — `git init` done 2026-07-24, no GitHub remote, deploys go straight from local via `vercel
+  --prod`, not git-triggered).
+- **Database:** switched from SQLite to Postgres (`prisma/schema.prisma` datasource provider is now
+  `"postgresql"`) — a free Neon-backed Postgres DB created via Vercel's Storage tab and connected to the
+  project, which auto-injected `DATABASE_URL` and friends as Vercel env vars.
+- **Schema + seed:** pushed once via a temporary change to the `build` script (`prisma db push --accept-data-loss
+  && tsx prisma/seed.ts && next build`) so it ran on Vercel's build servers, which have the real
+  `DATABASE_URL` — my local sandbox cannot see that secret (see gotcha below), so this had to happen
+  server-side. After the first successful deploy, the `seed` step was removed from `build` (kept only `prisma
+  db push`) so future deploys don't re-wipe real data with demo data.
+- **Env vars set on Vercel** (production + preview): `ANTHROPIC_API_KEY`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`,
+  `ADMIN_SESSION_SECRET`, `NEXT_PUBLIC_RESTAURANT_SLUG`, `NEXT_PUBLIC_APP_URL` (set to the deployed URL above)
+  — copied from local `.env`. `STRIPE_*` / `RESEND_API_KEY` / `CRON_SECRET` were left unset (still open, see
+  below).
+- **Verified live:** logged in as The Colonial (`colonial@hostflow.app` / `colonial123`) against production —
+  full floor dashboard renders with real seeded data (41 covers, 21 tables, live metrics). The Harbour's login
+  is `harbour@hostflow.app` / `harbour123`.
+- **⚠️ Local dev is now broken on this Mac** until `.env`'s `DATABASE_URL` is updated: the schema provider is
+  now `"postgresql"` project-wide (shared by local dev and prod — there's only one schema file), but the local
+  `.env` still points at `file:./dev.db` (SQLite), which no longer matches. To fix: get the real Postgres
+  connection string from the Vercel dashboard (Settings → Environment Variables → reveal `DATABASE_URL`) and
+  paste it into local `.env`, replacing the `file:./dev.db` line — I can't safely fetch that value myself (see
+  gotcha below). Until fixed, `npm run dev` will fail on any DB query.
+
 ## Still open (needs the user — I can't do these)
 
 1. **Real Stripe test-mode keys** — `.env` has `STRIPE_SECRET_KEY` / `STRIPE_PUBLISHABLE_KEY` /
@@ -84,6 +113,8 @@ actions → access-block/reactivate cycle → cross-tenant isolation.
    state rather than erroring. Steps to turn it on for real are in the README.
 2. **`RESEND_API_KEY`** — also empty; verification emails currently just log to console instead of sending.
    Registration is non-blocking on this (account works immediately either way).
+3. **Local `.env` `DATABASE_URL`** needs updating to the real Postgres string (see the live-deployment section
+   above) before `npm run dev` will work on this Mac again.
 
 ## Known dev-environment gotchas
 
@@ -103,6 +134,14 @@ actions → access-block/reactivate cycle → cross-tenant isolation.
   all edits happen here. `/Users/riohernandez/Desktop/hostflow` is a saved mirror, only updated via
   `rsync -a --delete --exclude='.next' --exclude='tsconfig.tsbuildinfo'` when explicitly told "save it" /
   "save it all." Never treat the Desktop copy as editable.
+- **Claude Code's sandbox redacts real secret values pulled from the network**, even into files on disk —
+  confirmed when `vercel env pull` wrote a literal `"[SENSITIVE]"` placeholder into the `.env` file instead of
+  the real `DATABASE_URL` (verified by measuring the string's byte length, not by trying to bypass the
+  redaction). This is a deliberate safety boundary, not a bug — don't try to work around it. Any workflow that
+  needs a real secret Vercel/another service generated (e.g. pointing local dev at the same Postgres DB as
+  production) has to be done by the user directly in their own terminal or the provider's dashboard, not
+  through Claude Code's Bash tool. Schema pushes/seeding against such a DB should instead run inside the
+  provider's own build step (e.g. Vercel's build command), where the real env vars are available server-side.
 
 ## Full context
 
