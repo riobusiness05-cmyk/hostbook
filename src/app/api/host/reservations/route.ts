@@ -3,7 +3,6 @@ import { prisma } from "@/lib/prisma";
 import { hostContext, handleActionError } from "@/lib/hostflow/apiContext";
 import { createReservationSchema } from "@/types";
 import { createReservationForRestaurant } from "@/lib/reservationActions";
-import { emitFloorChange } from "@/lib/hostflow/events";
 
 // Host-created reservation (e.g. a phone booking for a future date), scoped to
 // the logged-in venue. Reuses the same availability + table-assignment engine
@@ -27,7 +26,6 @@ export async function POST(req: NextRequest) {
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: 409 });
     }
-    emitFloorChange(ctx.restaurantId, "reservation");
     return NextResponse.json({ reservation: result.data }, { status: 201 });
   } catch (err) {
     return handleActionError(err);

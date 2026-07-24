@@ -7,7 +7,7 @@ import { Button, Chip } from "./ui";
 import { cx, minutesLabel, money, timeOfDay } from "@/lib/host/format";
 import * as api from "@/lib/host/client";
 
-type Mode = "idle" | "seat" | "move" | "merge";
+type Mode = "idle" | "seat" | "move" | "merge" | "reserve";
 
 export function TablePanel({
   table,
@@ -168,15 +168,46 @@ export function TablePanel({
             onPick={(otherId) => run(() => api.tableAction(table.id, { action: "merge", otherTableId: otherId }))}
           />
         )}
+
+        {mode === "reserve" && (
+          <ReserveForm
+            table={table}
+            busy={busy}
+            onCancel={() => setMode("idle")}
+            onSubmit={(input) =>
+              run(() =>
+                api.tableAction(table.id, {
+                  action: "reserve",
+                  date: input.date,
+                  time: input.time,
+                  partySize: input.partySize,
+                  customerName: input.customerName,
+                  customerPhone: input.customerPhone || undefined,
+                  occasion: input.occasion || undefined,
+                })
+              )
+            }
+          />
+        )}
       </div>
 
       {/* Action bar */}
       {mode === "idle" && (
         <div className="border-t border-black/5 p-3 dark:border-white/10">
           <div className="grid grid-cols-2 gap-2">
-            {!s && table.status !== "BLOCKED" && (
+            {!s && !r && table.status !== "BLOCKED" && (
+              <>
+                <Button variant="primary" onClick={() => setMode("seat")} disabled={busy}>
+                  Seat guests
+                </Button>
+                <Button onClick={() => setMode("reserve")} disabled={busy}>
+                  Reserve table
+                </Button>
+              </>
+            )}
+            {!s && r && (
               <Button variant="primary" className="col-span-2" onClick={() => setMode("seat")} disabled={busy}>
-                {r ? `Seat ${r.customerName}` : "Seat guests"}
+                Seat {r.customerName}
               </Button>
             )}
             {r && !s && (
@@ -298,6 +329,83 @@ function SeatForm({
           onClick={() => onSubmit({ guestName: guestName.trim(), partySize, occasion })}
         >
           Seat
+        </Button>
+        <Button variant="ghost" onClick={onCancel} disabled={busy}>Cancel</Button>
+      </div>
+    </div>
+  );
+}
+
+function todayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function ReserveForm({
+  table,
+  busy,
+  onSubmit,
+  onCancel,
+}: {
+  table: TableDTO;
+  busy: boolean;
+  onSubmit: (v: {
+    date: string;
+    time: string;
+    partySize: number;
+    customerName: string;
+    customerPhone: string;
+    occasion: string;
+  }) => void;
+  onCancel: () => void;
+}) {
+  const [date, setDate] = useState(todayStr());
+  const [time, setTime] = useState("");
+  const [partySize, setPartySize] = useState(Math.min(2, table.seatsMax));
+  const [customerName, setCustomerName] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [occasion, setOccasion] = useState("");
+
+  return (
+    <div className="mb-4 rounded-xl border border-black/10 p-3 dark:border-white/10">
+      <p className="mb-3 text-sm font-semibold text-neutral-800 dark:text-neutral-100">Reserve Table {table.tableNumber}</p>
+      <div className="space-y-2.5">
+        <Field label="Guest name">
+          <input className={inputCls} value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Name on the booking" />
+        </Field>
+        <div className="grid grid-cols-2 gap-2.5">
+          <Field label="Date">
+            <input type="date" min={todayStr()} className={inputCls + " [color-scheme:light] dark:[color-scheme:dark]"} value={date} onChange={(e) => setDate(e.target.value)} />
+          </Field>
+          <Field label="Time">
+            <input type="time" className={inputCls + " [color-scheme:light] dark:[color-scheme:dark]"} value={time} onChange={(e) => setTime(e.target.value)} />
+          </Field>
+        </div>
+        <Field label={`Party size (${table.seatsMin}–${table.seatsMax})`}>
+          <input
+            type="number"
+            min={table.seatsMin}
+            max={table.seatsMax}
+            className={inputCls}
+            value={partySize}
+            onChange={(e) => setPartySize(Number(e.target.value))}
+          />
+        </Field>
+        <Field label="Phone (optional)">
+          <input className={inputCls} value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="For a confirmation call/text" />
+        </Field>
+        <Field label="Occasion (optional)">
+          <input className={inputCls} value={occasion} onChange={(e) => setOccasion(e.target.value)} placeholder="Birthday, anniversary…" />
+        </Field>
+      </div>
+      <div className="mt-3 flex gap-2">
+        <Button
+          variant="primary"
+          className="flex-1"
+          disabled={busy || !customerName.trim() || !time || partySize < table.seatsMin}
+          onClick={() => onSubmit({ date, time, partySize, customerName: customerName.trim(), customerPhone: customerPhone.trim(), occasion })}
+        >
+          Reserve
         </Button>
         <Button variant="ghost" onClick={onCancel} disabled={busy}>Cancel</Button>
       </div>

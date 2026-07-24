@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { findAvailableTable, combineDateAndTime } from "@/lib/availability";
+import { findAvailableTable, combineDateAndTime, timeToMinutes } from "@/lib/availability";
 import { notify } from "@/lib/hostflow/actions";
 import { emitFloorChange } from "@/lib/hostflow/events";
 import type { Restaurant } from "@prisma/client";
@@ -121,6 +121,92 @@ export async function createReservationForRestaurant(
         ok: false,
         error: "That time is no longer available. Please suggest a different time or ask what's open.",
       };
+    }
+    throw err;
+  }
+}
+
+/**
+ * Books a specific table a host picked directly from the floor plan (rather
+ * than letting the engine auto-assign one). Same Serializable-transaction
+ * race protection as `createReservationForRestaurant`, but the availability
+ * check is scoped to just this one table instead of a search across all of
+ * them, since the host has already chosen it.
+ */
+export async function bookSpecificTable(
+  restaurant: Restaurant,
+  params: {
+    tableId: string;
+    date: string;
+    time: string;
+    partySize: number;
+    customerName: string;
+    customerPhone?: string;
+    occasion?: string;
+  }
+): Promise<ActionResult<{ id: string; tableNumber: number; date: string; time: string }>> {
+  const manageToken = crypto.randomBytes(24).toString("base64url");
+
+  try {
+    const { reservation, table } = await withSerializableRetry(async (tx) => {
+      const table = await tx.diningTable.findUnique({ where: { id: params.tableId } });
+      if (!table || table.restaurantId !== restaurant.id) throw new NoAvailabilityError();
+      if (table.status === "BLOCKED" || !table.isActive) throw new NoAvailabilityError();
+      if (params.partySize > table.capacityMax || params.partySize < table.capacityMin) throw new NoAvailabilityError();
+
+      const slotStart = timeToMinutes(params.time);
+      const duration = restaurant.defaultReservationMinutes;
+      const slotEnd = slotStart + duration;
+      const dayStart = combineDateAndTime(params.date, "00:00");
+      const dayEnd = combineDateAndTime(params.date, "23:59");
+      const existing = await tx.reservation.findMany({
+        where: {
+          restaurantId: restaurant.id,
+          tableId: params.tableId,
+          status: { in: ["PENDING", "CONFIRMED"] },
+          reservationTime: { gte: dayStart, lte: dayEnd },
+        },
+      });
+      const overlaps = existing.some((r) => {
+        const rStart = r.reservationTime.getHours() * 60 + r.reservationTime.getMinutes();
+        const rEnd = rStart + r.durationMinutes;
+        return slotStart < rEnd && rStart < slotEnd;
+      });
+      if (overlaps) throw new NoAvailabilityError();
+
+      const reservation = await tx.reservation.create({
+        data: {
+          restaurantId: restaurant.id,
+          tableId: params.tableId,
+          customerName: params.customerName,
+          customerPhone: params.customerPhone || null,
+          partySize: params.partySize,
+          reservationTime: combineDateAndTime(params.date, params.time),
+          durationMinutes: duration,
+          status: "CONFIRMED",
+          source: "ADMIN",
+          occasion: params.occasion && params.occasion !== "None" ? params.occasion : null,
+          manageToken,
+        },
+      });
+      return { reservation, table };
+    });
+
+    await notify(restaurant.id, {
+      type: "RESERVATION_MADE",
+      title: `New booking: ${params.customerName} (${params.partySize})`,
+      body: `Table ${table.tableNumber} · ${params.date} ${params.time}`,
+      tableId: table.id,
+    });
+    emitFloorChange(restaurant.id, "reservation");
+
+    return {
+      ok: true,
+      data: { id: reservation.id, tableNumber: table.tableNumber, date: params.date, time: params.time },
+    };
+  } catch (err) {
+    if (err instanceof NoAvailabilityError) {
+      return { ok: false, error: "That table isn't free at that time — pick a different time or table." };
     }
     throw err;
   }

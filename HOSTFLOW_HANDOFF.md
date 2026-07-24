@@ -81,6 +81,18 @@ NOT a blanket rewrite. What actually shipped:
   realtime/notification system before, despite it being used everywhere else in Host Flow). Verified live:
   booked a table via a raw API call while a host dashboard tab sat open — stat tiles and the table's colour
   updated within ~2s with zero manual refresh, and a "New booking" notification appeared in Alerts.
+- **Thresholds corrected** (user follow-up): "arriving soon" was a hardcoded 60 minutes — too loose. Added a
+  proper `arrivingSoonThresholdMinutes` setting (default 5) alongside the existing `lateThresholdMinutes`
+  (default bumped 10 → 15), both editable in Settings → General. Verified precisely: 7 min out shows RESERVED
+  (blue), 4 min out shows ARRIVING_SOON (orange).
+- **"Reserve this table" from the floor plan** (user follow-up): clicking an empty table previously only
+  offered "Seat guests" (immediate walk-in) — no way to pin a *future* reservation to a specific table you
+  clicked; the existing reservation flow always auto-assigned a table. Added `bookSpecificTable` in
+  `reservationActions.ts` (same race-safe Serializable transaction as the rest of the booking engine, scoped to
+  one table instead of searching), a new `"reserve"` case on the existing table-action endpoint, and a "Reserve
+  table" button + form (name, date, time, party size, phone, occasion) in `TablePanel.tsx`. Verified: booking
+  succeeds and colours correctly; a second booking attempt on the same table/time is correctly rejected (409);
+  party sizes outside the table's capacity are rejected.
 - **What was intentionally NOT done**: a blanket "fix every bug" sweep (unbounded, not verifiable as
   "complete"), a full performance profiling pass (no profiler was run — don't trust unverified performance
   claims), and a "remove all dead code across the whole app" audit beyond what surfaced naturally while working

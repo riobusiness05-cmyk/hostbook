@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 import { hostContext, handleActionError } from "@/lib/hostflow/apiContext";
 import { tableActionSchema } from "@/lib/hostflow/schemas";
 import {
   blockTable,
+  HostFlowError,
   markClean,
   markDirty,
   mergeTables,
@@ -14,6 +16,7 @@ import {
   setWaitingForOutdoor,
   splitTable,
 } from "@/lib/hostflow/actions";
+import { bookSpecificTable } from "@/lib/reservationActions";
 
 // One endpoint dispatches every table action so the UI has a single, typed
 // surface. The body is a discriminated union validated by Zod.
@@ -73,6 +76,21 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       case "setActive":
         await setTableActive(ctx.restaurantId, tableId, a.isActive);
         break;
+      case "reserve": {
+        const restaurant = await prisma.restaurant.findUnique({ where: { id: ctx.restaurantId } });
+        if (!restaurant) throw new HostFlowError("Venue not found", 404);
+        const result = await bookSpecificTable(restaurant, {
+          tableId,
+          date: a.date,
+          time: a.time,
+          partySize: a.partySize,
+          customerName: a.customerName,
+          customerPhone: a.customerPhone,
+          occasion: a.occasion,
+        });
+        if (!result.ok) throw new HostFlowError(result.error, 409);
+        break;
+      }
     }
     return NextResponse.json({ ok: true });
   } catch (err) {
