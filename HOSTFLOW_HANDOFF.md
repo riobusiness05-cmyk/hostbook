@@ -123,6 +123,25 @@ NOT a blanket rewrite. What actually shipped:
   dynamic booking-policy prompt reaches the Anthropic API call correctly but couldn't be response-verified —
   the configured `ANTHROPIC_API_KEY`'s account is out of credit balance (unrelated to this work, a real
   billing issue on the user's Anthropic account, not something fixable from here).
+- **Visual merged-table grouping on the floor plan** (user follow-up: "make a visual when tables merge, and put
+  them displayed together, and when they unmerge they go back to there place"). `mergedIntoId` existed on the
+  `DiningTable` model and was already read/written correctly by `mergeTables`/`splitTable`, but it was never
+  exposed on the client-facing `TableDTO` (`src/lib/hostflow/floor.ts`, also fixed in the day-plan variant in
+  `dayplan.ts`) — the frontend had no way to know a table was merged. Fixed entirely in
+  `src/components/host/FloorPlan.tsx`, purely at render time — **stored `x`/`y` are never touched**, which is
+  what makes "unmerge puts it back" automatic (nothing was ever moved). A new `layoutMergedPositions` helper
+  computes, per render, where each merged-in child should be *drawn*: directly beside its primary table, in
+  table-number order. A dashed violet outline is drawn behind each merged cluster, and a merged child's glyph
+  shows "→ Table N" instead of its normal seat count. Real gap found and fixed along the way: `splitTable`
+  already existed server-side and was already wired to the `"split"` API action, but **no UI ever called it** —
+  there was no way to actually unmerge tables before this. Added a "Split tables (T…)" button to `TablePanel.tsx`
+  when a table has merged children, and — since a host might tap the merged-in child table directly rather than
+  the primary — the panel for a merged-in child now shows only a "Split from Table N" action (dispatching the
+  split against the primary's id) instead of the normal action set, which would otherwise have offered a
+  dangerously incorrect "Unblock" button that clears `BLOCKED` status without clearing `mergedIntoId`. Verified
+  live on both desktop and mobile viewports: merged tables 130+135 → 135 rendered adjacent to 130 with the link
+  outline and "→ Table 130" label; split via the new button → 135 returned to exactly its original stored
+  position with no outline, confirming the round-trip is lossless.
 
 ## What this repo is
 
