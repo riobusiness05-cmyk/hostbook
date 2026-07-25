@@ -155,17 +155,28 @@ export function TablePanel({
             options={state.tables.filter((t) => t.id !== table.id && t.status === "AVAILABLE" && t.seatsMax >= s.partySize)}
             busy={busy}
             onCancel={() => setMode("idle")}
-            onPick={(toId) => run(() => api.tableAction(table.id, { action: "move", toTableId: toId }))}
+            onPick={(ids) => run(() => api.tableAction(table.id, { action: "move", toTableId: ids[0] }))}
           />
         )}
 
         {mode === "merge" && (
           <TablePicker
-            label="Merge with"
-            options={state.tables.filter((t) => t.id !== table.id && t.isJoinable && t.status !== "OCCUPIED")}
+            label="Combine with (pick 1 or more)"
+            multi
+            baseSeats={table.seatsMax}
+            options={state.tables.filter((t) => t.id !== table.id && t.isJoinable && t.status !== "OCCUPIED" && !t.reservation)}
             busy={busy}
             onCancel={() => setMode("idle")}
-            onPick={(otherId) => run(() => api.tableAction(table.id, { action: "merge", otherTableId: otherId }))}
+            onPick={(ids) =>
+              run(async () => {
+                // Sequential, not parallel — each merge reads the primary
+                // table's current capacity fresh, so folding three tables in
+                // at once has to happen one at a time to add up correctly.
+                for (const otherId of ids) {
+                  await api.tableAction(table.id, { action: "merge", otherTableId: otherId });
+                }
+              })
+            }
           />
         )}
 
@@ -417,15 +428,34 @@ function TablePicker({
   label,
   options,
   busy,
+  multi = false,
+  baseSeats,
   onPick,
   onCancel,
 }: {
   label: string;
   options: TableDTO[];
   busy: boolean;
-  onPick: (id: string) => void;
+  multi?: boolean;
+  baseSeats?: number;
+  onPick: (ids: string[]) => void;
   onCancel: () => void;
 }) {
+  const [selected, setSelected] = useState<string[]>([]);
+
+  const toggle = (id: string) => {
+    if (!multi) {
+      onPick([id]);
+      return;
+    }
+    setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
+
+  const combinedSeats =
+    baseSeats != null
+      ? baseSeats + selected.reduce((sum, id) => sum + (options.find((t) => t.id === id)?.seatsMax ?? 0), 0)
+      : null;
+
   return (
     <div className="mb-4 rounded-xl border border-black/10 p-3 dark:border-white/10">
       <p className="mb-3 text-sm font-semibold text-neutral-800 dark:text-neutral-100">{label}</p>
@@ -433,20 +463,42 @@ function TablePicker({
         <p className="text-sm text-neutral-500">No eligible tables.</p>
       ) : (
         <div className="grid max-h-64 grid-cols-3 gap-2 overflow-y-auto">
-          {options.map((t) => (
-            <button
-              key={t.id}
-              disabled={busy}
-              onClick={() => onPick(t.id)}
-              className="rounded-lg border border-black/10 p-2 text-center text-sm hover:border-sky-500 hover:bg-sky-500/5 disabled:opacity-50 dark:border-white/10"
-            >
-              <div className="font-bold text-neutral-900 dark:text-white">T{t.tableNumber}</div>
-              <div className="text-[10px] text-neutral-500">{t.seatsMax} seats</div>
-            </button>
-          ))}
+          {options.map((t) => {
+            const isSelected = selected.includes(t.id);
+            return (
+              <button
+                key={t.id}
+                disabled={busy}
+                onClick={() => toggle(t.id)}
+                className={cx(
+                  "rounded-lg border p-2 text-center text-sm disabled:opacity-50",
+                  isSelected
+                    ? "border-sky-500 bg-sky-500/10 dark:border-sky-400 dark:bg-sky-400/10"
+                    : "border-black/10 hover:border-sky-500 hover:bg-sky-500/5 dark:border-white/10"
+                )}
+              >
+                <div className="font-bold text-neutral-900 dark:text-white">T{t.tableNumber}</div>
+                <div className="text-[10px] text-neutral-500">{t.seatsMax} seats</div>
+              </button>
+            );
+          })}
         </div>
       )}
-      <div className="mt-3">
+      {multi && combinedSeats != null && selected.length > 0 && (
+        <p className="mt-3 text-xs text-neutral-500 dark:text-neutral-400">
+          Combined: {combinedSeats} seats across {selected.length + 1} tables
+        </p>
+      )}
+      <div className="mt-3 flex gap-2">
+        {multi && (
+          <Button
+            variant="primary"
+            disabled={busy || selected.length === 0}
+            onClick={() => onPick(selected)}
+          >
+            {selected.length > 0 ? `Combine ${selected.length + 1} tables` : "Select tables"}
+          </Button>
+        )}
         <Button variant="ghost" onClick={onCancel} disabled={busy}>Cancel</Button>
       </div>
     </div>

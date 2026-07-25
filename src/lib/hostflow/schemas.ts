@@ -78,6 +78,7 @@ export const settingsSchema = z.object({
   maxOccupancyPct: z.number().int().min(10).max(100).optional(),
   peakStart: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),
   peakEnd: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),
+  nightShiftStartTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),
   autoOptimise: z.boolean().optional(),
   aiAssistantEnabled: z.boolean().optional(),
   depositPerPersonCents: z.number().int().min(0).max(100000).nullable().optional(),

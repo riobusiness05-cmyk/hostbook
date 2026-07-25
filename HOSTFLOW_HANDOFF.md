@@ -101,6 +101,16 @@ NOT a blanket rewrite. What actually shipped:
   changes used the same "temporary script in `build`, deploy, verify, delete script, deploy again" pattern as
   every other production data fix in this doc — restaurant always looked up by slug, never hardcoded IDs
   (local SQLite and production Postgres have different auto-generated row IDs for the same logical table).
+- **Day/night shift split for Bookings** (user follow-up: "from 5 o'clock, show me that night's bookings, name
+  and time"): new configurable `nightShiftStartTime` setting (default 17:00, Settings → General). The Bookings
+  tab now has a Day/Night toggle above the list, filtering by whether each booking's time is before or at/after
+  the shift boundary — defaults to whichever shift is "on" right now, so it just shows tonight's list without
+  an extra click once it's evening. Applies across every date shown, not just today.
+- **Merge 2+ tables in one action** (user follow-up: "put 2 or more tables together for a bigger group"). The
+  backend (`mergeTables`/`splitTable`) already handled any number of merged tables correctly — the gap was the
+  UI only letting you pick one table at a time. `TablePicker` now supports multi-select with a live "Combined:
+  N seats across M tables" preview; confirming sequentially merges each pick into the primary. Verified:
+  merged 2 tables into a third (2+2+4 → 8 seats, confirmed via API), then split back apart cleanly.
 - **What was intentionally NOT done**: a blanket "fix every bug" sweep (unbounded, not verifiable as
   "complete"), a full performance profiling pass (no profiler was run — don't trust unverified performance
   claims), and a "remove all dead code across the whole app" audit beyond what surfaced naturally while working

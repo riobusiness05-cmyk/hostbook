@@ -173,6 +173,7 @@ export type SettingsDTO = {
   maxOccupancyPct: number;
   peakStart: string;
   peakEnd: string;
+  nightShiftStartTime: string;
   autoOptimise: boolean;
   aiAssistantEnabled: boolean;
   depositPerPersonCents: number | null;
@@ -199,6 +200,7 @@ export async function getSettings(restaurantId: string): Promise<SettingsDTO> {
     maxOccupancyPct: s.maxOccupancyPct,
     peakStart: s.peakStart,
     peakEnd: s.peakEnd,
+    nightShiftStartTime: s.nightShiftStartTime,
     autoOptimise: s.autoOptimise,
     aiAssistantEnabled: s.aiAssistantEnabled,
     depositPerPersonCents: s.depositPerPersonCents,

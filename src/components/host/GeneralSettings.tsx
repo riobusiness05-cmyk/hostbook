@@ -42,6 +42,7 @@ export function GeneralSettings({ initialSettings }: { initialSettings: Settings
         maxBookingsPer15Min: form.maxBookingsPer15Min,
         bookingWindowDays: form.bookingWindowDays,
         aiAssistantEnabled: form.aiAssistantEnabled,
+        nightShiftStartTime: form.nightShiftStartTime,
         depositPerPersonCents: form.depositPerPersonCents,
         serviceChargePct: form.serviceChargePct,
         cancellationPolicy: form.cancellationPolicy,
@@ -84,6 +85,9 @@ export function GeneralSettings({ initialSettings }: { initialSettings: Settings
           </Field>
           <Field label="Booking window (days ahead)" hint="How far in advance guests can book online.">
             <input type="number" min={1} max={365} className={inputCls} value={form.bookingWindowDays} onChange={(e) => set("bookingWindowDays", Number(e.target.value))} />
+          </Field>
+          <Field label="Night shift starts at" hint="Bookings tab splits into Day/Night shifts at this time.">
+            <input type="time" className={inputCls + " [color-scheme:light] dark:[color-scheme:dark]"} value={form.nightShiftStartTime} onChange={(e) => set("nightShiftStartTime", e.target.value)} />
           </Field>
         </div>
         <label className="mt-4 flex items-center gap-2 text-sm text-neutral-700 dark:text-neutral-200">

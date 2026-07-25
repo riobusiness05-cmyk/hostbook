@@ -331,6 +331,7 @@ model RestaurantSettings {
   maxOccupancyPct       Int        @default(90)
   peakStart             String     @default("19:00")
   peakEnd               String     @default("21:30")
+  nightShiftStartTime   String     @default("17:00") // bookings at/after this time count as the night shift
   autoOptimise          Boolean    @default(true)
   aiAssistantEnabled    Boolean    @default(true)
 

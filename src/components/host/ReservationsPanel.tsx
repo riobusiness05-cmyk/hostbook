@@ -12,6 +12,16 @@ function dateKey(iso: string): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+function timeToMinutes(time: string): number {
+  const [h, m] = time.split(":").map(Number);
+  return h * 60 + m;
+}
+
+function minutesOfDay(iso: string): number {
+  const d = new Date(iso);
+  return d.getHours() * 60 + d.getMinutes();
+}
+
 function dateLabel(iso: string): string {
   const d = new Date(iso);
   const today = new Date();
@@ -39,6 +49,13 @@ export function ReservationsPanel({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const shiftStart = timeToMinutes(state.settings.nightShiftStartTime);
+  // Defaults to whichever shift is "on" right now — after the shift-start
+  // time, staff opening this tab almost always want tonight's bookings, not
+  // this afternoon's.
+  const [shift, setShift] = useState<"day" | "night">(() =>
+    new Date().getHours() * 60 + new Date().getMinutes() >= shiftStart ? "night" : "day"
+  );
 
   // Pause live refreshes while the New Reservation form is open so a tick
   // doesn't wipe a booking mid-entry.
@@ -53,9 +70,15 @@ export function ReservationsPanel({
   );
   const todayKey = dateKey(new Date().toISOString());
 
-  // Group by date, preserving chronological order.
+  // Group by date, preserving chronological order — filtered to whichever
+  // shift is selected (bookings before the shift-start time = day, at/after
+  // = night). Applies to every date shown, not just today, so "tomorrow
+  // night" is just as filterable as "tonight."
   const groups = useMemo(() => {
-    const sorted = [...state.reservations].sort(
+    const filtered = state.reservations.filter((r) =>
+      shift === "night" ? minutesOfDay(r.reservationTime) >= shiftStart : minutesOfDay(r.reservationTime) < shiftStart
+    );
+    const sorted = [...filtered].sort(
       (a, b) => new Date(a.reservationTime).getTime() - new Date(b.reservationTime).getTime()
     );
     const map = new Map<string, ReservationDTO[]>();
@@ -64,7 +87,10 @@ export function ReservationsPanel({
       (map.get(k) ?? map.set(k, []).get(k)!).push(r);
     }
     return Array.from(map.entries());
-  }, [state.reservations]);
+  }, [state.reservations, shift, shiftStart]);
+
+  const dayCount = state.reservations.filter((r) => minutesOfDay(r.reservationTime) < shiftStart).length;
+  const nightCount = state.reservations.filter((r) => minutesOfDay(r.reservationTime) >= shiftStart).length;
 
   const act = async (id: string, status: string) => {
     setBusyId(id);
@@ -91,6 +117,31 @@ export function ReservationsPanel({
         Reservations · {state.reservations.length}
       </SectionTitle>
 
+      <div className="mb-3 flex shrink-0 gap-1 rounded-xl border border-black/5 bg-white/60 p-1 dark:border-white/10 dark:bg-white/[0.03]">
+        <button
+          onClick={() => setShift("day")}
+          className={cx(
+            "flex-1 rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors",
+            shift === "day"
+              ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-900"
+              : "text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white"
+          )}
+        >
+          ☀️ Day · {dayCount}
+        </button>
+        <button
+          onClick={() => setShift("night")}
+          className={cx(
+            "flex-1 rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors",
+            shift === "night"
+              ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-900"
+              : "text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white"
+          )}
+        >
+          🌙 Night · {nightCount}
+        </button>
+      </div>
+
       {error && <p className="mb-2 text-xs text-red-500">{error}</p>}
 
       <div className="-mx-1 flex-1 space-y-3 overflow-y-auto px-1">
@@ -106,7 +157,7 @@ export function ReservationsPanel({
         )}
 
         {!adding && groups.length === 0 && (
-          <p className="py-6 text-center text-sm text-neutral-400">No reservations booked.</p>
+          <p className="py-6 text-center text-sm text-neutral-400">No {shift} bookings.</p>
         )}
 
         {groups.map(([key, rows]) => (
