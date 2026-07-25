@@ -142,6 +142,30 @@ NOT a blanket rewrite. What actually shipped:
   live on both desktop and mobile viewports: merged tables 130+135 → 135 rendered adjacent to 130 with the link
   outline and "→ Table 130" label; split via the new button → 135 returned to exactly its original stored
   position with no outline, confirming the round-trip is lossless.
+- **Real production data bug found + fixed while verifying the above**: `mergeTables` only ever checked whether
+  the *other* table was already merged into something, never the *primary* — so merging into an
+  already-merged table silently built a chain, and merging two already-linked tables into each other produced
+  a two-way cycle. This had already corrupted live Colonial data (tables 11/13 pointed at each other; a
+  21→20→28 chain; one more stray link). Fixed the code (`mergeTables` now also rejects when the primary itself
+  has a `mergedIntoId`) and repaired the 7 affected tables in production via the standard one-off-script-in-build
+  pattern — cleared the stale links and reset one table's drifted capacity back to its `capacityMin` (the only
+  field merges never touch, so it's reliable ground truth). Verified tables 20/21's real reservations were
+  completely untouched by the repair.
+- **Drag-to-move + rotate floor-plan editor** (user follow-up: "I should be able to turn the tables around and
+  adjust them to how I want"). Found along the way: `DiningTable.rotation` existed in the schema and DB but was
+  **never applied in rendering** — every table always drew at 0°, silently. Added an "Edit layout" toggle to
+  `FloorPlan.tsx`: in edit mode every table gets a dashed outline and a small drag handle above it; dragging the
+  table body moves it (SVG-space pointer tracking via `getScreenCTM()`), dragging the handle rotates it (angle
+  computed from the pointer's position relative to the table center, snapped to 15° increments). Both persist
+  live through a new `"reposition"` table action (`repositionTable` in `actions.ts`, `x`/`y`/`rotation` only —
+  never touches status/capacity/session). Toggling edit mode also pauses the SSE live-refresh (reusing the same
+  `setPaused` mechanism as the New Reservation form) so a background update can't yank a table out from under a
+  mid-drag host. Correctness detail: dragging always starts from the table's *real* stored position, never its
+  merge-adjusted render position — otherwise dragging a currently-merged-in child would permanently bake its
+  temporary "next to primary" spot into the database. Verified end-to-end on both desktop and mobile: dragged a
+  table to a new spot (confirmed via direct API check), rotated another exactly 90° (confirmed `rotation: 90` in
+  the DTO, table visibly switched from portrait to landscape), and confirmed normal table-select-to-open-panel
+  behavior still works once edit mode is turned back off.
 
 ## What this repo is
 
