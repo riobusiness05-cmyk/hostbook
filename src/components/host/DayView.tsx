@@ -65,6 +65,8 @@ export function DayView({ date, dateLabel }: { date: string; dateLabel: string }
             sections={plan.sections}
             selectedId={selectedTableId}
             onSelect={(id) => setSelectedTableId((cur) => (cur === id ? null : id))}
+            refresh={load}
+            setPaused={() => {}}
           />
         </div>
 

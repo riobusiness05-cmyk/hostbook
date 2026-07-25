@@ -10,6 +10,7 @@ import {
   mergeTables,
   moveParty,
   releaseTable,
+  repositionTable,
   seatParty,
   setTableActive,
   setTableStatus,
@@ -75,6 +76,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         break;
       case "setActive":
         await setTableActive(ctx.restaurantId, tableId, a.isActive);
+        break;
+      case "reposition":
+        await repositionTable(ctx.restaurantId, tableId, { x: a.x, y: a.y, rotation: a.rotation });
         break;
       case "reserve": {
         const restaurant = await prisma.restaurant.findUnique({ where: { id: ctx.restaurantId } });

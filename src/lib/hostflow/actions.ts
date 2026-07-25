@@ -147,6 +147,23 @@ export async function setTableActive(restaurantId: string, tableId: string, isAc
   emitFloorChange(restaurantId, "table");
 }
 
+// Lets a host lay out the floor plan to match their real venue — drag a
+// table to reposition it, rotate it to match how it actually sits against a
+// wall or in a corner. Purely geometry; never touches status or capacity.
+export async function repositionTable(
+  restaurantId: string,
+  tableId: string,
+  params: { x: number; y: number; rotation: number }
+) {
+  const table = await prisma.diningTable.findUnique({ where: { id: tableId } });
+  if (!table || table.restaurantId !== restaurantId) throw new HostFlowError("Table not found", 404);
+  await prisma.diningTable.update({
+    where: { id: tableId },
+    data: { x: params.x, y: params.y, rotation: params.rotation },
+  });
+  emitFloorChange(restaurantId, "table");
+}
+
 // ── Seating ────────────────────────────────────────────────────────────────
 
 export async function seatParty(

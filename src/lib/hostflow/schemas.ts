@@ -23,6 +23,12 @@ export const tableActionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("waitOutside"), waiting: z.boolean() }),
   z.object({ action: z.literal("setActive"), isActive: z.boolean() }),
   z.object({
+    action: z.literal("reposition"),
+    x: z.number().min(-2000).max(2000),
+    y: z.number().min(-2000).max(2000),
+    rotation: z.number().min(0).max(359),
+  }),
+  z.object({
     action: z.literal("reserve"),
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),

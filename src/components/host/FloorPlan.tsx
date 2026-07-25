@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FloorState, TableDTO } from "@/lib/hostflow/floor";
 import { STATUS_META, TABLE_STATUSES, statusColor } from "@/lib/hostflow/constants";
 import { cx, minutesLabel } from "@/lib/host/format";
+import * as api from "@/lib/host/client";
 
 // The live floor plan. Pure SVG so it scales crisply from phone to the host
 // stand's iPad to a wall display, and so table fills can animate between
@@ -52,17 +53,116 @@ function layoutMergedPositions(tables: TableDTO[]): Map<string, { x: number; y: 
   return positions;
 }
 
+type DragState =
+  | { mode: "move"; id: string; startX: number; startY: number; origX: number; origY: number; rotation: number }
+  | { mode: "rotate"; id: string; cx: number; cy: number; x: number; y: number };
+
 export function FloorPlan({
   tables: allTables,
   sections: allSections,
   selectedId,
   onSelect,
+  refresh,
+  setPaused,
 }: {
   tables: FloorState["tables"];
   sections: FloorState["sections"];
   selectedId: string | null;
   onSelect: (id: string) => void;
+  refresh: () => Promise<void>;
+  setPaused: (v: boolean) => void;
 }) {
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [editMode, setEditMode] = useState(false);
+  // Drag position/rotation lives in a ref (not state) so pointermove doesn't
+  // fight React's render cycle — `tick` just forces a re-render to pick up
+  // whatever the ref currently holds.
+  const overridesRef = useRef<Record<string, { x: number; y: number; rotation: number }>>({});
+  const [, setTick] = useState(0);
+  const dragRef = useRef<DragState | null>(null);
+
+  useEffect(() => {
+    setPaused(editMode);
+    return () => setPaused(false);
+  }, [editMode, setPaused]);
+
+  const toSvgPoint = useCallback((clientX: number, clientY: number) => {
+    const svg = svgRef.current;
+    const ctm = svg?.getScreenCTM();
+    if (!svg || !ctm) return { x: clientX, y: clientY };
+    const pt = svg.createSVGPoint();
+    pt.x = clientX;
+    pt.y = clientY;
+    const p = pt.matrixTransform(ctm.inverse());
+    return { x: p.x, y: p.y };
+  }, []);
+
+  const endDrag = useCallback(() => {
+    const d = dragRef.current;
+    dragRef.current = null;
+    window.removeEventListener("pointermove", handleMoveRef.current);
+    window.removeEventListener("pointerup", handleUpRef.current);
+    if (!d) return;
+    const ov = overridesRef.current[d.id];
+    if (!ov) return;
+    api
+      .tableAction(d.id, { action: "reposition", x: Math.round(ov.x), y: Math.round(ov.y), rotation: Math.round(ov.rotation) })
+      .then(() => refresh())
+      .catch(() => {
+        // Drop the optimistic override on failure so the table snaps back to
+        // its last known-good (server) position instead of staying stuck.
+        delete overridesRef.current[d.id];
+        setTick((t) => t + 1);
+      });
+  }, [refresh]);
+
+  const handleMove = useCallback(
+    (e: PointerEvent) => {
+      const d = dragRef.current;
+      if (!d) return;
+      const p = toSvgPoint(e.clientX, e.clientY);
+      if (d.mode === "move") {
+        overridesRef.current = {
+          ...overridesRef.current,
+          [d.id]: { x: d.origX + (p.x - d.startX), y: d.origY + (p.y - d.startY), rotation: d.rotation },
+        };
+      } else {
+        const angle = (Math.atan2(p.y - d.cy, p.x - d.cx) * 180) / Math.PI + 90;
+        const snapped = Math.round(angle / 15) * 15;
+        const rotation = ((snapped % 360) + 360) % 360;
+        overridesRef.current = { ...overridesRef.current, [d.id]: { x: d.x, y: d.y, rotation } };
+      }
+      setTick((t) => t + 1);
+    },
+    [toSvgPoint]
+  );
+
+  // Refs so the stable endDrag/handleMove above can be added/removed as the
+  // exact same function reference each time (addEventListener needs that to
+  // dedupe correctly across repeated drags).
+  const handleMoveRef = useRef(handleMove);
+  const handleUpRef = useRef(endDrag);
+  handleMoveRef.current = handleMove;
+  handleUpRef.current = endDrag;
+
+  const beginMove = (e: React.PointerEvent, table: TableDTO) => {
+    if (!editMode) return;
+    e.stopPropagation();
+    const p = toSvgPoint(e.clientX, e.clientY);
+    dragRef.current = { mode: "move", id: table.id, startX: p.x, startY: p.y, origX: table.x, origY: table.y, rotation: table.rotation };
+    overridesRef.current = { ...overridesRef.current, [table.id]: { x: table.x, y: table.y, rotation: table.rotation } };
+    window.addEventListener("pointermove", handleMoveRef.current);
+    window.addEventListener("pointerup", handleUpRef.current);
+  };
+
+  const beginRotate = (e: React.PointerEvent, table: TableDTO) => {
+    if (!editMode) return;
+    e.stopPropagation();
+    dragRef.current = { mode: "rotate", id: table.id, cx: table.x + table.width / 2, cy: table.y + table.height / 2, x: table.x, y: table.y };
+    overridesRef.current = { ...overridesRef.current, [table.id]: { x: table.x, y: table.y, rotation: table.rotation } };
+    window.addEventListener("pointermove", handleMoveRef.current);
+    window.addEventListener("pointerup", handleUpRef.current);
+  };
 
   // Section id → room, and the ordered list of rooms.
   const roomBySection = useMemo(
@@ -111,15 +211,20 @@ export function FloorPlan({
   // whole room (not just the zoomed-in section) so a merge stays intact
   // however it's viewed; only ever affects render position, never the DTO.
   const mergedPositions = useMemo(() => layoutMergedPositions(roomTables), [roomTables]);
-  const positionedTables = useMemo(
-    () =>
-      tables.map((t) => {
-        const pos = mergedPositions.get(t.id);
-        return pos ? { ...t, x: pos.x, y: pos.y } : t;
-      }),
-    [tables, mergedPositions]
-  );
+  // Intentionally recomputed every render (not memoized) — it needs to react
+  // to overridesRef changing mid-drag, which a ref mutation can't trigger a
+  // memo dependency on; the `tick` state above is what forces the re-render.
+  const positionedTables = tables.map((t) => {
+    const ov = overridesRef.current[t.id];
+    if (ov) return { ...t, x: ov.x, y: ov.y, rotation: ov.rotation };
+    const pos = mergedPositions.get(t.id);
+    return pos ? { ...t, x: pos.x, y: pos.y } : t;
+  });
   const tableNumberById = useMemo(() => new Map(allTables.map((t) => [t.id, t.tableNumber])), [allTables]);
+  // Drags must originate from the table's real stored position, never the
+  // merge-shifted render position, or dragging a merged-in child would
+  // permanently bake its temporary "next to primary" spot into the DB.
+  const rawById = useMemo(() => new Map(allTables.map((t) => [t.id, t])), [allTables]);
 
   // Dashed link outline drawn behind each merged cluster so the group reads
   // as one combined table at a glance.
@@ -214,10 +319,34 @@ export function FloorPlan({
             ))}
           </div>
         )}
+
+        <button
+          onClick={() => setEditMode((v) => !v)}
+          className={cx(
+            "shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors",
+            editMode
+              ? "bg-sky-500 text-white"
+              : "border border-black/10 text-neutral-500 hover:bg-black/5 hover:text-neutral-900 dark:border-white/15 dark:text-neutral-400 dark:hover:bg-white/10 dark:hover:text-white"
+          )}
+        >
+          {editMode ? "Done editing" : "✏️ Edit layout"}
+        </button>
       </div>
 
+      {editMode && (
+        <p className="shrink-0 border-b border-black/5 bg-sky-500/10 px-3 py-1.5 text-center text-xs font-medium text-sky-700 dark:border-white/10 dark:text-sky-300">
+          Drag a table to move it · drag its handle to turn it
+        </p>
+      )}
+
       <div className="relative min-h-0 flex-1">
-        <svg viewBox={viewBox} className="h-full w-full" role="img" aria-label={`Floor plan — ${activeSection?.name ?? currentRoom}`}>
+        <svg
+          ref={svgRef}
+          viewBox={viewBox}
+          className="h-full w-full"
+          role="img"
+          aria-label={`Floor plan — ${activeSection?.name ?? currentRoom}`}
+        >
           {/* Area zones — a soft tinted background + label per section. The
               seed lays each area out in its own band (terrace left · restaurant
               top · bar bottom · back terrace right) with clear gaps, so these
@@ -280,6 +409,9 @@ export function FloorPlan({
               selected={t.id === selectedId}
               onSelect={() => onSelect(t.id)}
               mergedIntoNumber={t.mergedIntoId ? tableNumberById.get(t.mergedIntoId) : undefined}
+              editMode={editMode}
+              onDragStart={(e) => beginMove(e, rawById.get(t.id) ?? t)}
+              onRotateStart={(e) => beginRotate(e, rawById.get(t.id) ?? t)}
             />
           ))}
         </svg>
@@ -295,11 +427,17 @@ function TableGlyph({
   selected,
   onSelect,
   mergedIntoNumber,
+  editMode,
+  onDragStart,
+  onRotateStart,
 }: {
   table: TableDTO;
   selected: boolean;
   onSelect: () => void;
   mergedIntoNumber?: number;
+  editMode?: boolean;
+  onDragStart?: (e: React.PointerEvent) => void;
+  onRotateStart?: (e: React.PointerEvent) => void;
 }) {
   const cxp = table.x + table.width / 2;
   const cyp = table.y + table.height / 2;
@@ -312,12 +450,45 @@ function TableGlyph({
 
   return (
     <g
-      onClick={onSelect}
-      className={cx("cursor-pointer", pulse && "hf-pulse")}
+      onClick={editMode ? undefined : onSelect}
+      onPointerDown={editMode ? onDragStart : undefined}
+      className={cx(editMode ? "cursor-grab touch-none" : "cursor-pointer", pulse && !editMode && "hf-pulse")}
       style={{ transformOrigin: `${cxp}px ${cyp}px` }}
+      transform={table.rotation ? `rotate(${table.rotation} ${cxp} ${cyp})` : undefined}
       role="button"
       aria-label={`Table ${table.tableNumber}, ${STATUS_META[table.status]?.label ?? table.status}`}
     >
+      {/* Edit-mode outline + rotate handle */}
+      {editMode && (
+        <>
+          <rect
+            x={table.x - 4}
+            y={table.y - 4}
+            width={table.width + 8}
+            height={table.height + 8}
+            rx={round ? table.width / 2 + 4 : 14}
+            fill="none"
+            stroke="#0ea5e9"
+            strokeWidth={2}
+            strokeDasharray="4 3"
+          />
+          <line x1={cxp} y1={table.y - 4} x2={cxp} y2={table.y - 22} stroke="#0ea5e9" strokeWidth={2} />
+          <circle
+            cx={cxp}
+            cy={table.y - 26}
+            r={7}
+            fill="#0ea5e9"
+            stroke="#ffffff"
+            strokeWidth={2}
+            className="cursor-grab touch-none"
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              onRotateStart?.(e);
+            }}
+          />
+        </>
+      )}
+
       {/* Server accent ring */}
       {table.server && (
         round ? (

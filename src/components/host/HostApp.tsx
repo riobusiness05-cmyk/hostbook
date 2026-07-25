@@ -162,7 +162,14 @@ export function HostApp({
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_384px]">
             {/* Floor plan */}
             <div className={cx(mobileView === "floor" ? "block" : "hidden", "lg:block h-[68vh] min-h-[420px] lg:h-[calc(100vh-230px)]")}>
-              <FloorPlan tables={state.tables} sections={state.sections} selectedId={selectedId} onSelect={selectTable} />
+              <FloorPlan
+                tables={state.tables}
+                sections={state.sections}
+                selectedId={selectedId}
+                onSelect={selectTable}
+                refresh={refresh}
+                setPaused={setPaused}
+              />
             </div>
 
             {/* Right rail */}
