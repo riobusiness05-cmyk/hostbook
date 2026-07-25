@@ -1,6 +1,6 @@
 # Host Flow — Project Handoff Notes
 
-Status snapshot as of 2026-07-24. Written so a fresh chat (or a fresh person) can pick up without re-deriving context.
+Status snapshot as of 2026-07-25. Written so a fresh chat (or a fresh person) can pick up without re-deriving context.
 
 ## SaaS production-readiness pass (2026-07-24)
 
@@ -93,6 +93,14 @@ NOT a blanket rewrite. What actually shipped:
   table" button + form (name, date, time, party size, phone, occasion) in `TablePanel.tsx`. Verified: booking
   succeeds and colours correctly; a second booking attempt on the same table/time is correctly rejected (409);
   party sizes outside the table's capacity are rejected.
+- **Real floor-layout & capacity corrections** (user follow-up, plain data fixes, no code changes): tables 135
+  and 140 were seeded into "Back Terrace" but physically belong in the Bar — moved both (section + position)
+  into open space in the Bar's existing layout, verified visually with no overlap before touching production.
+  Separately, corrected real capacities: tables 10/12/14/17/18/20/21/140 → fixed 2-top, table 13 → fixed 4-top;
+  every table in Restaurant → 4-top, every table in Back Terrace → 2-top, every table in Lounge → 2-top. Both
+  changes used the same "temporary script in `build`, deploy, verify, delete script, deploy again" pattern as
+  every other production data fix in this doc — restaurant always looked up by slug, never hardcoded IDs
+  (local SQLite and production Postgres have different auto-generated row IDs for the same logical table).
 - **What was intentionally NOT done**: a blanket "fix every bug" sweep (unbounded, not verifiable as
   "complete"), a full performance profiling pass (no profiler was run — don't trust unverified performance
   claims), and a "remove all dead code across the whole app" audit beyond what surfaced naturally while working
