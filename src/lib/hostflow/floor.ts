@@ -60,6 +60,8 @@ export type TableDTO = {
   server: { id: string; name: string; color: string } | null;
   session: SessionDTO | null;
   reservation: ReservationDTO | null;
+  /** Set when this table is merged into another (the "primary") table. */
+  mergedIntoId: string | null;
   /** Day-plan mode only: how many bookings this table has on the viewed date. */
   bookingCount?: number;
 };
@@ -342,6 +344,7 @@ export async function getFloorState(restaurantId: string): Promise<FloorState> {
       server: t.server ? { id: t.server.id, name: t.server.name, color: t.server.color } : null,
       session,
       reservation,
+      mergedIntoId: t.mergedIntoId,
     };
   });
 

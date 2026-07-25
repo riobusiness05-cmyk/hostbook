@@ -22,6 +22,36 @@ function sectionBounds(tables: TableDTO[]) {
   return { x: minX, y: minY, w: Math.max(...xs) - minX, h: maxY - minY };
 }
 
+// Merged tables never have their stored x/y changed — "unmerge puts them
+// back" is automatic because nothing was ever moved in the database. This
+// only computes where a merged-in table should be *drawn* this render: right
+// next to its primary, in table-number order. As soon as mergedIntoId clears
+// (split), this map stops covering that table and it renders at its real,
+// untouched position again.
+const MERGE_GAP = 14;
+
+function layoutMergedPositions(tables: TableDTO[]): Map<string, { x: number; y: number }> {
+  const byId = new Map(tables.map((t) => [t.id, t]));
+  const childrenByPrimary = new Map<string, TableDTO[]>();
+  for (const t of tables) {
+    if (t.mergedIntoId && byId.has(t.mergedIntoId)) {
+      const list = childrenByPrimary.get(t.mergedIntoId) ?? [];
+      list.push(t);
+      childrenByPrimary.set(t.mergedIntoId, list);
+    }
+  }
+  const positions = new Map<string, { x: number; y: number }>();
+  for (const [primaryId, children] of childrenByPrimary) {
+    const primary = byId.get(primaryId)!;
+    let cursorX = primary.x + primary.width + MERGE_GAP;
+    for (const child of [...children].sort((a, b) => a.tableNumber - b.tableNumber)) {
+      positions.set(child.id, { x: cursorX, y: primary.y + (primary.height - child.height) / 2 });
+      cursorX += child.width + MERGE_GAP;
+    }
+  }
+  return positions;
+}
+
 export function FloorPlan({
   tables: allTables,
   sections: allSections,
@@ -77,21 +107,61 @@ export function FloorPlan({
   const sections = activeSection ? [activeSection] : roomSections;
   const tables = activeSection ? roomTables.filter((t) => t.section?.id === activeSection.id) : roomTables;
 
+  // Draw merged-in tables right next to their primary. Computed from the
+  // whole room (not just the zoomed-in section) so a merge stays intact
+  // however it's viewed; only ever affects render position, never the DTO.
+  const mergedPositions = useMemo(() => layoutMergedPositions(roomTables), [roomTables]);
+  const positionedTables = useMemo(
+    () =>
+      tables.map((t) => {
+        const pos = mergedPositions.get(t.id);
+        return pos ? { ...t, x: pos.x, y: pos.y } : t;
+      }),
+    [tables, mergedPositions]
+  );
+  const tableNumberById = useMemo(() => new Map(allTables.map((t) => [t.id, t.tableNumber])), [allTables]);
+
+  // Dashed link outline drawn behind each merged cluster so the group reads
+  // as one combined table at a glance.
+  const mergedGroups = useMemo(() => {
+    const byPrimary = new Map<string, TableDTO[]>();
+    for (const t of positionedTables) {
+      if (t.mergedIntoId) {
+        const list = byPrimary.get(t.mergedIntoId) ?? [];
+        list.push(t);
+        byPrimary.set(t.mergedIntoId, list);
+      }
+    }
+    const groups: Array<{ primaryId: string; x: number; y: number; w: number; h: number }> = [];
+    for (const [primaryId, children] of byPrimary) {
+      const primary = positionedTables.find((t) => t.id === primaryId);
+      if (!primary) continue;
+      const all = [primary, ...children];
+      const minX = Math.min(...all.map((t) => t.x));
+      const minY = Math.min(...all.map((t) => t.y));
+      const maxX = Math.max(...all.map((t) => t.x + t.width));
+      const maxY = Math.max(...all.map((t) => t.y + t.height));
+      groups.push({ primaryId, x: minX - 10, y: minY - 10, w: maxX - minX + 20, h: maxY - minY + 20 });
+    }
+    return groups;
+  }, [positionedTables]);
+
   // Dynamic viewBox from whatever's visible — the whole room, or just the
   // zoomed-in section. Isolating a section gives it the full frame instead
   // of sharing space with the others, which is what makes it worth tapping
-  // into on a phone.
+  // into on a phone. Uses the merge-adjusted positions so a combined group
+  // never renders clipped.
   const viewBox = useMemo(() => {
-    if (tables.length === 0) return "0 0 1000 700";
+    if (positionedTables.length === 0) return "0 0 1000 700";
     const pad = 30;
-    const xs = tables.flatMap((t) => [t.x, t.x + t.width]);
-    const ys = tables.flatMap((t) => [t.y, t.y + t.height]);
+    const xs = positionedTables.flatMap((t) => [t.x, t.x + t.width]);
+    const ys = positionedTables.flatMap((t) => [t.y, t.y + t.height]);
     const minX = Math.min(...xs) - pad;
     const minY = Math.min(...ys) - pad;
     const w = Math.max(...xs) - minX + pad;
     const h = Math.max(...ys) - minY + pad;
     return `${minX} ${minY} ${w} ${h}`;
-  }, [tables]);
+  }, [positionedTables]);
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden rounded-2xl border border-black/5 bg-gradient-to-br from-neutral-50 to-neutral-100 dark:border-white/10 dark:from-neutral-900 dark:to-neutral-950">
@@ -184,9 +254,33 @@ export function FloorPlan({
             </g>
           ))}
 
+          {/* Merged-group link outlines — drawn behind the tables so a
+              combined group reads as one unit. */}
+          {mergedGroups.map((g) => (
+            <rect
+              key={g.primaryId}
+              x={g.x}
+              y={g.y}
+              width={g.w}
+              height={g.h}
+              rx={16}
+              fill="none"
+              stroke="#8b5cf6"
+              strokeWidth={2}
+              strokeDasharray="6 4"
+              opacity={0.6}
+            />
+          ))}
+
           {/* Tables */}
-          {tables.map((t) => (
-            <TableGlyph key={t.id} table={t} selected={t.id === selectedId} onSelect={() => onSelect(t.id)} />
+          {positionedTables.map((t) => (
+            <TableGlyph
+              key={t.id}
+              table={t}
+              selected={t.id === selectedId}
+              onSelect={() => onSelect(t.id)}
+              mergedIntoNumber={t.mergedIntoId ? tableNumberById.get(t.mergedIntoId) : undefined}
+            />
           ))}
         </svg>
 
@@ -196,7 +290,17 @@ export function FloorPlan({
   );
 }
 
-function TableGlyph({ table, selected, onSelect }: { table: TableDTO; selected: boolean; onSelect: () => void }) {
+function TableGlyph({
+  table,
+  selected,
+  onSelect,
+  mergedIntoNumber,
+}: {
+  table: TableDTO;
+  selected: boolean;
+  onSelect: () => void;
+  mergedIntoNumber?: number;
+}) {
   const cxp = table.x + table.width / 2;
   const cyp = table.y + table.height / 2;
   const fill = statusColor(table.status);
@@ -282,6 +386,10 @@ function TableGlyph({ table, selected, onSelect }: { table: TableDTO; selected: 
             {r.isLate ? `${minutesLabel(Math.abs(r.minutesUntil))} late` : `in ${minutesLabel(r.minutesUntil)}`}
           </text>
         </>
+      ) : mergedIntoNumber ? (
+        <text x={cxp} y={cyp + 14} textAnchor="middle" fontSize={10} fontWeight={700} fill={textFill} opacity={0.9}>
+          → Table {mergedIntoNumber}
+        </text>
       ) : table.bookingCount && table.bookingCount > 0 ? (
         <text x={cxp} y={cyp + 14} textAnchor="middle" fontSize={10} fontWeight={600} fill={textFill} opacity={0.9}>
           {table.bookingCount} booking{table.bookingCount === 1 ? "" : "s"}

@@ -5,7 +5,8 @@
       "name": "next-dev",
       "runtimeExecutable": "/Users/riohernandez/.local/share/hostflow-tools/node-v20.18.1-darwin-arm64/bin/node",
       "runtimeArgs": ["/Users/riohernandez/Downloads/hostflow-booking/node_modules/next/dist/bin/next", "dev"],
-      "port": 3000
+      "port": 3000,
+      "autoPort": true
     }
   ]
 }

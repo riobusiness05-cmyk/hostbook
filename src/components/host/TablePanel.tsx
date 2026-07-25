@@ -47,6 +47,8 @@ export function TablePanel({
   const meta = STATUS_META[table.status];
   const s = table.session;
   const r = table.reservation;
+  const mergedChildren = state.tables.filter((t) => t.mergedIntoId === table.id);
+  const mergedIntoTable = table.mergedIntoId ? state.tables.find((t) => t.id === table.mergedIntoId) ?? null : null;
 
   return (
     <aside className="flex h-full w-full flex-col bg-white dark:bg-neutral-950">
@@ -203,7 +205,21 @@ export function TablePanel({
       </div>
 
       {/* Action bar */}
-      {mode === "idle" && (
+      {mode === "idle" && mergedIntoTable && (
+        <div className="border-t border-black/5 p-3 dark:border-white/10">
+          <p className="mb-2 text-center text-xs text-neutral-500 dark:text-neutral-400">
+            Combined into Table {mergedIntoTable.tableNumber} — split there to seat it separately again.
+          </p>
+          <Button
+            className="w-full"
+            onClick={() => run(() => api.tableAction(mergedIntoTable.id, { action: "split" }))}
+            disabled={busy}
+          >
+            Split from Table {mergedIntoTable.tableNumber}
+          </Button>
+        </div>
+      )}
+      {mode === "idle" && !mergedIntoTable && (
         <div className="border-t border-black/5 p-3 dark:border-white/10">
           <div className="grid grid-cols-2 gap-2">
             {!s && !r && table.status !== "BLOCKED" && (
@@ -246,7 +262,17 @@ export function TablePanel({
                 </Button>
               </>
             )}
-            <Button onClick={() => setMode("merge")} disabled={busy}>Merge</Button>
+            {mergedChildren.length > 0 ? (
+              <Button
+                className="col-span-2"
+                onClick={() => run(() => api.tableAction(table.id, { action: "split" }))}
+                disabled={busy}
+              >
+                Split tables ({mergedChildren.map((t) => `T${t.tableNumber}`).join(", ")})
+              </Button>
+            ) : (
+              <Button onClick={() => setMode("merge")} disabled={busy}>Merge</Button>
+            )}
             {table.status === "DIRTY" ? (
               <Button onClick={() => run(() => api.tableAction(table.id, { action: "markClean" }))} disabled={busy}>
                 Start cleaning
