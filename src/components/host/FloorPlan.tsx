@@ -12,15 +12,26 @@ import * as api from "@/lib/host/client";
 // rooms (e.g. Main Room + Lounge); one room is shown at a time, and the
 // viewBox is derived from that room's tables so it always fills the frame.
 
-function sectionBounds(tables: TableDTO[]) {
+// Purely cosmetic per-section widening for the tinted zone band — doesn't
+// move any table, just extends how far the coloured background reads on
+// one side. Keyed by section name since there's no "zone size" field on the
+// Section model; this is the venue's own visual preference, not derived
+// data. User feedback: Main Terrace ("the green part of the front") should
+// read wider than its tables alone would draw it.
+const EXTRA_ZONE_PAD: Record<string, { left?: number; right?: number }> = {
+  "Main Terrace": { left: 70 },
+};
+
+function sectionBounds(tables: TableDTO[], extraPad?: { left?: number; right?: number }) {
   const padX = 22;
   const padTop = 34; // extra room up top for the area label
   const padBottom = 20;
   const xs = tables.flatMap((t) => [t.x - padX, t.x + t.width + padX]);
-  const minX = Math.min(...xs);
+  const minX = Math.min(...xs) - (extraPad?.left ?? 0);
+  const maxX = Math.max(...xs) + (extraPad?.right ?? 0);
   const minY = Math.min(...tables.map((t) => t.y)) - padTop;
   const maxY = Math.max(...tables.map((t) => t.y + t.height)) + padBottom;
-  return { x: minX, y: minY, w: Math.max(...xs) - minX, h: maxY - minY };
+  return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
 }
 
 // Merged tables never have their stored x/y changed — "unmerge puts them
@@ -248,13 +259,13 @@ export function FloorPlan({
       .map((sec) => {
         const secTables = roomTables.filter((t) => t.section?.id === sec.id);
         if (secTables.length === 0) return null;
-        return { ...sec, bounds: sectionBounds(secTables) };
+        return { ...sec, bounds: sectionBounds(secTables, EXTRA_ZONE_PAD[sec.name]) };
       })
       .filter(Boolean) as Array<(typeof allSections)[number] & { bounds: ReturnType<typeof sectionBounds> }>;
   }, [allSections, roomTables, currentRoom]);
 
   const activeSection = sectionFilter ? roomSections.find((s) => s.id === sectionFilter) ?? null : null;
-  const sections = activeSection ? [activeSection] : roomSections;
+  const sections = useMemo(() => (activeSection ? [activeSection] : roomSections), [activeSection, roomSections]);
   const tables = activeSection ? roomTables.filter((t) => t.section?.id === activeSection.id) : roomTables;
 
   // Draw merged-in tables right next to their primary. Computed from the
@@ -305,18 +316,25 @@ export function FloorPlan({
   // zoomed-in section. Isolating a section gives it the full frame instead
   // of sharing space with the others, which is what makes it worth tapping
   // into on a phone. Uses the merge-adjusted positions so a combined group
-  // never renders clipped.
+  // never renders clipped — also includes each zone's own bounds, since a
+  // cosmetically widened zone (EXTRA_ZONE_PAD) can extend past its tables.
   const viewBox = useMemo(() => {
     if (positionedTables.length === 0) return "0 0 1000 700";
     const pad = 30;
-    const xs = positionedTables.flatMap((t) => [t.x, t.x + t.width]);
-    const ys = positionedTables.flatMap((t) => [t.y, t.y + t.height]);
+    const xs = [
+      ...positionedTables.flatMap((t) => [t.x, t.x + t.width]),
+      ...sections.flatMap((sec) => [sec.bounds.x, sec.bounds.x + sec.bounds.w]),
+    ];
+    const ys = [
+      ...positionedTables.flatMap((t) => [t.y, t.y + t.height]),
+      ...sections.flatMap((sec) => [sec.bounds.y, sec.bounds.y + sec.bounds.h]),
+    ];
     const minX = Math.min(...xs) - pad;
     const minY = Math.min(...ys) - pad;
     const w = Math.max(...xs) - minX + pad;
     const h = Math.max(...ys) - minY + pad;
     return `${minX} ${minY} ${w} ${h}`;
-  }, [positionedTables]);
+  }, [positionedTables, sections]);
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden rounded-2xl border border-black/5 bg-gradient-to-br from-neutral-50 to-neutral-100 dark:border-white/10 dark:from-neutral-900 dark:to-neutral-950">
