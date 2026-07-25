@@ -272,6 +272,10 @@ export async function mergeTables(restaurantId: string, primaryId: string, other
     throw new HostFlowError("Table not found", 404);
   if (!other.isJoinable) throw new HostFlowError(`Table ${other.tableNumber} can't be joined`);
   if (other.mergedIntoId) throw new HostFlowError(`Table ${other.tableNumber} is already merged into another table`, 409);
+  // A table that's itself merged into something else can't act as a primary —
+  // otherwise you can end up with a chain (or, if the two merges point at
+  // each other, an outright cycle) instead of one flat combined group.
+  if (primary.mergedIntoId) throw new HostFlowError(`Table ${primary.tableNumber} is itself merged into another table — split it first`, 409);
 
   await prisma.$transaction(async (tx) => {
     const claimed = await tx.diningTable.updateMany({
@@ -282,7 +286,7 @@ export async function mergeTables(restaurantId: string, primaryId: string, other
       throw new HostFlowError(`Table ${other.tableNumber} was just merged elsewhere — refresh and try again.`, 409);
     }
     const primaryClaimed = await tx.diningTable.updateMany({
-      where: { id: primaryId, capacityMax: primary.capacityMax },
+      where: { id: primaryId, capacityMax: primary.capacityMax, mergedIntoId: null },
       data: { capacityMax: primary.capacityMax + other.capacityMax },
     });
     if (primaryClaimed.count === 0) {
