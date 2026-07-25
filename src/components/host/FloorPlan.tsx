@@ -97,6 +97,21 @@ export function FloorPlan({
     return { x: p.x, y: p.y };
   }, []);
 
+  const saveReposition = useCallback(
+    (id: string, ov: { x: number; y: number; rotation: number }) => {
+      api
+        .tableAction(id, { action: "reposition", x: Math.round(ov.x), y: Math.round(ov.y), rotation: Math.round(ov.rotation) })
+        .then(() => refresh())
+        .catch(() => {
+          // Drop the optimistic override on failure so the table snaps back
+          // to its last known-good (server) position instead of staying stuck.
+          delete overridesRef.current[id];
+          setTick((t) => t + 1);
+        });
+    },
+    [refresh]
+  );
+
   const endDrag = useCallback(() => {
     const d = dragRef.current;
     dragRef.current = null;
@@ -105,16 +120,51 @@ export function FloorPlan({
     if (!d) return;
     const ov = overridesRef.current[d.id];
     if (!ov) return;
-    api
-      .tableAction(d.id, { action: "reposition", x: Math.round(ov.x), y: Math.round(ov.y), rotation: Math.round(ov.rotation) })
-      .then(() => refresh())
-      .catch(() => {
-        // Drop the optimistic override on failure so the table snaps back to
-        // its last known-good (server) position instead of staying stuck.
-        delete overridesRef.current[d.id];
-        setTick((t) => t + 1);
-      });
-  }, [refresh]);
+
+    // Dropping one table on top of another joins them, same as picking
+    // "Merge" from the panel — the stationary table you dropped onto stays
+    // the primary and keeps its spot; the dragged table becomes its merged
+    // child (and immediately renders next to it via the existing merge
+    // layout, not wherever it happened to be dropped).
+    if (d.mode === "move") {
+      const dragged = allTables.find((t) => t.id === d.id);
+      const draggedHasChildren = allTables.some((t) => t.mergedIntoId === d.id);
+      // Same exclusions as the "Merge" picker in TablePanel: a table with its
+      // own upcoming reservation can't be folded into another without
+      // stranding that booking.
+      if (dragged && !dragged.mergedIntoId && !draggedHasChildren && !dragged.reservation) {
+        const cx = ov.x + dragged.width / 2;
+        const cy = ov.y + dragged.height / 2;
+        const target = allTables.find(
+          (t) =>
+            t.id !== d.id &&
+            t.isJoinable &&
+            !t.mergedIntoId &&
+            t.status !== "OCCUPIED" &&
+            !t.reservation &&
+            cx >= t.x &&
+            cx <= t.x + t.width &&
+            cy >= t.y &&
+            cy <= t.y + t.height
+        );
+        if (target) {
+          delete overridesRef.current[d.id];
+          setTick((t) => t + 1);
+          api
+            .tableAction(target.id, { action: "merge", otherTableId: d.id })
+            .then(() => refresh())
+            .catch(() => {
+              // Merge rejected server-side (e.g. target changed mid-drag) —
+              // fall back to a plain move so the drag isn't silently lost.
+              saveReposition(d.id, ov);
+            });
+          return;
+        }
+      }
+    }
+
+    saveReposition(d.id, ov);
+  }, [allTables, refresh, saveReposition]);
 
   const handleMove = useCallback(
     (e: PointerEvent) => {
