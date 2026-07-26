@@ -195,6 +195,18 @@ NOT a blanket rewrite. What actually shipped:
   section-by-section in browser after deploy that the shape reads as a faithful match to the photo (the
   Main Terrace zigzag column, the Restaurant block, the Bar's small round tables, the Back Terrace's line of
   round tables down the right edge) with no tables actually stacked on each other.
+- **Floor-plan operational reset** (user follow-up: "reset the floor plan so its clean"). After all the layout
+  work above, production had accumulated 30 tables stuck `BLOCKED`, 2 leftover test merges (T11→T10, T17→T170),
+  and 38 stray notifications — confirmed first via the API that zero live sessions, reservations, or walk-ins
+  existed, so nothing real would be lost. Wrote a one-off script that splits any live merges using the exact
+  same math `splitTable` uses (`primary.capacityMax - sum(children's capacityMax)`, floored at `capacityMin`)
+  — **not** a blind reset to `capacityMin`, which was a real bug caught before deploying: plenty of tables (the
+  Bar's 1-2 seat ones, table 170's 4-6 range) have a legitimately wider max than min with no merge involved, and
+  a naive reset would have silently shrunk their real capacity. Verified the fix locally first by simulating a
+  merge, running the script, and confirming the merged table's capacity restored to its exact pre-merge value
+  while an untouched neighbor's intentional 1-2 range was left alone. Sets every table back to `AVAILABLE` and
+  clears all notifications; never touches geometry, shape, section, or capacity baselines otherwise. Verified in
+  production: all 74 tables `AVAILABLE`, 0 merges, 0 notifications, survives a subsequent clean redeploy.
 
 ## What this repo is
 
