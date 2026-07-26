@@ -166,6 +166,35 @@ NOT a blanket rewrite. What actually shipped:
   table to a new spot (confirmed via direct API check), rotated another exactly 90° (confirmed `rotation: 90` in
   the DTO, table visibly switched from portrait to landscape), and confirmed normal table-select-to-open-panel
   behavior still works once edit mode is turned back off.
+- **Drop-to-merge in edit mode** (user follow-up: "if I drag a table on top of another they should join").
+  `endDrag` in `FloorPlan.tsx` now checks, on drop, whether the dragged table's center lands inside another
+  table's real (non-merge-shifted) bounding box; if so it calls the same merge action as the panel's "Merge"
+  button instead of saving a plain reposition — the table you drop onto stays primary and keeps its spot, the
+  dragged table becomes its child and snaps to the existing merge-adjacent layout. Matches the panel's merge
+  picker exclusions (`isJoinable`, not `OCCUPIED`, no existing reservation, not already part of a merge on
+  either side) so a drop can't silently strand a reservation or nest merge groups. Falls back to a plain move
+  if the server rejects the merge (e.g. state changed mid-drag).
+- **Zone-width tweak** (user follow-up: "make the green part of the front wider" — "front terrace" = "Main
+  Terrace", `#10b981`/green). Added `EXTRA_ZONE_PAD` in `FloorPlan.tsx` — a per-section-name cosmetic padding
+  override for the tinted zone rectangle, independent of where any table actually sits. Also extended the
+  `viewBox` calculation to include zone bounds (previously only table extents), so a widened band can't get
+  clipped at the SVG edge.
+- **Full floor-plan layout replicated from the venue's real POS screen** (user provided a photo of The
+  Colonial's actual floor-plan display and said "make the same"). Repositioned all 53 Main Room tables
+  (Restaurant/Main Terrace/Back Terrace/Bar — Lounge's tables 30-50/350-370 aren't in the photo, a separate
+  room, untouched) to match the photo's real layout: table numbers, relative clustering, and left/right/top/
+  bottom grouping all read clearly enough off the photo to rebuild by hand, table-by-table. Only x/y changed —
+  shape, size, and section assignment were already correct from earlier corrections this session. Positions
+  were derived by estimating each table's relative position in the photo, converting to canvas coordinates,
+  then running a small standalone overlap-checker script (temporary, in the scratchpad, not committed) across
+  every pair of tables using their real widths/heights to catch and fix collisions before touching production —
+  found and fixed a few genuine bad ones (table 19 almost entirely on top of table 170; tables 22-25 and the
+  Restaurant/Back-Terrace boundary crowding into table 5) by nudging specific tables, re-running the checker
+  until only small (≤20px) "tables touching" overlaps remained, matching how tightly the real photo actually
+  packs some tables (e.g. 125/130, 135/140). Deployed via the standard one-off-script-in-build pattern; verified
+  section-by-section in browser after deploy that the shape reads as a faithful match to the photo (the
+  Main Terrace zigzag column, the Restaurant block, the Bar's small round tables, the Back Terrace's line of
+  round tables down the right edge) with no tables actually stacked on each other.
 
 ## What this repo is
 
