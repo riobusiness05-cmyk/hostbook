@@ -283,7 +283,9 @@ export function TablePanel({
                 Split tables ({mergedChildren.map((t) => `T${t.tableNumber}`).join(", ")})
               </Button>
             ) : (
-              <Button onClick={() => setMode("merge")} disabled={busy}>Merge</Button>
+              state.settings.tableMergingEnabled && (
+                <Button onClick={() => setMode("merge")} disabled={busy}>Merge</Button>
+              )
             )}
             {table.status === "DIRTY" ? (
               <Button onClick={() => run(() => api.tableAction(table.id, { action: "markClean" }))} disabled={busy}>

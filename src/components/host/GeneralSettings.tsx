@@ -1,9 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, Button, SectionTitle } from "./ui";
 import * as api from "@/lib/host/client";
 import type { SettingsDTO } from "@/lib/hostflow/floor";
+
+const TIMEZONES = [
+  "Atlantic/Canary",
+  "Europe/Madrid",
+  "Europe/London",
+  "Europe/Paris",
+  "Europe/Lisbon",
+  "America/New_York",
+  "America/Chicago",
+  "America/Denver",
+  "America/Los_Angeles",
+  "UTC",
+];
 
 const inputCls =
   "mt-1 w-full rounded-lg border border-black/10 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-sky-500 dark:border-white/15 dark:bg-white/5 dark:text-white";
@@ -20,9 +33,14 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
 
 export function GeneralSettings({ initialSettings }: { initialSettings: SettingsDTO }) {
   const [form, setForm] = useState(initialSettings);
+  const [timezone, setTimezone] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.fetchRestaurant().then((r) => setTimezone(r.timezone)).catch(() => {});
+  }, []);
 
   const set = <K extends keyof SettingsDTO>(key: K, value: SettingsDTO[K]) => {
     setForm((f) => ({ ...f, [key]: value }));
@@ -33,20 +51,26 @@ export function GeneralSettings({ initialSettings }: { initialSettings: Settings
     setSaving(true);
     setError(null);
     try {
-      const updated = await api.updateSettings({
-        avgDiningMinutes: form.avgDiningMinutes,
-        cleaningMinutes: form.cleaningMinutes,
-        arrivingSoonThresholdMinutes: form.arrivingSoonThresholdMinutes,
-        lateThresholdMinutes: form.lateThresholdMinutes,
-        maxOccupancyPct: form.maxOccupancyPct,
-        maxBookingsPer15Min: form.maxBookingsPer15Min,
-        bookingWindowDays: form.bookingWindowDays,
-        aiAssistantEnabled: form.aiAssistantEnabled,
-        nightShiftStartTime: form.nightShiftStartTime,
-        depositPerPersonCents: form.depositPerPersonCents,
-        serviceChargePct: form.serviceChargePct,
-        cancellationPolicy: form.cancellationPolicy,
-      });
+      const [updated] = await Promise.all([
+        api.updateSettings({
+          avgDiningMinutes: form.avgDiningMinutes,
+          cleaningMinutes: form.cleaningMinutes,
+          arrivingSoonThresholdMinutes: form.arrivingSoonThresholdMinutes,
+          lateThresholdMinutes: form.lateThresholdMinutes,
+          maxOccupancyPct: form.maxOccupancyPct,
+          maxBookingsPer15Min: form.maxBookingsPer15Min,
+          bookingIntervalMinutes: form.bookingIntervalMinutes,
+          bookingWindowDays: form.bookingWindowDays,
+          aiAssistantEnabled: form.aiAssistantEnabled,
+          nightShiftStartTime: form.nightShiftStartTime,
+          walkinsEnabled: form.walkinsEnabled,
+          tableMergingEnabled: form.tableMergingEnabled,
+          depositPerPersonCents: form.depositPerPersonCents,
+          serviceChargePct: form.serviceChargePct,
+          cancellationPolicy: form.cancellationPolicy,
+        }),
+        timezone ? api.updateRestaurant({ timezone }) : Promise.resolve(),
+      ]);
       setForm(updated);
       setSaved(true);
     } catch (e) {
@@ -67,6 +91,9 @@ export function GeneralSettings({ initialSettings }: { initialSettings: Settings
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Booking interval — max reservations per 15 min" hint="Caps how many parties can be booked into the same slot, regardless of table availability.">
             <input type="number" min={1} max={50} className={inputCls} value={form.maxBookingsPer15Min} onChange={(e) => set("maxBookingsPer15Min", Number(e.target.value))} />
+          </Field>
+          <Field label="Minutes between booking slots" hint="Spacing between offered reservation times, e.g. every 15 or 30 minutes.">
+            <input type="number" min={5} max={120} className={inputCls} value={form.bookingIntervalMinutes} onChange={(e) => set("bookingIntervalMinutes", Number(e.target.value))} />
           </Field>
           <Field label="Maximum occupancy %" hint="Caps how full the floor can get before it's flagged as at-capacity.">
             <input type="number" min={10} max={100} className={inputCls} value={form.maxOccupancyPct} onChange={(e) => set("maxOccupancyPct", Number(e.target.value))} />
@@ -89,11 +116,31 @@ export function GeneralSettings({ initialSettings }: { initialSettings: Settings
           <Field label="Night shift starts at" hint="Bookings tab splits into Day/Night shifts at this time.">
             <input type="time" className={inputCls + " [color-scheme:light] dark:[color-scheme:dark]"} value={form.nightShiftStartTime} onChange={(e) => set("nightShiftStartTime", e.target.value)} />
           </Field>
+          <Field label="Timezone" hint="Used for all booking times, shift splits, and reports.">
+            <select className={inputCls} value={timezone ?? ""} onChange={(e) => setTimezone(e.target.value)}>
+              {timezone && !TIMEZONES.includes(timezone) && <option value={timezone}>{timezone}</option>}
+              {TIMEZONES.map((tz) => (
+                <option key={tz} value={tz}>
+                  {tz}
+                </option>
+              ))}
+            </select>
+          </Field>
         </div>
-        <label className="mt-4 flex items-center gap-2 text-sm text-neutral-700 dark:text-neutral-200">
-          <input type="checkbox" checked={form.aiAssistantEnabled} onChange={(e) => set("aiAssistantEnabled", e.target.checked)} />
-          AI host assistant enabled
-        </label>
+        <div className="mt-4 flex flex-wrap gap-4">
+          <label className="flex items-center gap-2 text-sm text-neutral-700 dark:text-neutral-200">
+            <input type="checkbox" checked={form.aiAssistantEnabled} onChange={(e) => set("aiAssistantEnabled", e.target.checked)} />
+            AI host assistant enabled
+          </label>
+          <label className="flex items-center gap-2 text-sm text-neutral-700 dark:text-neutral-200">
+            <input type="checkbox" checked={form.walkinsEnabled} onChange={(e) => set("walkinsEnabled", e.target.checked)} />
+            Walk-ins enabled
+          </label>
+          <label className="flex items-center gap-2 text-sm text-neutral-700 dark:text-neutral-200">
+            <input type="checkbox" checked={form.tableMergingEnabled} onChange={(e) => set("tableMergingEnabled", e.target.checked)} />
+            Table merging enabled
+          </label>
+        </div>
       </Card>
 
       <Card className="p-5">

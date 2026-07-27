@@ -281,6 +281,7 @@ async function main() {
         "The warmest of welcomes to The Colonial — our happy place! I'm Gary the Monkey. I'd be happy to help with our menus, opening hours, entertainment or anything else about Colonial. To book a table, just use the booking form further down this page. What can I help with?",
       maxPartySize: 12,
       defaultReservationMinutes: 90,
+      onboardingCompletedAt: new Date(),
     },
     update: {
       name: "The Colonial",
@@ -406,6 +407,7 @@ async function main() {
       brandColor: "#0ea5e9",
       maxPartySize: 12,
       defaultReservationMinutes: 90,
+      onboardingCompletedAt: new Date(),
     },
     update: { name: "The Harbour", tagline: "Dockside dining." },
   });

@@ -32,6 +32,7 @@ model Restaurant {
   welcomeMessage  String   @default("Hey! I can help you book a table, answer questions about the menu, hours, or anything else. What can I do for you?")
   defaultReservationMinutes Int @default(90)
   maxPartySize    Int      @default(12)
+  onboardingCompletedAt DateTime? // null = still on the post-signup setup wizard
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -320,6 +321,9 @@ model RestaurantSettings {
   restaurant            Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
 
   maxBookingsPer15Min   Int        @default(6)
+  bookingIntervalMinutes Int       @default(30) // granularity of offered slot times, e.g. every 15/30 min
+  walkinsEnabled        Boolean    @default(true) // hides "+ Walk-in" / the AI's walk-in tool when off
+  tableMergingEnabled   Boolean    @default(true) // hides Merge / drop-to-merge when off
   walkinAllocationPct   Int        @default(25) // % of capacity reserved for walk-ins
   avgDiningMinutes      Int        @default(90)
   cleaningMinutes       Int        @default(12)

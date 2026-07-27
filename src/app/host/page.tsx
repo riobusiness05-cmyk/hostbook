@@ -25,6 +25,8 @@ export default async function HostPage() {
   const billing = await getBillingState(restaurant.id);
   if (!billing.hasAccess) redirect("/host/settings?blocked=1");
 
+  if (!restaurant.onboardingCompletedAt) redirect("/hostflow/onboarding");
+
   const initialState = await getFloorState(restaurant.id);
   return <HostApp initialState={initialState} restaurantName={restaurant.name} billing={billing} />;
 }

@@ -281,6 +281,8 @@ export async function moveParty(restaurantId: string, fromTableId: string, toTab
 }
 
 export async function mergeTables(restaurantId: string, primaryId: string, otherId: string) {
+  const settings = await getSettings(restaurantId);
+  if (!settings.tableMergingEnabled) throw new HostFlowError("Table merging is turned off for this restaurant", 403);
   const [primary, other] = await Promise.all([
     prisma.diningTable.findUnique({ where: { id: primaryId } }),
     prisma.diningTable.findUnique({ where: { id: otherId } }),
@@ -353,6 +355,8 @@ export async function addWalkin(
     accessibilityNeeds?: string;
   }
 ) {
+  const settings = await getSettings(restaurantId);
+  if (!settings.walkinsEnabled) throw new HostFlowError("Walk-ins are turned off for this restaurant", 403);
   const walkin = await prisma.walkin.create({
     data: {
       restaurantId,

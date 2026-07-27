@@ -23,11 +23,11 @@ import type { Restaurant } from "@prisma/client";
 // default for tool-calling chat. Check https://docs.claude.com/en/docs/about-claude/models
 // for newer models and bump this (or override via ANTHROPIC_MODEL env var)
 // as Anthropic releases better/cheaper ones.
-const MODEL = process.env.ANTHROPIC_MODEL || "claude-3-5-sonnet-20241022";
+export const MODEL = process.env.ANTHROPIC_MODEL || "claude-3-5-sonnet-20241022";
 const MAX_TOOL_ITERATIONS = 4;
 
 let _client: Anthropic | null = null;
-function getClient(): Anthropic {
+export function getClient(): Anthropic {
   if (!process.env.ANTHROPIC_API_KEY) {
     throw new Error("ANTHROPIC_API_KEY is not set. Add it to your .env file.");
   }

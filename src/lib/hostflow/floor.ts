@@ -165,6 +165,9 @@ export type FloorState = {
 
 export type SettingsDTO = {
   maxBookingsPer15Min: number;
+  bookingIntervalMinutes: number;
+  walkinsEnabled: boolean;
+  tableMergingEnabled: boolean;
   walkinAllocationPct: number;
   avgDiningMinutes: number;
   cleaningMinutes: number;
@@ -192,6 +195,9 @@ export async function getSettings(restaurantId: string): Promise<SettingsDTO> {
     (await prisma.restaurantSettings.create({ data: { restaurantId } }));
   return {
     maxBookingsPer15Min: s.maxBookingsPer15Min,
+    bookingIntervalMinutes: s.bookingIntervalMinutes,
+    walkinsEnabled: s.walkinsEnabled,
+    tableMergingEnabled: s.tableMergingEnabled,
     walkinAllocationPct: s.walkinAllocationPct,
     avgDiningMinutes: s.avgDiningMinutes,
     cleaningMinutes: s.cleaningMinutes,

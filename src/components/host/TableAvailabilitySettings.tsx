@@ -1,14 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { Card, SectionTitle } from "./ui";
+import { Button, Card, SectionTitle } from "./ui";
 import * as api from "@/lib/host/client";
 import type { TableRow } from "@/lib/host/client";
+import { FloorPlanImport } from "./FloorPlanImport";
 
 export function TableAvailabilitySettings({ initialTables }: { initialTables: TableRow[] }) {
   const [tables, setTables] = useState(initialTables);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importedMsg, setImportedMsg] = useState<string | null>(null);
 
   const toggle = async (id: string, isActive: boolean) => {
     setBusyId(id);
@@ -28,6 +31,38 @@ export function TableAvailabilitySettings({ initialTables }: { initialTables: Ta
       {error && (
         <Card className="border-red-500/30 bg-red-500/10 p-4 text-sm text-red-600 dark:text-red-400">{error}</Card>
       )}
+
+      <Card className="p-5">
+        <SectionTitle
+          action={
+            <Button size="sm" onClick={() => setImporting((v) => !v)}>
+              {importing ? "Close" : "📷 Import from photo"}
+            </Button>
+          }
+        >
+          AI floor-plan import
+        </SectionTitle>
+        {importedMsg && (
+          <p className="mb-3 rounded-lg border border-green-500/30 bg-green-500/10 px-3 py-2 text-sm text-green-700 dark:text-green-400">
+            {importedMsg}
+          </p>
+        )}
+        {importing && (
+          <FloorPlanImport
+            onApplied={({ tableCount }) => {
+              setImporting(false);
+              setImportedMsg(`Added ${tableCount} tables — reloading…`);
+              setTimeout(() => window.location.reload(), 1200);
+            }}
+          />
+        )}
+        {!importing && !importedMsg && (
+          <p className="text-xs text-neutral-400">
+            Upload a photo of your real floor plan or POS table map and the AI will detect tables, seats, and layout —
+            you review before anything is added, and every table stays fully editable afterward.
+          </p>
+        )}
+      </Card>
 
       <Card className="p-5">
         <SectionTitle>Table availability</SectionTitle>

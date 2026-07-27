@@ -240,3 +240,64 @@ export async function fetchAllTables(): Promise<TableRow[]> {
   const data = await jsonOrThrow<{ tables: TableRow[] }>(res);
   return data.tables;
 }
+
+export type RestaurantRow = { name: string; timezone: string; onboardingCompletedAt: string | null };
+
+export async function fetchRestaurant(): Promise<RestaurantRow> {
+  const res = await fetch("/api/host/restaurant", { cache: "no-store" });
+  const data = await jsonOrThrow<{ restaurant: RestaurantRow }>(res);
+  return data.restaurant;
+}
+
+export async function updateRestaurant(patch: { timezone?: string; onboardingCompletedAt?: true }): Promise<void> {
+  const res = await fetch("/api/host/restaurant", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  await jsonOrThrow(res);
+}
+
+export type DetectedTable = {
+  tempId: string;
+  number: number | null;
+  shape: "ROUND" | "SQUARE" | "RECT";
+  seats: number;
+  x: number;
+  y: number;
+  rotation: number;
+  mergedWithTempId: string | null;
+  sectionTempId: string;
+  confidence: number;
+};
+export type DetectedSection = { tempId: string; name: string; isOutdoor: boolean };
+export type FloorPlanAnalysis = {
+  sections: DetectedSection[];
+  tables: DetectedTable[];
+  overallConfidence: number;
+  lowConfidenceCount: number;
+  notes: string[];
+};
+
+export async function analyzeFloorPlanImage(imageBase64: string, mediaType: string): Promise<FloorPlanAnalysis> {
+  const res = await fetch("/api/host/floor-plan/analyze", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ imageBase64, mediaType }),
+  });
+  const data = await jsonOrThrow<{ analysis: FloorPlanAnalysis }>(res);
+  return data.analysis;
+}
+
+export async function applyFloorPlan(payload: {
+  room: string;
+  sections: DetectedSection[];
+  tables: DetectedTable[];
+}): Promise<{ tableCount: number; sectionCount: number }> {
+  const res = await fetch("/api/host/floor-plan/apply", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return jsonOrThrow(res);
+}

@@ -73,6 +73,9 @@ export const reservationStatusSchema = z.object({
 
 export const settingsSchema = z.object({
   maxBookingsPer15Min: z.number().int().min(1).max(50).optional(),
+  bookingIntervalMinutes: z.number().int().min(5).max(120).optional(),
+  walkinsEnabled: z.boolean().optional(),
+  tableMergingEnabled: z.boolean().optional(),
   walkinAllocationPct: z.number().int().min(0).max(100).optional(),
   avgDiningMinutes: z.number().int().min(30).max(240).optional(),
   cleaningMinutes: z.number().int().min(0).max(60).optional(),

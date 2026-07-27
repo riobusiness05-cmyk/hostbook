@@ -172,9 +172,10 @@ export async function getAvailableSlots(params: {
   partySize: number;
   intervalMinutes?: number;
 }): Promise<string[]> {
-  const { restaurant, dateStr, partySize, intervalMinutes = 30 } = params;
+  const { restaurant, dateStr, partySize } = params;
 
   const settings = await getSettings(restaurant.id);
+  const intervalMinutes = params.intervalMinutes ?? settings.bookingIntervalMinutes;
   if (daysUntil(dateStr, restaurant.timezone) > settings.bookingWindowDays) return []; // beyond how far ahead online booking is allowed
 
   const earliestMinute = earliestBookableMinute(dateStr, restaurant.timezone);

@@ -42,13 +42,17 @@ export function WaitlistPanel({ state, refresh }: { state: FloorState; refresh: 
     }
   };
 
+  const walkinsEnabled = state.settings.walkinsEnabled;
+
   return (
     <Card className="flex h-full flex-col p-4">
       <SectionTitle
         action={
-          <Button size="sm" onClick={() => setAdding((v) => !v)}>
-            {adding ? "Close" : "+ Walk-in"}
-          </Button>
+          walkinsEnabled ? (
+            <Button size="sm" onClick={() => setAdding((v) => !v)}>
+              {adding ? "Close" : "+ Walk-in"}
+            </Button>
+          ) : undefined
         }
       >
         Waitlist · {state.walkins.length}
@@ -56,7 +60,11 @@ export function WaitlistPanel({ state, refresh }: { state: FloorState; refresh: 
 
       {error && <p className="mb-2 text-xs text-red-500">{error}</p>}
 
-      {adding && <AddWalkinForm onDone={() => { setAdding(false); refresh(); }} />}
+      {!walkinsEnabled && (
+        <p className="mb-2 text-xs text-neutral-400">Walk-ins are turned off in Settings.</p>
+      )}
+
+      {adding && walkinsEnabled && <AddWalkinForm onDone={() => { setAdding(false); refresh(); }} />}
 
       <div className="-mx-1 flex-1 space-y-2 overflow-y-auto px-1">
         {state.walkins.length === 0 && !adding && (
