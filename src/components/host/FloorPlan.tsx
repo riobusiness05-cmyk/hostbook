@@ -80,7 +80,7 @@ export function FloorPlan({
   sections: FloorState["sections"];
   selectedId: string | null;
   onSelect: (id: string) => void;
-  refresh: () => Promise<void>;
+  refresh: (opts?: { force?: boolean }) => Promise<void>;
   setPaused: (v: boolean) => void;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
@@ -97,6 +97,22 @@ export function FloorPlan({
     return () => setPaused(false);
   }, [editMode, setPaused]);
 
+  // Resolves a table's position as of *this instant* — its just-dropped spot
+  // if a drag saved one this session, otherwise whatever the last floor
+  // fetch had. Reading straight from `allTables` alone goes stale the moment
+  // edit mode pauses live refresh: a save's own refresh() no-ops under that
+  // same pause, so without this, a second drag on the same table would start
+  // from its pre-drag position and jump.
+  const currentPos = useCallback(
+    (id: string) => {
+      const ov = overridesRef.current[id];
+      if (ov) return ov;
+      const t = allTables.find((t) => t.id === id);
+      return t ? { x: t.x, y: t.y, rotation: t.rotation } : { x: 0, y: 0, rotation: 0 };
+    },
+    [allTables]
+  );
+
   const toSvgPoint = useCallback((clientX: number, clientY: number) => {
     const svg = svgRef.current;
     const ctm = svg?.getScreenCTM();
@@ -112,7 +128,10 @@ export function FloorPlan({
     (id: string, ov: { x: number; y: number; rotation: number }) => {
       api
         .tableAction(id, { action: "reposition", x: Math.round(ov.x), y: Math.round(ov.y), rotation: Math.round(ov.rotation) })
-        .then(() => refresh())
+        // force: true — edit mode pauses live refresh so a background SSE
+        // tick can't yank a table mid-drag, but that same pause would also
+        // swallow this refresh, leaving `allTables` stale for the next drag.
+        .then(() => refresh({ force: true }))
         .catch(() => {
           // Drop the optimistic override on failure so the table snaps back
           // to its last known-good (server) position instead of staying stuck.
@@ -146,24 +165,19 @@ export function FloorPlan({
       if (dragged && !dragged.mergedIntoId && !draggedHasChildren && !dragged.reservation) {
         const cx = ov.x + dragged.width / 2;
         const cy = ov.y + dragged.height / 2;
-        const target = allTables.find(
-          (t) =>
-            t.id !== d.id &&
-            t.isJoinable &&
-            !t.mergedIntoId &&
-            t.status !== "OCCUPIED" &&
-            !t.reservation &&
-            cx >= t.x &&
-            cx <= t.x + t.width &&
-            cy >= t.y &&
-            cy <= t.y + t.height
-        );
+        const target = allTables.find((t) => {
+          if (t.id === d.id || !t.isJoinable || t.mergedIntoId || t.status === "OCCUPIED" || t.reservation) {
+            return false;
+          }
+          const p = currentPos(t.id);
+          return cx >= p.x && cx <= p.x + t.width && cy >= p.y && cy <= p.y + t.height;
+        });
         if (target) {
           delete overridesRef.current[d.id];
           setTick((t) => t + 1);
           api
             .tableAction(target.id, { action: "merge", otherTableId: d.id })
-            .then(() => refresh())
+            .then(() => refresh({ force: true }))
             .catch(() => {
               // Merge rejected server-side (e.g. target changed mid-drag) —
               // fall back to a plain move so the drag isn't silently lost.
@@ -175,12 +189,13 @@ export function FloorPlan({
     }
 
     saveReposition(d.id, ov);
-  }, [allTables, refresh, saveReposition]);
+  }, [allTables, currentPos, refresh, saveReposition]);
 
   const handleMove = useCallback(
     (e: PointerEvent) => {
       const d = dragRef.current;
       if (!d) return;
+      e.preventDefault();
       const p = toSvgPoint(e.clientX, e.clientY);
       if (d.mode === "move") {
         overridesRef.current = {
@@ -209,9 +224,21 @@ export function FloorPlan({
   const beginMove = (e: React.PointerEvent, table: TableDTO) => {
     if (!editMode) return;
     e.stopPropagation();
+    e.preventDefault();
+    // Without capture, a touch drag can get hijacked by the browser's own
+    // scroll/pan gesture partway through — the table would move a little
+    // then "let go" instead of following the finger freely.
+    // Best-effort — some browsers reject capture for an id they don't
+    // recognize as active. Never let that abort the drag itself.
+    try {
+      (e.target as Element).setPointerCapture?.(e.pointerId);
+    } catch {
+      // ignore
+    }
     const p = toSvgPoint(e.clientX, e.clientY);
-    dragRef.current = { mode: "move", id: table.id, startX: p.x, startY: p.y, origX: table.x, origY: table.y, rotation: table.rotation };
-    overridesRef.current = { ...overridesRef.current, [table.id]: { x: table.x, y: table.y, rotation: table.rotation } };
+    const cur = currentPos(table.id);
+    dragRef.current = { mode: "move", id: table.id, startX: p.x, startY: p.y, origX: cur.x, origY: cur.y, rotation: cur.rotation };
+    overridesRef.current = { ...overridesRef.current, [table.id]: cur };
     window.addEventListener("pointermove", handleMoveRef.current);
     window.addEventListener("pointerup", handleUpRef.current);
   };
@@ -219,8 +246,17 @@ export function FloorPlan({
   const beginRotate = (e: React.PointerEvent, table: TableDTO) => {
     if (!editMode) return;
     e.stopPropagation();
-    dragRef.current = { mode: "rotate", id: table.id, cx: table.x + table.width / 2, cy: table.y + table.height / 2, x: table.x, y: table.y };
-    overridesRef.current = { ...overridesRef.current, [table.id]: { x: table.x, y: table.y, rotation: table.rotation } };
+    e.preventDefault();
+    // Best-effort — some browsers reject capture for an id they don't
+    // recognize as active. Never let that abort the drag itself.
+    try {
+      (e.target as Element).setPointerCapture?.(e.pointerId);
+    } catch {
+      // ignore
+    }
+    const cur = currentPos(table.id);
+    dragRef.current = { mode: "rotate", id: table.id, cx: cur.x + table.width / 2, cy: cur.y + table.height / 2, x: cur.x, y: cur.y };
+    overridesRef.current = { ...overridesRef.current, [table.id]: cur };
     window.addEventListener("pointermove", handleMoveRef.current);
     window.addEventListener("pointerup", handleUpRef.current);
   };
@@ -521,7 +557,7 @@ function TableGlyph({
       onClick={editMode ? undefined : onSelect}
       onPointerDown={editMode ? onDragStart : undefined}
       className={cx(editMode ? "cursor-grab touch-none" : "cursor-pointer", pulse && !editMode && "hf-pulse")}
-      style={{ transformOrigin: `${cxp}px ${cyp}px` }}
+      style={{ transformOrigin: `${cxp}px ${cyp}px`, touchAction: editMode ? "none" : undefined }}
       transform={table.rotation ? `rotate(${table.rotation} ${cxp} ${cyp})` : undefined}
       role="button"
       aria-label={`Table ${table.tableNumber}, ${STATUS_META[table.status]?.label ?? table.status}`}
@@ -549,6 +585,7 @@ function TableGlyph({
             stroke="#ffffff"
             strokeWidth={2}
             className="cursor-grab touch-none"
+            style={{ touchAction: "none" }}
             onPointerDown={(e) => {
               e.stopPropagation();
               onRotateStart?.(e);
