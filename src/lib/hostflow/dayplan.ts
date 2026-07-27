@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { combineDateAndTime, toLocalTimeStr } from "@/lib/availability";
+import { combineDateAndTime, toLocalTimeStr, minutesOfDayInTz } from "@/lib/availability";
 import type { SectionDTO, TableDTO } from "./floor";
 
 // A booking-planning view for a specific (usually future) date. Unlike the
@@ -42,8 +42,12 @@ export type DayPlan = {
 };
 
 export async function getDayPlan(restaurantId: string, dateStr: string): Promise<DayPlan> {
-  const dayStart = combineDateAndTime(dateStr, "00:00");
-  const dayEnd = combineDateAndTime(dateStr, "23:59");
+  const restaurant = await prisma.restaurant.findUniqueOrThrow({
+    where: { id: restaurantId },
+    select: { timezone: true },
+  });
+  const dayStart = combineDateAndTime(dateStr, "00:00", restaurant.timezone);
+  const dayEnd = combineDateAndTime(dateStr, "23:59", restaurant.timezone);
 
   const [tables, sections, reservations] = await Promise.all([
     prisma.diningTable.findMany({
@@ -115,7 +119,7 @@ export async function getDayPlan(restaurantId: string, dateStr: string): Promise
     const info = r.tableId ? tableInfoById.get(r.tableId) : undefined;
     return {
       id: r.id,
-      time: toLocalTimeStr(r.reservationTime),
+      time: toLocalTimeStr(r.reservationTime, restaurant.timezone),
       reservationTime: r.reservationTime.toISOString(),
       customerName: r.customerName,
       partySize: r.partySize,
@@ -132,7 +136,7 @@ export async function getDayPlan(restaurantId: string, dateStr: string): Promise
   // Peak: bucket covers by hour of the reservation time.
   const coversByHour = new Map<number, number>();
   for (const r of reservations) {
-    const h = r.reservationTime.getHours();
+    const h = Math.floor(minutesOfDayInTz(r.reservationTime, restaurant.timezone) / 60);
     coversByHour.set(h, (coversByHour.get(h) ?? 0) + r.partySize);
   }
   let peakHour = -1;
@@ -152,8 +156,10 @@ export async function getDayPlan(restaurantId: string, dateStr: string): Promise
     tablesTotal: tables.length,
     peakLabel,
     peakCovers,
-    firstSeating: reservations[0] ? toLocalTimeStr(reservations[0].reservationTime) : null,
-    lastSeating: reservations.length ? toLocalTimeStr(reservations[reservations.length - 1].reservationTime) : null,
+    firstSeating: reservations[0] ? toLocalTimeStr(reservations[0].reservationTime, restaurant.timezone) : null,
+    lastSeating: reservations.length
+      ? toLocalTimeStr(reservations[reservations.length - 1].reservationTime, restaurant.timezone)
+      : null,
     byArea,
   };
 

@@ -168,8 +168,8 @@ async function executeTool(
       return {
         reservations: reservations.map((r) => ({
           id: r.id,
-          date: toLocalDateStr(r.reservationTime),
-          time: toLocalTimeStr(r.reservationTime),
+          date: toLocalDateStr(r.reservationTime, restaurant.timezone),
+          time: toLocalTimeStr(r.reservationTime, restaurant.timezone),
           partySize: r.partySize,
           status: r.status,
         })),
@@ -237,7 +237,7 @@ async function buildSystemPrompt(restaurant: Restaurant): Promise<string> {
     .map(([cat, items]) => `${cat}:\n${items.map((i) => `- ${i}`).join("\n")}`)
     .join("\n\n");
 
-  const today = toLocalDateStr(new Date());
+  const today = toLocalDateStr(new Date(), restaurant.timezone);
 
   // Client-supplied system prompt (info-only assistant: Gary does NOT take
   // bookings — he directs guests to the on-page booking form). The live

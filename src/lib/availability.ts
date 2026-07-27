@@ -6,15 +6,23 @@ import { getSettings } from "@/lib/hostflow/floor";
  * Core reservation engine: opening hours + tables + existing bookings +
  * blackout dates -> available time slots / table assignment.
  *
- * Simplification: dates/times are treated as naive local time (no timezone
- * conversion library). For a single-restaurant-per-instance deployment this
- * is fine as long as the server's TZ env var is set to the restaurant's
- * timezone (see README). If you later consolidate into a multi-region
- * multi-tenant SaaS, swap this for a proper tz-aware library (e.g.
- * date-fns-tz) keyed off restaurant.timezone.
+ * All wall-clock <-> UTC conversion below is timezone-aware, keyed off
+ * `Restaurant.timezone` (an IANA zone, e.g. "Atlantic/Canary"). This used to
+ * build/read Dates with the server process's OWN local timezone (via the
+ * plain `new Date(y,m,d,h,min)` constructor and `.getHours()`/`.getMinutes()`
+ * getters) — which happens to equal the restaurant's zone on a laptop set to
+ * the same timezone, but on Vercel (serverless functions run in UTC) it
+ * doesn't, so every booking was stored/read shifted by the restaurant's
+ * UTC offset (1h for Atlantic/Canary in DST/summer) — the exact "booking
+ * displayed one hour later than selected" bug. DEFAULT_TIMEZONE below is a
+ * fallback for the few call sites that don't have a `restaurant` row in
+ * scope (legacy single-tenant admin pages); every Host Flow call site
+ * threads the real `restaurant.timezone` through explicitly.
  */
 
 const ACTIVE_STATUSES = ["PENDING", "CONFIRMED"];
+
+export const DEFAULT_TIMEZONE = "Atlantic/Canary";
 
 export function timeToMinutes(time: string): number {
   const [h, m] = time.split(":").map(Number);
@@ -29,38 +37,79 @@ export function minutesToTime(mins: number): string {
   return `${h}:${m}`;
 }
 
-/** Builds a local Date from a "YYYY-MM-DD" date string + "HH:MM" time string. */
-export function combineDateAndTime(dateStr: string, time: string): Date {
+// The offset a given IANA zone is actually at for a specific instant (varies
+// across DST transitions, which is exactly why this can't be a constant).
+// Standard "double formatting" trick: format the UTC instant as if it were
+// wall-clock in `timeZone`, re-interpret those same numbers as UTC, and the
+// difference from the original instant is the zone's offset at that moment.
+function tzOffsetMinutes(timeZone: string, utcInstant: Date): number {
+  const dtf = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+  const parts: Record<string, string> = {};
+  for (const p of dtf.formatToParts(utcInstant)) parts[p.type] = p.value;
+  const asIfUtc = Date.UTC(
+    Number(parts.year),
+    Number(parts.month) - 1,
+    Number(parts.day),
+    Number(parts.hour),
+    Number(parts.minute),
+    Number(parts.second)
+  );
+  return (asIfUtc - utcInstant.getTime()) / 60000;
+}
+
+/** Builds the UTC Date for a "YYYY-MM-DD" date + "HH:MM" time as wall-clock
+ *  time in `timeZone` (the restaurant's real local time), not the server's. */
+export function combineDateAndTime(dateStr: string, time: string, timeZone: string = DEFAULT_TIMEZONE): Date {
   const [year, month, day] = dateStr.split("-").map(Number);
   const [hour, minute] = time.split(":").map(Number);
-  return new Date(year, month - 1, day, hour, minute, 0, 0);
+  const utcGuess = Date.UTC(year, month - 1, day, hour, minute, 0, 0);
+  // One correction pass is enough — DST transitions never straddle more than
+  // an hour, and offsets change in whole-hour steps for every zone this app
+  // targets, so recomputing at the corrected instant can't oscillate.
+  const offset = tzOffsetMinutes(timeZone, new Date(utcGuess));
+  return new Date(utcGuess - offset * 60000);
 }
 
 export function dayOfWeekFromDateStr(dateStr: string): number {
   const [year, month, day] = dateStr.split("-").map(Number);
-  return new Date(year, month - 1, day).getDay();
+  // Pure calendar-date math (no time-of-day component), so this is done in
+  // UTC deliberately — it sidesteps the server-local-timezone trap entirely
+  // rather than needing a restaurant timezone for a question that isn't
+  // actually time-zone-dependent.
+  return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
 }
 
 /**
- * Formats a Date as a local "YYYY-MM-DD" string using the server's local
- * (process TZ) getters — NOT toISOString(), which is UTC and can roll the
- * date to the previous/next day whenever the server's TZ offset isn't
- * zero. Always use this (and toLocalTimeStr below) instead of
- * toISOString()/toTimeString() when displaying or re-combining a
- * reservationTime or blackout date, so date math stays consistent with
- * combineDateAndTime, which also builds Dates from local getters.
+ * Formats a UTC Date as a "YYYY-MM-DD" wall-clock date string in `timeZone`
+ * — NOT toISOString()/getFullYear(), both of which read a different
+ * calendar day than the restaurant's whenever that zone's offset isn't
+ * zero. Always use this (and toLocalTimeStr/minutesOfDayInTz below) instead
+ * of local Date getters when displaying or re-combining a reservationTime or
+ * blackout date, so date math stays consistent with combineDateAndTime.
  */
-export function toLocalDateStr(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
+export function toLocalDateStr(date: Date, timeZone: string = DEFAULT_TIMEZONE): string {
+  const dtf = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" });
+  return dtf.format(date); // en-CA formats as YYYY-MM-DD
 }
 
-export function toLocalTimeStr(date: Date): string {
-  const h = String(date.getHours()).padStart(2, "0");
-  const m = String(date.getMinutes()).padStart(2, "0");
-  return `${h}:${m}`;
+export function toLocalTimeStr(date: Date, timeZone: string = DEFAULT_TIMEZONE): string {
+  const dtf = new Intl.DateTimeFormat("en-GB", { timeZone, hourCycle: "h23", hour: "2-digit", minute: "2-digit" });
+  return dtf.format(date);
+}
+
+/** Minutes since midnight, restaurant-local — the timezone-aware replacement
+ *  for `date.getHours() * 60 + date.getMinutes()`. */
+export function minutesOfDayInTz(date: Date, timeZone: string = DEFAULT_TIMEZONE): number {
+  return timeToMinutes(toLocalTimeStr(date, timeZone));
 }
 
 async function getOpeningHoursForDate(restaurantId: string, dateStr: string) {
@@ -70,9 +119,9 @@ async function getOpeningHoursForDate(restaurantId: string, dateStr: string) {
   });
 }
 
-async function getBlackoutForDate(restaurantId: string, dateStr: string) {
-  const dayStart = combineDateAndTime(dateStr, "00:00");
-  const dayEnd = combineDateAndTime(dateStr, "23:59");
+async function getBlackoutForDate(restaurantId: string, dateStr: string, timeZone: string) {
+  const dayStart = combineDateAndTime(dateStr, "00:00", timeZone);
+  const dayEnd = combineDateAndTime(dateStr, "23:59", timeZone);
   return prisma.blackoutDate.findMany({
     where: { restaurantId, date: { gte: dayStart, lte: dayEnd } },
   });
@@ -84,9 +133,9 @@ function rangesOverlap(aStart: number, aEnd: number, bStart: number, bEnd: numbe
 
 /** Whole calendar days between today and `dateStr` (0 = today), for the
  *  `bookingWindowDays` cap — how far ahead guests may book online. */
-function daysUntil(dateStr: string): number {
-  const today = combineDateAndTime(toLocalDateStr(new Date()), "00:00");
-  const target = combineDateAndTime(dateStr, "00:00");
+function daysUntil(dateStr: string, timeZone: string): number {
+  const today = combineDateAndTime(toLocalDateStr(new Date(), timeZone), "00:00", timeZone);
+  const target = combineDateAndTime(dateStr, "00:00", timeZone);
   return Math.round((target.getTime() - today.getTime()) / 86400000);
 }
 
@@ -106,12 +155,11 @@ function bucketStart(minute: number): number {
  *    future date, or the current minute-of-day if `dateStr` is today (so
  *    "today" can't offer/accept a slot that already started).
  */
-function earliestBookableMinute(dateStr: string): number | null {
-  const today = toLocalDateStr(new Date());
+function earliestBookableMinute(dateStr: string, timeZone: string): number | null {
+  const today = toLocalDateStr(new Date(), timeZone);
   if (dateStr < today) return null;
   if (dateStr > today) return 0;
-  const now = new Date();
-  return now.getHours() * 60 + now.getMinutes();
+  return minutesOfDayInTz(new Date(), timeZone);
 }
 
 /**
@@ -127,15 +175,15 @@ export async function getAvailableSlots(params: {
   const { restaurant, dateStr, partySize, intervalMinutes = 30 } = params;
 
   const settings = await getSettings(restaurant.id);
-  if (daysUntil(dateStr) > settings.bookingWindowDays) return []; // beyond how far ahead online booking is allowed
+  if (daysUntil(dateStr, restaurant.timezone) > settings.bookingWindowDays) return []; // beyond how far ahead online booking is allowed
 
-  const earliestMinute = earliestBookableMinute(dateStr);
+  const earliestMinute = earliestBookableMinute(dateStr, restaurant.timezone);
   if (earliestMinute === null) return []; // date has already passed
 
   const hours = await getOpeningHoursForDate(restaurant.id, dateStr);
   if (!hours || hours.isClosed) return [];
 
-  const blackouts = await getBlackoutForDate(restaurant.id, dateStr);
+  const blackouts = await getBlackoutForDate(restaurant.id, dateStr, restaurant.timezone);
   if (blackouts.some((b) => b.fullDay)) return [];
 
   return computeSlots({ restaurant, dateStr, partySize, intervalMinutes, hours, blackouts, earliestMinute, maxBookingsPer15Min: settings.maxBookingsPer15Min });
@@ -165,8 +213,8 @@ async function computeSlots(params: {
   });
   if (tables.length === 0) return [];
 
-  const dayStart = combineDateAndTime(dateStr, "00:00");
-  const dayEnd = combineDateAndTime(dateStr, "23:59");
+  const dayStart = combineDateAndTime(dateStr, "00:00", restaurant.timezone);
+  const dayEnd = combineDateAndTime(dateStr, "23:59", restaurant.timezone);
   const existingReservations = await prisma.reservation.findMany({
     where: {
       restaurantId: restaurant.id,
@@ -203,7 +251,7 @@ async function computeSlots(params: {
 
     const bucket = bucketStart(slotStart);
     const bucketCount = existingReservations.filter((r) => {
-      const rStart = r.reservationTime.getHours() * 60 + r.reservationTime.getMinutes();
+      const rStart = minutesOfDayInTz(r.reservationTime, restaurant.timezone);
       return bucketStart(rStart) === bucket;
     }).length;
     if (bucketCount >= maxBookingsPer15Min) continue; // kitchen/service pacing cap for this window
@@ -211,7 +259,7 @@ async function computeSlots(params: {
     const hasFreeTable = tables.some((table) => {
       const conflicting = existingReservations.filter((r) => r.tableId === table.id);
       return !conflicting.some((r) => {
-        const rStart = r.reservationTime.getHours() * 60 + r.reservationTime.getMinutes();
+        const rStart = minutesOfDayInTz(r.reservationTime, restaurant.timezone);
         const rEnd = rStart + r.durationMinutes;
         return rangesOverlap(slotStart, slotEnd, rStart, rEnd);
       });
@@ -244,16 +292,16 @@ export async function findAvailableTable(params: {
   const { restaurant, dateStr, time, partySize, seatingPreference, db = prisma } = params;
 
   const settings = await getSettings(restaurant.id);
-  if (daysUntil(dateStr) > settings.bookingWindowDays) return null; // beyond how far ahead online booking is allowed
+  if (daysUntil(dateStr, restaurant.timezone) > settings.bookingWindowDays) return null; // beyond how far ahead online booking is allowed
 
-  const earliestMinute = earliestBookableMinute(dateStr);
+  const earliestMinute = earliestBookableMinute(dateStr, restaurant.timezone);
   if (earliestMinute === null) return null; // date has already passed
   if (timeToMinutes(time) < earliestMinute) return null; // time on today has already passed
 
   const hours = await getOpeningHoursForDate(restaurant.id, dateStr);
   if (!hours || hours.isClosed) return null;
 
-  const blackouts = await getBlackoutForDate(restaurant.id, dateStr);
+  const blackouts = await getBlackoutForDate(restaurant.id, dateStr, restaurant.timezone);
   if (blackouts.some((b) => b.fullDay)) return null;
 
   const slotStart = timeToMinutes(time);
@@ -296,8 +344,8 @@ export async function findAvailableTable(params: {
       })
     : tables;
 
-  const dayStart = combineDateAndTime(dateStr, "00:00");
-  const dayEnd = combineDateAndTime(dateStr, "23:59");
+  const dayStart = combineDateAndTime(dateStr, "00:00", restaurant.timezone);
+  const dayEnd = combineDateAndTime(dateStr, "23:59", restaurant.timezone);
   const existingReservations = await db.reservation.findMany({
     where: {
       restaurantId: restaurant.id,
@@ -308,7 +356,7 @@ export async function findAvailableTable(params: {
 
   const bucket = bucketStart(slotStart);
   const bucketCount = existingReservations.filter((r) => {
-    const rStart = r.reservationTime.getHours() * 60 + r.reservationTime.getMinutes();
+    const rStart = minutesOfDayInTz(r.reservationTime, restaurant.timezone);
     return bucketStart(rStart) === bucket;
   }).length;
   if (bucketCount >= settings.maxBookingsPer15Min) return null; // kitchen/service pacing cap for this window
@@ -316,7 +364,7 @@ export async function findAvailableTable(params: {
   for (const table of orderedTables) {
     const conflicting = existingReservations.filter((r) => r.tableId === table.id);
     const overlaps = conflicting.some((r) => {
-      const rStart = r.reservationTime.getHours() * 60 + r.reservationTime.getMinutes();
+      const rStart = minutesOfDayInTz(r.reservationTime, restaurant.timezone);
       const rEnd = rStart + r.durationMinutes;
       return rangesOverlap(slotStart, slotEnd, rStart, rEnd);
     });

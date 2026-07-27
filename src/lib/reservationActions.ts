@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { findAvailableTable, combineDateAndTime, timeToMinutes } from "@/lib/availability";
+import { findAvailableTable, combineDateAndTime, timeToMinutes, minutesOfDayInTz } from "@/lib/availability";
 import { notify } from "@/lib/hostflow/actions";
 import { emitFloorChange } from "@/lib/hostflow/events";
 import type { Restaurant } from "@prisma/client";
@@ -77,7 +77,7 @@ export async function createReservationForRestaurant(
           customerEmail: input.customerEmail || null,
           customerPhone: input.customerPhone || null,
           partySize: input.partySize,
-          reservationTime: combineDateAndTime(input.date, input.time),
+          reservationTime: combineDateAndTime(input.date, input.time, restaurant.timezone),
           durationMinutes: restaurant.defaultReservationMinutes,
           status: "CONFIRMED",
           source: input.source,
@@ -157,8 +157,8 @@ export async function bookSpecificTable(
       const slotStart = timeToMinutes(params.time);
       const duration = restaurant.defaultReservationMinutes;
       const slotEnd = slotStart + duration;
-      const dayStart = combineDateAndTime(params.date, "00:00");
-      const dayEnd = combineDateAndTime(params.date, "23:59");
+      const dayStart = combineDateAndTime(params.date, "00:00", restaurant.timezone);
+      const dayEnd = combineDateAndTime(params.date, "23:59", restaurant.timezone);
       const existing = await tx.reservation.findMany({
         where: {
           restaurantId: restaurant.id,
@@ -168,7 +168,7 @@ export async function bookSpecificTable(
         },
       });
       const overlaps = existing.some((r) => {
-        const rStart = r.reservationTime.getHours() * 60 + r.reservationTime.getMinutes();
+        const rStart = minutesOfDayInTz(r.reservationTime, restaurant.timezone);
         const rEnd = rStart + r.durationMinutes;
         return slotStart < rEnd && rStart < slotEnd;
       });
@@ -181,7 +181,7 @@ export async function bookSpecificTable(
           customerName: params.customerName,
           customerPhone: params.customerPhone || null,
           partySize: params.partySize,
-          reservationTime: combineDateAndTime(params.date, params.time),
+          reservationTime: combineDateAndTime(params.date, params.time, restaurant.timezone),
           durationMinutes: duration,
           status: "CONFIRMED",
           source: "ADMIN",
@@ -280,7 +280,7 @@ export async function rescheduleReservationById(
       await tx.reservation.update({
         where: { id: reservationId },
         data: {
-          reservationTime: combineDateAndTime(newDate, newTime),
+          reservationTime: combineDateAndTime(newDate, newTime, restaurant.timezone),
           tableId: table.id,
         },
       });
