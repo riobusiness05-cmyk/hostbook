@@ -23,6 +23,7 @@ export function DashboardMetrics({ state }: { state: FloorState }) {
         <StatCard label="Reserved" value={m.counts.RESERVED + m.counts.ARRIVING_SOON} accent="#3b82f6" />
         <StatCard label="Dirty" value={m.counts.DIRTY + m.counts.CLEANING} accent="#9ca3af" />
         <StatCard label="Late" value={m.lateReservations} accent="#a855f7" tone={m.lateReservations ? "warn" : "default"} />
+        <StatCard label="No shows" value={m.noShows} sub="last 24h" accent="#d97706" />
         <StatCard label="Walk-ins" value={m.walkinsWaiting} sub={`${m.walkinCoversWaiting} covers`} accent="#f97316" />
         <StatCard label="Avg wait" value={m.avgQuotedWait ? minutesLabel(m.avgQuotedWait) : "—"} />
         <StatCard label="Arrivals ≤1h" value={m.upcomingArrivals} />

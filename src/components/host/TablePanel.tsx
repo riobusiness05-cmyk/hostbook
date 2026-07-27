@@ -242,7 +242,19 @@ export function TablePanel({
                 <Button onClick={() => run(() => api.setReservationStatus(r.id, "ARRIVED"))} disabled={busy}>
                   Mark arrived
                 </Button>
-                <Button variant="danger" onClick={() => run(() => api.setReservationStatus(r.id, "CANCELLED"))} disabled={busy}>
+                <Button
+                  className="text-amber-600 dark:text-amber-400"
+                  onClick={() => run(() => api.setReservationStatus(r.id, "NO_SHOW"))}
+                  disabled={busy}
+                >
+                  No show
+                </Button>
+                <Button
+                  variant="danger"
+                  className="col-span-2"
+                  onClick={() => run(() => api.setReservationStatus(r.id, "CANCELLED"))}
+                  disabled={busy}
+                >
                   Cancel booking
                 </Button>
               </>

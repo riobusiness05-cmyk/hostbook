@@ -9,6 +9,7 @@ import { FloorPlan } from "./FloorPlan";
 import { TablePanel } from "./TablePanel";
 import { WaitlistPanel } from "./WaitlistPanel";
 import { ReservationsPanel } from "./ReservationsPanel";
+import { CurrentlySeatedPanel } from "./CurrentlySeatedPanel";
 import { AssistantPanel } from "./AssistantPanel";
 import { NotificationsPanel } from "./NotificationsPanel";
 import { OutdoorQueue } from "./OutdoorQueue";
@@ -17,7 +18,7 @@ import { HostFlowMark } from "@/components/HostFlowLogo";
 import type { BillingState } from "@/lib/billing/subscription";
 import Link from "next/link";
 
-type RailTab = "waitlist" | "reservations" | "assistant" | "alerts";
+type RailTab = "waitlist" | "reservations" | "seated" | "assistant" | "alerts";
 
 function ymd(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -192,6 +193,9 @@ export function HostApp({
                     <RailTabButton active={tab === "reservations"} onClick={() => setTab("reservations")}>
                       Bookings {state.reservations.length > 0 && <Badge>{state.reservations.length}</Badge>}
                     </RailTabButton>
+                    <RailTabButton active={tab === "seated"} onClick={() => setTab("seated")}>
+                      Seated {state.metrics.counts.OCCUPIED > 0 && <Badge>{state.metrics.counts.OCCUPIED}</Badge>}
+                    </RailTabButton>
                     <RailTabButton active={tab === "assistant"} onClick={() => setTab("assistant")}>
                       AI
                     </RailTabButton>
@@ -202,6 +206,7 @@ export function HostApp({
                   <div className="min-h-0 flex-1">
                     {tab === "waitlist" && <WaitlistPanel state={state} refresh={refresh} />}
                     {tab === "reservations" && <ReservationsPanel state={state} refresh={refresh} onSelectTable={selectTable} setPaused={setPaused} />}
+                    {tab === "seated" && <CurrentlySeatedPanel state={state} onSelectTable={selectTable} />}
                     {tab === "assistant" && <AssistantPanel refresh={refresh} />}
                     {tab === "alerts" && <NotificationsPanel notifications={state.notifications} refresh={refresh} />}
                   </div>

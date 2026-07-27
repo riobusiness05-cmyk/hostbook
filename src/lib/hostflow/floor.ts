@@ -98,6 +98,7 @@ export type DashboardMetrics = {
   seatsAvailable: number;
   counts: Record<TableStatus, number>;
   lateReservations: number;
+  noShows: number; // marked No Show in the last 24h
   walkinsWaiting: number;
   walkinCoversWaiting: number;
   avgQuotedWait: number;
@@ -221,7 +222,7 @@ export async function getFloorState(restaurantId: string): Promise<FloorState> {
   const nowDate = new Date();
   const settings = await getSettings(restaurantId);
 
-  const [tables, sessions, reservations, walkins, notifications, sections, staff] = await Promise.all([
+  const [tables, sessions, reservations, walkins, notifications, sections, staff, noShowCount] = await Promise.all([
     prisma.diningTable.findMany({
       where: { restaurantId, isActive: true },
       include: { section: true, server: true },
@@ -254,6 +255,16 @@ export async function getFloorState(restaurantId: string): Promise<FloorState> {
     }),
     prisma.section.findMany({ where: { restaurantId }, orderBy: { sortOrder: "asc" } }),
     prisma.staffMember.findMany({ where: { restaurantId, isActive: true }, orderBy: { name: "asc" } }),
+    // No-shows marked in the last 24h — a rolling window rather than
+    // calendar-day-in-restaurant-timezone, since this is a glance stat, not
+    // a billing cutoff.
+    prisma.reservation.count({
+      where: {
+        restaurantId,
+        status: "NO_SHOW",
+        reservationTime: { gte: new Date(nowDate.getTime() - 24 * 60 * 60000) },
+      },
+    }),
   ]);
 
   const sessionByTable = new Map(sessions.map((s) => [s.tableId, s]));
@@ -424,6 +435,7 @@ export async function getFloorState(restaurantId: string): Promise<FloorState> {
     seatsAvailable,
     counts,
     lateReservations,
+    noShows: noShowCount,
     walkinsWaiting: walkinDTOs.length,
     walkinCoversWaiting: walkinDTOs.reduce((n, w) => n + w.partySize, 0),
     avgQuotedWait,

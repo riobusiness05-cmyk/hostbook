@@ -224,6 +224,15 @@ export function ReservationsPanel({
                     <Button size="sm" variant="primary" className="flex-1" disabled={busyId === r.id} onClick={() => act(r.id, "ARRIVED")}>
                       Mark arrived
                     </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-amber-600 dark:text-amber-400"
+                      disabled={busyId === r.id}
+                      onClick={() => act(r.id, "NO_SHOW")}
+                    >
+                      No show
+                    </Button>
                     <Button size="sm" variant="ghost" disabled={busyId === r.id} onClick={() => act(r.id, "CANCELLED")}>
                       Cancel
                     </Button>
