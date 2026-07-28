@@ -82,7 +82,7 @@ export async function POST(req: NextRequest) {
             restaurantId: ctx.restaurantId,
             name: `Table ${tableNumber}`,
             tableNumber,
-            capacityMin: Math.max(1, t.seats - 1),
+            capacityMin: 1, // any table can be booked from 1 up to its seat count — no per-table minimum
             capacityMax: t.seats,
             shape: t.shape,
             x,

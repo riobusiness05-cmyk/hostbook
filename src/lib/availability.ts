@@ -209,7 +209,6 @@ async function computeSlots(params: {
       isActive: true,
       status: { not: "BLOCKED" }, // out-of-service tables (e.g. broken furniture) are never bookable
       capacityMax: { gte: partySize },
-      capacityMin: { lte: partySize },
     },
   });
   if (tables.length === 0) return [];
@@ -326,7 +325,6 @@ export async function findAvailableTable(params: {
       isActive: true,
       status: { not: "BLOCKED" }, // out-of-service tables (e.g. broken furniture) are never bookable
       capacityMax: { gte: partySize },
-      capacityMin: { lte: partySize },
     },
     include: { section: true },
     orderBy: { capacityMax: "asc" }, // prefer the smallest table that fits, save big tables for big parties

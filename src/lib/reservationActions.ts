@@ -152,7 +152,7 @@ export async function bookSpecificTable(
       const table = await tx.diningTable.findUnique({ where: { id: params.tableId } });
       if (!table || table.restaurantId !== restaurant.id) throw new NoAvailabilityError();
       if (table.status === "BLOCKED" || !table.isActive) throw new NoAvailabilityError();
-      if (params.partySize > table.capacityMax || params.partySize < table.capacityMin) throw new NoAvailabilityError();
+      if (params.partySize > table.capacityMax) throw new NoAvailabilityError();
 
       const slotStart = timeToMinutes(params.time);
       const duration = restaurant.defaultReservationMinutes;

@@ -489,17 +489,12 @@ const FLOOR: SeedTable[] = [
   { n: 8, seats: 6, shape: "RECT", section: "Restaurant", cx: 640, cy: 470, w: 92, h: 150 },
   { n: 7, seats: 6, shape: "RECT", section: "Restaurant", cx: 770, cy: 475, w: 92, h: 150 },
   { n: 6, seats: 6, shape: "RECT", section: "Restaurant", cx: 880, cy: 470, w: 92, h: 150 },
-  // ── MAIN ROOM · Bar (BOTTOM-CENTRE) — 100-series are bar stools ──
+  // ── MAIN ROOM · Bar (BOTTOM-CENTRE) ──
+  // 101–109 (bar stools) removed; 140 and 135 moved in from Back Terrace to
+  // fill the freed-up space, brought inside from the outdoor terrace.
   { n: 120, seats: 4, shape: "ROUND", section: "Bar", cx: 490, cy: 725 },
-  { n: 101, seats: 2, shape: "ROUND", section: "Bar", cx: 580, cy: 700, w: 38, h: 38 },
-  { n: 102, seats: 2, shape: "ROUND", section: "Bar", cx: 580, cy: 752, w: 38, h: 38 },
-  { n: 103, seats: 2, shape: "ROUND", section: "Bar", cx: 622, cy: 800, w: 38, h: 38 },
-  { n: 104, seats: 2, shape: "ROUND", section: "Bar", cx: 660, cy: 865, w: 38, h: 38 },
-  { n: 105, seats: 2, shape: "ROUND", section: "Bar", cx: 712, cy: 865, w: 38, h: 38 },
-  { n: 106, seats: 2, shape: "ROUND", section: "Bar", cx: 764, cy: 865, w: 38, h: 38 },
-  { n: 107, seats: 2, shape: "ROUND", section: "Bar", cx: 816, cy: 865, w: 38, h: 38 },
-  { n: 108, seats: 2, shape: "ROUND", section: "Bar", cx: 868, cy: 865, w: 38, h: 38 },
-  { n: 109, seats: 2, shape: "ROUND", section: "Bar", cx: 920, cy: 865, w: 38, h: 38 },
+  { n: 140, seats: 6, shape: "ROUND", section: "Bar", cx: 650, cy: 780 },
+  { n: 135, seats: 4, shape: "ROUND", section: "Bar", cx: 850, cy: 790 },
   { n: 110, seats: 2, shape: "ROUND", section: "Bar", cx: 560, cy: 945, w: 38, h: 38 },
   { n: 111, seats: 2, shape: "ROUND", section: "Bar", cx: 612, cy: 945, w: 38, h: 38 },
   { n: 112, seats: 2, shape: "ROUND", section: "Bar", cx: 664, cy: 945, w: 38, h: 38 },
@@ -517,10 +512,8 @@ const FLOOR: SeedTable[] = [
   { n: 24, seats: 4, shape: "SQUARE", section: "Back Terrace", cx: 1130, cy: 520 },
   { n: 25, seats: 4, shape: "SQUARE", section: "Back Terrace", cx: 1245, cy: 530 },
   { n: 300, seats: 4, shape: "ROUND", section: "Back Terrace", cx: 1375, cy: 560 },
-  { n: 140, seats: 6, shape: "ROUND", section: "Back Terrace", cx: 1110, cy: 690 },
   { n: 22, seats: 4, shape: "SQUARE", section: "Back Terrace", cx: 1240, cy: 700 },
   { n: 23, seats: 4, shape: "SQUARE", section: "Back Terrace", cx: 1345, cy: 710 },
-  { n: 135, seats: 4, shape: "ROUND", section: "Back Terrace", cx: 1120, cy: 835 },
   { n: 200, seats: 4, shape: "ROUND", section: "Back Terrace", cx: 1360, cy: 850 },
 
   // ── LOUNGE (separate room) ──
@@ -616,13 +609,12 @@ async function seedHostFlow(restaurantId: string) {
   const tableByNumber: Record<number, { id: string; seats: number; section: string }> = {};
   for (const t of FLOOR) {
     const [w, h] = dims(t);
-    const capacityMin = t.seats <= 2 ? 1 : t.seats <= 4 ? 2 : 4;
     const row = await prisma.diningTable.create({
       data: {
         restaurantId,
         name: `Table ${t.n}`,
         tableNumber: t.n,
-        capacityMin,
+        capacityMin: 1, // any table can be booked from 1 up to its seat count — no per-table minimum
         capacityMax: t.seats,
         shape: t.shape,
         x: t.cx - w / 2,
@@ -717,7 +709,7 @@ async function seedHostFlow(restaurantId: string) {
   await seat(140, "Petersen", 6, 135, { occasion: "Retirement", bill: 240.0, durationMin: 90 });
   // Parties at the bar, waiting for an outdoor terrace table to eat.
   await seat(120, "Brennan", 4, 25, { bill: 42.0, waitingForOutdoor: true });
-  await seat(108, "Marlowe", 2, 30, { bill: 20.0, waitingForOutdoor: true });
+  await seat(110, "Marlowe", 2, 30, { bill: 20.0, waitingForOutdoor: true });
 
   // Reserved (upcoming)
   await reserve(2, "Nguyen", 4, 45, { pref: "Restaurant" });
@@ -767,7 +759,7 @@ async function seedHostFlow(restaurantId: string) {
   // Seed notifications (most recent first via createdAt)
   await prisma.notification.createMany({
     data: [
-      { restaurantId, type: "WAITING_OUTDOOR", severity: "INFO", title: "Waiting to move outside", body: "Brennan (Table 120) & Marlowe (Table 108) are at the bar waiting for an outdoor table", createdAt: new Date(Date.now() - 1 * MIN) },
+      { restaurantId, type: "WAITING_OUTDOOR", severity: "INFO", title: "Waiting to move outside", body: "Brennan (Table 120) & Marlowe (Table 110) are at the bar waiting for an outdoor table", createdAt: new Date(Date.now() - 1 * MIN) },
       { restaurantId, type: "RESERVATION_LATE", severity: "WARNING", title: "Reservation late", body: "Blackwood (4) is 18 min late — Table 27", tableId: tableByNumber[27].id, createdAt: new Date(Date.now() - 2 * MIN) },
       { restaurantId, type: "DINING_OVERRUN", severity: "WARNING", title: "Table over average dining time", body: "Table 140 (Petersen) has exceeded 90 min", tableId: tableByNumber[140].id, createdAt: new Date(Date.now() - 4 * MIN) },
       { restaurantId, type: "WALKIN_WAITING", severity: "INFO", title: "Walk-in waiting 22 min", body: "Delgado (4) — quoted 25 min", createdAt: new Date(Date.now() - 5 * MIN) },
