@@ -148,6 +148,13 @@ model DiningTable {
   shape        String     @default("ROUND")
   rotation     Float      @default(0)
 
+  // Position this table was created/imported at — "Reset floor plan"
+  // restores x/y/rotation from these, undoing any drag-to-move edits.
+  // Null for tables that predate this column (reset skips them).
+  defaultX        Float?
+  defaultY        Float?
+  defaultRotation Float?
+
   // ── Live state ────────────────────────────────────────────────────────
   status       String     @default("AVAILABLE")
   notes        String?

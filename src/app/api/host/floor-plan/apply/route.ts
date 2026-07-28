@@ -75,6 +75,8 @@ export async function POST(req: NextRequest) {
       for (const t of tables) {
         const { width, height } = dimensionsFor(t.shape, t.seats);
         const tableNumber = t.number ?? nextAutoNumber++;
+        const x = Math.round(t.x * CANVAS_W + PAD - width / 2);
+        const y = Math.round(t.y * CANVAS_H + PAD - height / 2);
         const row = await tx.diningTable.create({
           data: {
             restaurantId: ctx.restaurantId,
@@ -83,8 +85,11 @@ export async function POST(req: NextRequest) {
             capacityMin: Math.max(1, t.seats - 1),
             capacityMax: t.seats,
             shape: t.shape,
-            x: Math.round(t.x * CANVAS_W + PAD - width / 2),
-            y: Math.round(t.y * CANVAS_H + PAD - height / 2),
+            x,
+            y,
+            defaultX: x,
+            defaultY: y,
+            defaultRotation: t.rotation,
             width,
             height,
             rotation: t.rotation,

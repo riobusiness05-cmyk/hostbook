@@ -292,6 +292,11 @@ export async function analyzeFloorPlanImage(imageBase64: string, mediaType: stri
   return data.analysis;
 }
 
+export async function resetFloorPlan(): Promise<{ count: number }> {
+  const res = await fetch("/api/host/floor-plan/reset", { method: "POST" });
+  return jsonOrThrow<{ count: number }>(res);
+}
+
 export async function applyFloorPlan(payload: {
   room: string;
   sections: DetectedSection[];

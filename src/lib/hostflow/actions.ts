@@ -164,6 +164,26 @@ export async function repositionTable(
   emitFloorChange(restaurantId, "table");
 }
 
+// Undoes any drag-to-move/rotate edits by restoring every table's saved
+// default position (set when it was seeded or imported) — the fix for a
+// floor plan that's drifted into a messy or overlapping state over time.
+// Tables with no default (predate this column) are left untouched.
+export async function resetFloorPlan(restaurantId: string) {
+  const tables = await prisma.diningTable.findMany({
+    where: { restaurantId, defaultX: { not: null }, defaultY: { not: null } },
+  });
+  await Promise.all(
+    tables.map((t) =>
+      prisma.diningTable.update({
+        where: { id: t.id },
+        data: { x: t.defaultX!, y: t.defaultY!, rotation: t.defaultRotation ?? 0 },
+      })
+    )
+  );
+  emitFloorChange(restaurantId, "table");
+  return { count: tables.length };
+}
+
 // ── Seating ────────────────────────────────────────────────────────────────
 
 export async function seatParty(

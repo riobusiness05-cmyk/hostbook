@@ -85,6 +85,7 @@ export function FloorPlan({
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [editMode, setEditMode] = useState(false);
+  const [resetting, setResetting] = useState(false);
   // Drag position/rotation lives in a ref (not state) so pointermove doesn't
   // fight React's render cycle — `tick` just forces a re-render to pick up
   // whatever the ref currently holds.
@@ -261,6 +262,21 @@ export function FloorPlan({
     window.addEventListener("pointerup", handleUpRef.current);
   };
 
+  const resetLayout = useCallback(async () => {
+    if (resetting) return;
+    if (!window.confirm("Reset every table to its saved layout? This undoes any dragging/rotating done since it was set up.")) {
+      return;
+    }
+    setResetting(true);
+    try {
+      overridesRef.current = {};
+      await api.resetFloorPlan();
+      await refresh({ force: true });
+    } finally {
+      setResetting(false);
+    }
+  }, [resetting, refresh]);
+
   // Section id → room, and the ordered list of rooms.
   const roomBySection = useMemo(
     () => new Map(allSections.map((s) => [s.id, s.room])),
@@ -422,6 +438,16 @@ export function FloorPlan({
               </button>
             ))}
           </div>
+        )}
+
+        {editMode && (
+          <button
+            onClick={resetLayout}
+            disabled={resetting}
+            className="shrink-0 rounded-lg border border-black/10 px-3 py-1.5 text-xs font-semibold text-neutral-500 transition-colors hover:bg-black/5 hover:text-neutral-900 disabled:opacity-50 dark:border-white/15 dark:text-neutral-400 dark:hover:bg-white/10 dark:hover:text-white"
+          >
+            {resetting ? "Resetting…" : "↺ Reset layout"}
+          </button>
         )}
 
         <button
