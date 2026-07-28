@@ -5,7 +5,7 @@
   "description": "Host Flow AI resellable booking + AI chatbot template for restaurants and bars.",
   "scripts": {
     "dev": "next dev",
-    "build": "prisma db push --accept-data-loss --skip-generate && tsx prisma/backfill-floor-defaults.ts && next build",
+    "build": "prisma db push --accept-data-loss --skip-generate && next build",
     "start": "next start",
     "lint": "next lint",
     "db:generate": "prisma generate",
