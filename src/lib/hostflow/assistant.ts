@@ -1,6 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk";
+import type { Restaurant } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { minutesLabel } from "@/lib/host/format";
+import { getAvailableSlots, toLocalDateStr } from "@/lib/availability";
+import { createReservationForRestaurant } from "@/lib/reservationActions";
 import { FloorState, getFloorState } from "./floor";
 import { recommendSeating } from "./seating";
 import {
@@ -387,37 +390,144 @@ function snapshotForLLM(state: FloorState): string {
   );
 }
 
-async function answerWithClaude(message: string, state: FloorState): Promise<AssistantResult> {
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
-  const model = process.env.ANTHROPIC_MODEL || "claude-3-5-sonnet-20241022";
-  const system =
-    "You are the AI Host Assistant for a busy restaurant floor. You answer the host's questions ONLY using the JSON DATA block provided. " +
-    "Never invent tables, guests, times, or numbers. If the answer is not derivable from the DATA, say you don't have that information. " +
-    "Be concise and scannable — short lines, table numbers, minutes. Times are already computed relative to now (minutesUntil negative = late).";
-  const resp = await client.messages.create({
-    model,
-    max_tokens: 500,
-    system,
-    messages: [
-      { role: "user", content: `DATA:\n${snapshotForLLM(state)}\n\nHOST QUESTION: ${message}` },
-    ],
-  });
-  const text = resp.content
-    .filter((b): b is Anthropic.TextBlock => b.type === "text")
-    .map((b) => b.text)
-    .join("\n")
-    .trim();
-  return { reply: text || "I don't have that information on the floor right now.", source: "claude" };
+// ── Booking creation via Claude tool-use ────────────────────────────────────
+// The deterministic engine above is regex-based and deliberately can't parse
+// free-form dates ("next Friday", "tomorrow at 8"), so booking creation is
+// handled by Claude with two tools: check_availability (read-only) and
+// create_booking (writes through the same createReservationForRestaurant
+// used by the public booking widget, so availability rules never diverge).
+type ToolDefinition = { name: string; description: string; input_schema: Record<string, unknown> };
+type ContentBlock = Record<string, any>;
+
+const bookingTools: ToolDefinition[] = [
+  {
+    name: "check_availability",
+    description: "Check which time slots are open for a given date and party size. Call this if the host asks what's available, or to suggest alternatives when a requested time is full.",
+    input_schema: {
+      type: "object",
+      properties: {
+        date: { type: "string", description: "YYYY-MM-DD" },
+        partySize: { type: "integer" },
+      },
+      required: ["date", "partySize"],
+    },
+  },
+  {
+    name: "create_booking",
+    description: "Create a confirmed reservation on the floor. Only call this once you have the guest's name, date, time, and party size — ask the host for anything missing rather than guessing.",
+    input_schema: {
+      type: "object",
+      properties: {
+        customerName: { type: "string" },
+        date: { type: "string", description: "YYYY-MM-DD" },
+        time: { type: "string", description: "HH:MM 24-hour" },
+        partySize: { type: "integer" },
+        customerPhone: { type: "string" },
+        customerEmail: { type: "string" },
+        notes: { type: "string", description: "Occasion, seating preference, allergies, etc." },
+      },
+      required: ["customerName", "date", "time", "partySize"],
+    },
+  },
+];
+
+async function executeBookingTool(restaurant: Restaurant, name: string, input: Record<string, unknown>): Promise<unknown> {
+  switch (name) {
+    case "check_availability": {
+      const slots = await getAvailableSlots({ restaurant, dateStr: String(input.date), partySize: Number(input.partySize) });
+      return slots.length ? { available: true, slots } : { available: false, message: "No open tables for that date/party size." };
+    }
+    case "create_booking": {
+      const result = await createReservationForRestaurant(restaurant, {
+        date: String(input.date),
+        time: String(input.time),
+        partySize: Number(input.partySize),
+        customerName: String(input.customerName),
+        customerEmail: (input.customerEmail as string) || "",
+        customerPhone: (input.customerPhone as string) || "",
+        notes: (input.notes as string) || "",
+        source: "ADMIN",
+      });
+      return result.ok ? { success: true, ...result.data } : { success: false, error: result.error };
+    }
+    default:
+      return { error: `Unknown tool: ${name}` };
+  }
 }
 
-export async function runAssistant(restaurantId: string, message: string): Promise<AssistantResult> {
+async function answerWithClaude(
+  message: string,
+  state: FloorState,
+  restaurant: Restaurant,
+  history: { role: "user" | "assistant"; text: string }[]
+): Promise<AssistantResult> {
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
+  const model = process.env.ANTHROPIC_MODEL || "claude-3-5-sonnet-20241022";
+  const today = toLocalDateStr(new Date(), restaurant.timezone);
+  const system =
+    "You are the AI Host Assistant for a busy restaurant floor. For questions about the live floor, answer ONLY using the JSON DATA block below — " +
+    "never invent tables, guests, times, or numbers, and say so if the answer isn't derivable from it. " +
+    "You can also take new bookings using the check_availability and create_booking tools: work out the exact date/time from what the host says " +
+    `(today is ${today}, restaurant timezone ${restaurant.timezone}), and ask for anything missing (name, date, time, or party size) instead of guessing. ` +
+    "Be concise and scannable — short lines, table numbers, minutes.\n\n" +
+    `DATA:\n${snapshotForLLM(state)}`;
+
+  // The Anthropic API requires the first message to have role "user" — the
+  // client's history can start with the assistant's opening greeting, so
+  // drop any leading assistant turns before splicing it in.
+  const firstUserIdx = history.findIndex((h) => h.role === "user");
+  const trimmedHistory = firstUserIdx === -1 ? [] : history.slice(firstUserIdx);
+  const messages: { role: "user" | "assistant"; content: string | ContentBlock[] }[] = [
+    ...trimmedHistory.map((h) => ({ role: h.role, content: h.text })),
+    { role: "user" as const, content: message },
+  ];
+
+  let action: string | undefined;
+  for (let iteration = 0; iteration < 4; iteration++) {
+    const resp = await client.messages.create({
+      model,
+      max_tokens: 500,
+      system,
+      messages: messages as any,
+      tools: bookingTools as any,
+    });
+
+    if (resp.stop_reason !== "tool_use") {
+      const text = resp.content
+        .filter((b): b is Anthropic.TextBlock => b.type === "text")
+        .map((b) => b.text)
+        .join("\n")
+        .trim();
+      return { reply: text || "I don't have that information on the floor right now.", source: "claude", action };
+    }
+
+    messages.push({ role: "assistant", content: resp.content as unknown as ContentBlock[] });
+    const toolResults: ContentBlock[] = [];
+    for (const block of resp.content as unknown as ContentBlock[]) {
+      if (block.type !== "tool_use") continue;
+      const result = await executeBookingTool(restaurant, block.name, block.input as Record<string, unknown>);
+      if (block.name === "create_booking" && (result as { success?: boolean }).success) action = "book";
+      toolResults.push({ type: "tool_result", tool_use_id: block.id, content: JSON.stringify(result) });
+    }
+    messages.push({ role: "user", content: toolResults });
+  }
+
+  return { reply: "I'm having trouble finishing that — could you rephrase, or book it manually via + New reservation?", source: "claude", action };
+}
+
+export async function runAssistant(
+  restaurantId: string,
+  message: string,
+  history: { role: "user" | "assistant"; text: string }[] = []
+): Promise<AssistantResult> {
   const state = await getFloorState(restaurantId);
   const engineAnswer = await answerFromEngine(message, state, restaurantId);
   if (engineAnswer) return engineAnswer;
 
   if (process.env.ANTHROPIC_API_KEY) {
     try {
-      return await answerWithClaude(message, state);
+      const restaurant = await prisma.restaurant.findUniqueOrThrow({ where: { id: restaurantId } });
+      return await answerWithClaude(message, state, restaurant, history);
     } catch (e) {
       console.error("[hostflow] assistant Claude error", e);
     }
@@ -429,7 +539,8 @@ export async function runAssistant(restaurantId: string, message: string): Promi
       "I can answer from live floor data — try:\n" +
       "• What tables are free?\n• Who's arriving next?\n• Can we fit a walk-in of 6?\n" +
       "• What tables have exceeded dining time?\n• When's the rush?\n• Seat the next walk-in.\n" +
-      "• Move Rossi to Table 14.\n• Cancel Blackwood's reservation.",
+      "• Move Rossi to Table 14.\n• Cancel Blackwood's reservation.\n" +
+      "• Book a table for John Smith, 4 people, tomorrow at 8pm.",
     source: "engine",
   };
 }

@@ -123,11 +123,14 @@ export async function markNotifications(id?: string): Promise<void> {
   await jsonOrThrow(res);
 }
 
-export async function askAssistant(message: string): Promise<{ reply: string; source: string; action?: string }> {
+export async function askAssistant(
+  message: string,
+  history?: { role: "user" | "assistant"; text: string }[]
+): Promise<{ reply: string; source: string; action?: string }> {
   const res = await fetch("/api/host/assistant", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ message, history }),
   });
   return jsonOrThrow<{ reply: string; source: string; action?: string }>(res);
 }

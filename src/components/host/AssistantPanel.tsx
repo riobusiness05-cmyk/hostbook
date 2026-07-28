@@ -14,7 +14,14 @@ const SUGGESTIONS = [
   "Who's waiting to move outside?",
   "When's the rush?",
   "Seat the next walk-in",
+  "Book a table for John Smith, 4 people, tomorrow at 8pm",
 ];
+
+const HISTORY_TURNS = 8;
+// Engine replies can list dozens of tables and blow past the server's
+// per-message cap (see assistantSchema) — history only needs to preserve
+// continuity for follow-ups, not the full text, so clip each turn.
+const HISTORY_CHAR_LIMIT = 500;
 
 export function AssistantPanel({ refresh }: { refresh: () => Promise<void> }) {
   const [messages, setMessages] = useState<Msg[]>([
@@ -32,10 +39,14 @@ export function AssistantPanel({ refresh }: { refresh: () => Promise<void> }) {
     const q = text.trim();
     if (!q || busy) return;
     setInput("");
+    const history = messages.slice(-HISTORY_TURNS).map((m) => ({
+      role: m.role,
+      text: m.text.length > HISTORY_CHAR_LIMIT ? m.text.slice(0, HISTORY_CHAR_LIMIT) + "…" : m.text,
+    }));
     setMessages((m) => [...m, { role: "user", text: q }]);
     setBusy(true);
     try {
-      const res = await api.askAssistant(q);
+      const res = await api.askAssistant(q, history);
       setMessages((m) => [...m, { role: "assistant", text: res.reply, source: res.source }]);
       // If the assistant performed a floor mutation, refresh the live state.
       if (res.action) await refresh();

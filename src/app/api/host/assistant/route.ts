@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid message" }, { status: 400 });
   }
   try {
-    const result = await runAssistant(ctx.restaurantId, parsed.data.message);
+    const result = await runAssistant(ctx.restaurantId, parsed.data.message, parsed.data.history);
     return NextResponse.json(result);
   } catch (err) {
     return handleActionError(err);

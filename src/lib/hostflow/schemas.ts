@@ -97,4 +97,11 @@ export const settingsSchema = z.object({
 
 export const assistantSchema = z.object({
   message: z.string().min(1).max(1000),
+  // Recent chat turns, so a booking request split across messages (e.g. the
+  // assistant asks "what time?" and the host replies "8pm") still resolves —
+  // each request to this endpoint is otherwise stateless.
+  history: z
+    .array(z.object({ role: z.enum(["user", "assistant"]), text: z.string().max(1000) }))
+    .max(20)
+    .optional(),
 });
