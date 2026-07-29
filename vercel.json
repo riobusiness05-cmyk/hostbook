@@ -1,0 +1,5 @@
+{
+  "crons": [
+    { "path": "/api/cron/reset-tables", "schedule": "30 23 * * *" }
+  ]
+}

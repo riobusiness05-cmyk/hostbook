@@ -361,6 +361,54 @@ export async function splitTable(restaurantId: string, tableId: string) {
   emitFloorChange(restaurantId, "table");
 }
 
+// Nightly floor reset (see src/app/api/cron/reset-tables/route.ts): undoes
+// anything left over from service that a new day shouldn't inherit — tables
+// merged for a party that's long gone, and tables staff forgot to release or
+// mark clean before closing. A stale RESERVED/LATE display already clears
+// itself (getFloorState only surfaces a reservation within a 4h service
+// window), so this only needs to touch what actually persists: mergedIntoId
+// and table/session status. Safe to run more than once — a clean floor is a
+// no-op the second time.
+export async function resetDailyFloorState(restaurantId: string) {
+  const primaries = await prisma.diningTable.findMany({
+    where: { restaurantId, mergedTables: { some: {} } },
+    include: { mergedTables: true },
+  });
+  let split = 0;
+  for (const primary of primaries) {
+    const restoredCapacity = primary.mergedTables.reduce((n, c) => n + c.capacityMax, 0);
+    await prisma.$transaction([
+      ...primary.mergedTables.map((c) =>
+        prisma.diningTable.update({ where: { id: c.id }, data: { mergedIntoId: null, status: "AVAILABLE" } })
+      ),
+      prisma.diningTable.update({
+        where: { id: primary.id },
+        data: { capacityMax: Math.max(primary.capacityMin, primary.capacityMax - restoredCapacity) },
+      }),
+    ]);
+    split += primary.mergedTables.length;
+  }
+
+  const stillSeated = await prisma.tableSession.findMany({ where: { restaurantId, status: "SEATED" } });
+  for (const s of stillSeated) {
+    await prisma.tableSession.update({ where: { id: s.id }, data: { status: "FINISHED", finishedAt: new Date() } });
+  }
+
+  // OCCUPIED/DIRTY/CLEANING all mean "not ready for a walk-in", and
+  // RESERVED/ARRIVING_SOON/LATE are normally only ever a computed display
+  // state (see getFloorState) — but setTableStatus can persist one directly,
+  // so this also clears out any that got stuck. BLOCKED is left alone:
+  // that's a manual out-of-service flag (e.g. broken furniture), not
+  // something a new day fixes on its own.
+  const freshened = await prisma.diningTable.updateMany({
+    where: { restaurantId, status: { in: ["OCCUPIED", "DIRTY", "CLEANING", "RESERVED", "ARRIVING_SOON", "LATE"] } },
+    data: { status: "AVAILABLE" },
+  });
+
+  if (split > 0 || freshened.count > 0) emitFloorChange(restaurantId, "table");
+  return { tablesSplit: split, tablesFreshened: freshened.count };
+}
+
 // ── Walk-ins ────────────────────────────────────────────────────────────────
 
 export async function addWalkin(
