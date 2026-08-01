@@ -315,6 +315,12 @@ export async function mergeTables(restaurantId: string, primaryId: string, other
   // otherwise you can end up with a chain (or, if the two merges point at
   // each other, an outright cycle) instead of one flat combined group.
   if (primary.mergedIntoId) throw new HostFlowError(`Table ${primary.tableNumber} is itself merged into another table — split it first`, 409);
+  // Never let one booking span two different areas of the restaurant — the
+  // same boundary the walk-in auto-combine suggestion (findBestCombo in
+  // seating.ts) already respects.
+  if (primary.sectionId !== other.sectionId) {
+    throw new HostFlowError(`Table ${other.tableNumber} isn't in the same area as Table ${primary.tableNumber} — only tables in the same area can be combined`, 409);
+  }
 
   await prisma.$transaction(async (tx) => {
     const claimed = await tx.diningTable.updateMany({

@@ -37,8 +37,20 @@ export default function TablesSettings({ initial }: { initial: Table[] }) {
     setTables((prev) => prev.map((t) => (t.id === id ? { ...t, isActive } : t)));
   }
 
-  async function removeTable(id: string) {
-    await fetch(`/api/admin/tables/${id}`, { method: "DELETE" });
+  async function removeTable(id: string, name: string) {
+    if (!window.confirm(`Delete "${name}"? This can't be undone — any booking history for this table will be lost.`)) {
+      return;
+    }
+    const res = await fetch(`/api/admin/tables/${id}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ confirm: true }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error || "Couldn't delete that table.");
+      return;
+    }
     setTables((prev) => prev.filter((t) => t.id !== id));
   }
 
@@ -64,7 +76,7 @@ export default function TablesSettings({ initial }: { initial: Table[] }) {
                 <input type="checkbox" checked={t.isActive} onChange={(e) => toggleActive(t.id, e.target.checked)} />
                 Active
               </label>
-              <button onClick={() => removeTable(t.id)} className="text-xs text-red-600 hover:underline">
+              <button onClick={() => removeTable(t.id, t.name)} className="text-xs text-red-600 hover:underline">
                 Remove
               </button>
             </div>

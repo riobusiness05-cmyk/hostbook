@@ -166,7 +166,9 @@ export function TablePanel({
             label="Combine with (pick 1 or more)"
             multi
             baseSeats={table.seatsMax}
-            options={state.tables.filter((t) => t.id !== table.id && t.isJoinable && t.status !== "OCCUPIED" && !t.reservation)}
+            options={state.tables.filter(
+              (t) => t.id !== table.id && t.isJoinable && t.status !== "OCCUPIED" && !t.reservation && t.section?.id === table.section?.id
+            )}
             busy={busy}
             onCancel={() => setMode("idle")}
             onPick={(ids) =>
