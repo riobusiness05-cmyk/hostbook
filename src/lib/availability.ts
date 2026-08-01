@@ -155,11 +155,38 @@ function bucketStart(minute: number): number {
  *    future date, or the current minute-of-day if `dateStr` is today (so
  *    "today" can't offer/accept a slot that already started).
  */
-function earliestBookableMinute(dateStr: string, timeZone: string): number | null {
+export function earliestBookableMinute(dateStr: string, timeZone: string): number | null {
   const today = toLocalDateStr(new Date(), timeZone);
   if (dateStr < today) return null;
   if (dateStr > today) return 0;
   return minutesOfDayInTz(new Date(), timeZone);
+}
+
+/**
+ * A table currently holding a live, physically-seated party (a walk-in with
+ * no Reservation row, or a reservation already checked in) — a TableSession
+ * — can't be double-booked for "now" just because no Reservation overlaps
+ * it. A session only ever represents *right now*, never a future date, so
+ * this is only fetched (and only matters) when `dateStr` is today.
+ */
+export async function getActiveSessionRanges(
+  restaurantId: string,
+  dateStr: string,
+  timeZone: string,
+  db: Prisma.TransactionClient | typeof prisma = prisma
+): Promise<Map<string, { start: number; end: number }>> {
+  const ranges = new Map<string, { start: number; end: number }>();
+  if (dateStr !== toLocalDateStr(new Date(), timeZone)) return ranges;
+  const sessions = await db.tableSession.findMany({ where: { restaurantId, status: "SEATED" } });
+  for (const s of sessions) {
+    const start = minutesOfDayInTz(s.seatedAt, timeZone);
+    // Computed the same way `rEnd = rStart + r.durationMinutes` is for
+    // reservations below, so a session running past midnight still compares
+    // correctly instead of wrapping back to a small number.
+    const durationMinutes = Math.round((s.expectedFinishAt.getTime() - s.seatedAt.getTime()) / 60000);
+    ranges.set(s.tableId, { start, end: start + durationMinutes });
+  }
+  return ranges;
 }
 
 /**
@@ -222,6 +249,7 @@ async function computeSlots(params: {
       reservationTime: { gte: dayStart, lte: dayEnd },
     },
   });
+  const sessionRanges = await getActiveSessionRanges(restaurant.id, dateStr, restaurant.timezone);
 
   const duration = restaurant.defaultReservationMinutes;
   const openMin = timeToMinutes(hours.openTime);
@@ -258,11 +286,15 @@ async function computeSlots(params: {
 
     const hasFreeTable = tables.some((table) => {
       const conflicting = existingReservations.filter((r) => r.tableId === table.id);
-      return !conflicting.some((r) => {
+      const reservationConflict = conflicting.some((r) => {
         const rStart = minutesOfDayInTz(r.reservationTime, restaurant.timezone);
         const rEnd = rStart + r.durationMinutes;
         return rangesOverlap(slotStart, slotEnd, rStart, rEnd);
       });
+      if (reservationConflict) return false;
+      const session = sessionRanges.get(table.id);
+      if (session && rangesOverlap(slotStart, slotEnd, session.start, session.end)) return false;
+      return true;
     });
 
     if (hasFreeTable) slots.push(minutesToTime(slotStart));
@@ -280,6 +312,12 @@ async function computeSlots(params: {
  * `reservation.create` that follows it — see `createReservationForRestaurant`
  * in reservationActions.ts — so a second, concurrent booking for the same
  * table/slot is rejected by Postgres instead of silently double-booking.
+ *
+ * Pass `excludeReservationId` when re-checking availability for a
+ * reservation that already exists (rescheduling) — otherwise that
+ * reservation's own current slot reads as a conflict against itself, and a
+ * guest who just wants a bigger table at the same time gets bounced to a
+ * different one (or told nothing's free) for no reason.
  */
 export async function findAvailableTable(params: {
   restaurant: Restaurant;
@@ -287,9 +325,10 @@ export async function findAvailableTable(params: {
   time: string;
   partySize: number;
   seatingPreference?: string;
+  excludeReservationId?: string;
   db?: Prisma.TransactionClient;
 }) {
-  const { restaurant, dateStr, time, partySize, seatingPreference, db = prisma } = params;
+  const { restaurant, dateStr, time, partySize, seatingPreference, excludeReservationId, db = prisma } = params;
 
   const settings = await getSettings(restaurant.id);
   if (daysUntil(dateStr, restaurant.timezone) > settings.bookingWindowDays) return null; // beyond how far ahead online booking is allowed
@@ -345,13 +384,16 @@ export async function findAvailableTable(params: {
 
   const dayStart = combineDateAndTime(dateStr, "00:00", restaurant.timezone);
   const dayEnd = combineDateAndTime(dateStr, "23:59", restaurant.timezone);
-  const existingReservations = await db.reservation.findMany({
-    where: {
-      restaurantId: restaurant.id,
-      status: { in: ACTIVE_STATUSES },
-      reservationTime: { gte: dayStart, lte: dayEnd },
-    },
-  });
+  const existingReservations = (
+    await db.reservation.findMany({
+      where: {
+        restaurantId: restaurant.id,
+        status: { in: ACTIVE_STATUSES },
+        reservationTime: { gte: dayStart, lte: dayEnd },
+      },
+    })
+  ).filter((r) => r.id !== excludeReservationId);
+  const sessionRanges = await getActiveSessionRanges(restaurant.id, dateStr, restaurant.timezone, db);
 
   const bucket = bucketStart(slotStart);
   const bucketCount = existingReservations.filter((r) => {
@@ -367,7 +409,10 @@ export async function findAvailableTable(params: {
       const rEnd = rStart + r.durationMinutes;
       return rangesOverlap(slotStart, slotEnd, rStart, rEnd);
     });
-    if (!overlaps) return table;
+    if (overlaps) continue;
+    const session = sessionRanges.get(table.id);
+    if (session && rangesOverlap(slotStart, slotEnd, session.start, session.end)) continue;
+    return table;
   }
 
   return null;

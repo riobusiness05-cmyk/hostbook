@@ -2,15 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getActiveRestaurant } from "@/lib/restaurant";
-import {
-  combineDateAndTime,
-  findAvailableTable,
-  toLocalDateStr,
-  toLocalTimeStr,
-} from "@/lib/availability";
+import { toLocalDateStr, toLocalTimeStr } from "@/lib/availability";
 import { dateStrSchema, timeStrSchema } from "@/types";
 import { updateReservationStatus } from "@/lib/hostflow/actions";
-import { emitFloorChange } from "@/lib/hostflow/events";
+import { rescheduleReservationById } from "@/lib/reservationActions";
 
 // Public, token-secured booking management. A guest reaches this via the
 // unguessable `manageToken` printed on their confirmation link — no login.
@@ -67,35 +62,20 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if ("error" in res) return res.error;
   const { restaurant, reservation } = res;
 
-  if (["CANCELLED", "COMPLETED", "NO_SHOW", "SEATED"].includes(reservation.status)) {
-    return NextResponse.json({ error: "This booking can no longer be changed online." }, { status: 409 });
-  }
-
   const newDate = parsed.data.date ?? toLocalDateStr(reservation.reservationTime);
   const newTime = parsed.data.time ?? toLocalTimeStr(reservation.reservationTime);
-  const newParty = parsed.data.partySize ?? reservation.partySize;
 
-  const table = await findAvailableTable({
-    restaurant,
-    dateStr: newDate,
-    time: newTime,
-    partySize: newParty,
-    seatingPreference: reservation.seatingPreference ?? undefined,
-  });
-  if (!table) {
-    return NextResponse.json({ error: "That new date/time isn't available. Try another time." }, { status: 409 });
+  // Delegates to the same Serializable-transaction-protected, self-exclusion-
+  // aware reschedule path the AI assistant uses — this route used to
+  // reimplement the availability check inline with no transaction, which
+  // meant two concurrent reschedules (or a reschedule racing a new booking)
+  // could both succeed and double-book the table.
+  const result = await rescheduleReservationById(restaurant, reservation.id, newDate, newTime, parsed.data.partySize);
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: 409 });
   }
 
-  const updated = await prisma.reservation.update({
-    where: { id: reservation.id },
-    data: {
-      reservationTime: combineDateAndTime(newDate, newTime),
-      partySize: newParty,
-      tableId: table.id,
-    },
-    include: { table: true },
-  });
-  emitFloorChange(restaurant.id, "reservation");
+  const updated = await prisma.reservation.findUniqueOrThrow({ where: { id: reservation.id }, include: { table: true } });
   return NextResponse.json({ reservation: publicView(updated) });
 }
 

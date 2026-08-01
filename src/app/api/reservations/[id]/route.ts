@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getActiveRestaurant } from "@/lib/restaurant";
-import { combineDateAndTime, findAvailableTable, toLocalDateStr, toLocalTimeStr } from "@/lib/availability";
+import { toLocalDateStr, toLocalTimeStr } from "@/lib/availability";
 import { updateReservationSchema } from "@/types";
 import { isAdminRequest } from "@/lib/adminGuard";
+import { rescheduleReservationById } from "@/lib/reservationActions";
 
 // PATCH /api/reservations/:id  (admin only — edit status, reschedule, etc.)
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
@@ -27,44 +28,33 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   }
 
   const { status, date, time, partySize, notes } = parsed.data;
-  const data: Record<string, unknown> = {};
 
-  if (status) data.status = status;
-  if (typeof partySize === "number") data.partySize = partySize;
-  if (typeof notes === "string") data.notes = notes;
-
-  // If date/time changed, re-check availability and reassign a table.
-  if (date || time) {
-    const currentDateStr = toLocalDateStr(existing.reservationTime);
-    const currentTimeStr = toLocalTimeStr(existing.reservationTime);
-    const newDate = date ?? currentDateStr;
-    const newTime = time ?? currentTimeStr;
-    const newPartySize = partySize ?? existing.partySize;
-
-    const table = await findAvailableTable({
-      restaurant,
-      dateStr: newDate,
-      time: newTime,
-      partySize: newPartySize,
-    });
-
-    if (!table) {
-      return NextResponse.json(
-        { error: "No table available for the requested new date/time/party size." },
-        { status: 409 }
-      );
+  // Date, time, or party size all need the table re-verified — route them
+  // through the same Serializable-transaction-protected, self-exclusion-aware
+  // path the guest and AI-assistant reschedule flows use. This used to
+  // reimplement the availability check inline with no transaction (a real
+  // double-booking race), and silently skipped re-checking table capacity
+  // entirely when only partySize changed.
+  if (date || time || typeof partySize === "number") {
+    const newDate = date ?? toLocalDateStr(existing.reservationTime, restaurant.timezone);
+    const newTime = time ?? toLocalTimeStr(existing.reservationTime, restaurant.timezone);
+    const result = await rescheduleReservationById(restaurant, params.id, newDate, newTime, partySize);
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: 409 });
     }
-
-    data.reservationTime = combineDateAndTime(newDate, newTime);
-    data.tableId = table.id;
   }
 
-  const updated = await prisma.reservation.update({
-    where: { id: params.id },
-    data,
-    include: { table: true },
-  });
+  if (status || typeof notes === "string") {
+    await prisma.reservation.update({
+      where: { id: params.id },
+      data: {
+        ...(status ? { status } : {}),
+        ...(typeof notes === "string" ? { notes } : {}),
+      },
+    });
+  }
 
+  const updated = await prisma.reservation.findUnique({ where: { id: params.id }, include: { table: true } });
   return NextResponse.json({ reservation: updated });
 }
 

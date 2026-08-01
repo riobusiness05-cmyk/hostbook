@@ -1,7 +1,14 @@
 import crypto from "crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { findAvailableTable, combineDateAndTime, timeToMinutes, minutesOfDayInTz } from "@/lib/availability";
+import {
+  findAvailableTable,
+  combineDateAndTime,
+  timeToMinutes,
+  minutesOfDayInTz,
+  earliestBookableMinute,
+  getActiveSessionRanges,
+} from "@/lib/availability";
 import { notify } from "@/lib/hostflow/actions";
 import { emitFloorChange } from "@/lib/hostflow/events";
 import type { Restaurant } from "@prisma/client";
@@ -154,7 +161,11 @@ export async function bookSpecificTable(
       if (table.status === "BLOCKED" || !table.isActive) throw new NoAvailabilityError();
       if (params.partySize > table.capacityMax) throw new NoAvailabilityError();
 
+      const earliestMinute = earliestBookableMinute(params.date, restaurant.timezone);
+      if (earliestMinute === null) throw new NoAvailabilityError(); // date has already passed
       const slotStart = timeToMinutes(params.time);
+      if (slotStart < earliestMinute) throw new NoAvailabilityError(); // time on today has already passed
+
       const duration = restaurant.defaultReservationMinutes;
       const slotEnd = slotStart + duration;
       const dayStart = combineDateAndTime(params.date, "00:00", restaurant.timezone);
@@ -173,6 +184,14 @@ export async function bookSpecificTable(
         return slotStart < rEnd && rStart < slotEnd;
       });
       if (overlaps) throw new NoAvailabilityError();
+
+      // A currently-seated walk-in (no Reservation row) shouldn't be
+      // silently double-booked either — same check createReservationForRestaurant
+      // gets via findAvailableTable, applied here since a host picking a
+      // specific table skips that search.
+      const sessionRanges = await getActiveSessionRanges(restaurant.id, params.date, restaurant.timezone, tx);
+      const session = sessionRanges.get(params.tableId);
+      if (session && slotStart < session.end && session.start < slotEnd) throw new NoAvailabilityError();
 
       const reservation = await tx.reservation.create({
         data: {
@@ -254,17 +273,27 @@ export async function cancelReservationById(
   return { ok: true, data: { id: reservationId } };
 }
 
+// Statuses a booking can no longer meaningfully move from — already gone
+// (cancelled/no-show/completed) or already checked in (seated).
+const NOT_RESCHEDULABLE_STATUSES = ["CANCELLED", "COMPLETED", "NO_SHOW", "SEATED"];
+
 export async function rescheduleReservationById(
   restaurant: Restaurant,
   reservationId: string,
   newDate: string,
-  newTime: string
+  newTime: string,
+  newPartySize?: number
 ): Promise<ActionResult<{ id: string; date: string; time: string }>> {
   const reservation = await prisma.reservation.findUnique({ where: { id: reservationId } });
 
   if (!reservation || reservation.restaurantId !== restaurant.id) {
     return { ok: false, error: "I couldn't find that reservation." };
   }
+  if (NOT_RESCHEDULABLE_STATUSES.includes(reservation.status)) {
+    return { ok: false, error: "This booking can no longer be changed." };
+  }
+
+  const partySize = newPartySize ?? reservation.partySize;
 
   try {
     await withSerializableRetry(async (tx) => {
@@ -272,7 +301,12 @@ export async function rescheduleReservationById(
         restaurant,
         dateStr: newDate,
         time: newTime,
-        partySize: reservation.partySize,
+        partySize,
+        seatingPreference: reservation.seatingPreference ?? undefined,
+        // Otherwise this reservation's own current slot reads as a conflict
+        // against itself, and e.g. just bumping party size at the same time
+        // gets bounced to a different table (or rejected) for no reason.
+        excludeReservationId: reservationId,
         db: tx,
       });
       if (!table) throw new NoAvailabilityError();
@@ -281,6 +315,7 @@ export async function rescheduleReservationById(
         where: { id: reservationId },
         data: {
           reservationTime: combineDateAndTime(newDate, newTime, restaurant.timezone),
+          partySize,
           tableId: table.id,
         },
       });
