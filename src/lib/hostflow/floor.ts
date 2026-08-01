@@ -40,6 +40,10 @@ export type ReservationDTO = {
   seatingPreference: string | null;
   accessibilityNeeds: string | null;
   tableId: string | null;
+  // Extra tables held alongside tableId for a party too big for one table —
+  // empty for an ordinary single-table booking. See findAvailableTable's
+  // combo fallback in availability.ts.
+  comboTableNumbers: number[];
 };
 
 export type TableDTO = {
@@ -275,6 +279,7 @@ export async function getFloorState(restaurantId: string): Promise<FloorState> {
           lte: new Date(nowDate.getTime() + 30 * 24 * 60 * 60000),
         },
       },
+      include: { comboTables: true },
       orderBy: { reservationTime: "asc" },
     }),
     prisma.walkin.findMany({
@@ -301,15 +306,21 @@ export async function getFloorState(restaurantId: string): Promise<FloorState> {
   ]);
 
   const sessionByTable = new Map(sessions.map((s) => [s.tableId, s]));
+  const tableNumberById = new Map(tables.map((t) => [t.id, t.tableNumber]));
   // Reservation to surface on a held table: the soonest upcoming/late one, but
   // only within the current service window (next 4h) so a booking made for a
   // future date doesn't paint an otherwise-free table as reserved right now.
+  // A combo reservation's extra tables aren't anyone's `tableId`, so they're
+  // registered here too (same reservation) — otherwise a host could hand one
+  // of them to a walk-in right out from under a big party's booking.
   const serviceWindowMs = 4 * 60 * 60000;
   const reservationByTable = new Map<string, (typeof reservations)[number]>();
   for (const r of reservations) {
-    if (!r.tableId) continue;
     if (r.reservationTime.getTime() > nowDate.getTime() + serviceWindowMs) continue;
-    if (!reservationByTable.has(r.tableId)) reservationByTable.set(r.tableId, r);
+    const heldTableIds = [r.tableId, ...r.comboTables.map((ct) => ct.tableId)].filter((id): id is string => !!id);
+    for (const id of heldTableIds) {
+      if (!reservationByTable.has(id)) reservationByTable.set(id, r);
+    }
   }
 
   const toReservationDTO = (r: (typeof reservations)[number]): ReservationDTO => {
@@ -327,6 +338,9 @@ export async function getFloorState(restaurantId: string): Promise<FloorState> {
       seatingPreference: r.seatingPreference,
       accessibilityNeeds: r.accessibilityNeeds,
       tableId: r.tableId,
+      comboTableNumbers: r.comboTables
+        .map((ct) => tableNumberById.get(ct.tableId))
+        .filter((n): n is number => n != null),
     };
   };
 

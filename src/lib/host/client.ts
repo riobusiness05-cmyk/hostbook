@@ -94,15 +94,23 @@ export type NewReservationInput = {
   idempotencyKey?: string;
 };
 
-export async function createReservation(
-  input: NewReservationInput
-): Promise<{ id: string; date: string; time: string; partySize: number; tableNumber: number }> {
+export type CreatedReservation = {
+  id: string;
+  date: string;
+  time: string;
+  partySize: number;
+  tableNumber: number;
+  // Extra table numbers when the party needed more than one table combined.
+  comboTableNumbers: number[];
+};
+
+export async function createReservation(input: NewReservationInput): Promise<CreatedReservation> {
   const res = await fetch("/api/host/reservations", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
-  const data = await jsonOrThrow<{ reservation: { id: string; date: string; time: string; partySize: number; tableNumber: number } }>(res);
+  const data = await jsonOrThrow<{ reservation: CreatedReservation }>(res);
   return data.reservation;
 }
 

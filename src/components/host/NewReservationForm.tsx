@@ -28,7 +28,7 @@ export function NewReservationForm({
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [done, setDone] = useState<{ tableNumber: number; time: string } | null>(null);
+  const [done, setDone] = useState<{ tableNumber: number; comboTableNumbers: number[]; time: string } | null>(null);
 
   // Guest details
   const [name, setName] = useState("");
@@ -83,7 +83,7 @@ export function NewReservationForm({
         notes: notes || undefined,
         idempotencyKey: idempotencyKeyRef.current,
       });
-      setDone({ tableNumber: r.tableNumber, time: r.time });
+      setDone({ tableNumber: r.tableNumber, comboTableNumbers: r.comboTableNumbers, time: r.time });
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -96,7 +96,11 @@ export function NewReservationForm({
       <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm">
         <p className="font-semibold text-emerald-700 dark:text-emerald-300">Booking confirmed ✓</p>
         <p className="mt-1 text-neutral-600 dark:text-neutral-300">
-          {name} · party of {partySize} · {date} at {done.time} — Table {done.tableNumber}.
+          {name} · party of {partySize} · {date} at {done.time} —{" "}
+          {done.comboTableNumbers.length > 0
+            ? `Tables ${[done.tableNumber, ...done.comboTableNumbers].join(" + ")} (combined)`
+            : `Table ${done.tableNumber}`}
+          .
         </p>
         <div className="mt-3 flex gap-2">
           <Button variant="primary" onClick={onDone}>Done</Button>

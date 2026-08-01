@@ -192,9 +192,19 @@ export function ReservationsPanel({
                           ? "bg-blue-500/15 text-blue-600 hover:bg-blue-500/25 dark:text-blue-300"
                           : "bg-black/5 text-neutral-400 dark:bg-white/10"
                       )}
-                      title={tableNo ? `Go to Table ${tableNo}` : "No table assigned"}
+                      title={
+                        tableNo
+                          ? r.comboTableNumbers.length > 0
+                            ? `Combined with Table ${r.comboTableNumbers.join(", Table ")} — go to Table ${tableNo}`
+                            : `Go to Table ${tableNo}`
+                          : "No table assigned"
+                      }
                     >
-                      {tableNo ? `Table ${tableNo}` : "Unassigned"}
+                      {tableNo
+                        ? r.comboTableNumbers.length > 0
+                          ? `Tables ${[tableNo, ...r.comboTableNumbers].join("+")}`
+                          : `Table ${tableNo}`
+                        : "Unassigned"}
                     </button>
                   </div>
 

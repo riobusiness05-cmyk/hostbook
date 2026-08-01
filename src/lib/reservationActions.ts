@@ -50,14 +50,28 @@ async function withSerializableRetry<T>(fn: (tx: Prisma.TransactionClient) => Pr
   }
 }
 
-type CreatedReservationDTO = { id: string; date: string; time: string; partySize: number; tableNumber: number; manageToken: string };
+type CreatedReservationDTO = {
+  id: string;
+  date: string;
+  time: string;
+  partySize: number;
+  tableNumber: number;
+  // Extra table numbers when the party needed more than one table combined
+  // — empty for an ordinary single-table booking. See findAvailableTable's
+  // combo fallback in availability.ts.
+  comboTableNumbers: number[];
+  manageToken: string;
+};
 
 // Loads an existing reservation by idempotency key and shapes it into the
 // same DTO a fresh create would return — used both for the pre-check and
 // for resolving the race where two near-simultaneous requests with the same
 // key both pass that pre-check and one loses the unique-constraint race.
 async function findByIdempotencyKey(restaurant: Restaurant, key: string): Promise<CreatedReservationDTO | null> {
-  const existing = await prisma.reservation.findUnique({ where: { idempotencyKey: key }, include: { table: true } });
+  const existing = await prisma.reservation.findUnique({
+    where: { idempotencyKey: key },
+    include: { table: true, comboTables: { include: { table: true } } },
+  });
   if (!existing || existing.restaurantId !== restaurant.id || !existing.table) return null;
   return {
     id: existing.id,
@@ -65,6 +79,7 @@ async function findByIdempotencyKey(restaurant: Restaurant, key: string): Promis
     time: toLocalTimeStr(existing.reservationTime, restaurant.timezone),
     partySize: existing.partySize,
     tableNumber: existing.table.tableNumber,
+    comboTableNumbers: existing.comboTables.map((ct) => ct.table.tableNumber),
     manageToken: existing.manageToken ?? "",
   };
 }
@@ -95,8 +110,8 @@ export async function createReservationForRestaurant(
   const manageToken = crypto.randomBytes(24).toString("base64url");
 
   try {
-    const { reservation, table } = await withSerializableRetry(async (tx) => {
-      const table = await findAvailableTable({
+    const { reservation, table, comboTables } = await withSerializableRetry(async (tx) => {
+      const found = await findAvailableTable({
         restaurant,
         dateStr: input.date,
         time: input.time,
@@ -104,7 +119,8 @@ export async function createReservationForRestaurant(
         seatingPreference: input.seatingPreference,
         db: tx,
       });
-      if (!table) throw new NoAvailabilityError();
+      if (!found) throw new NoAvailabilityError();
+      const { table, comboTables } = found;
 
       const reservation = await tx.reservation.create({
         data: {
@@ -125,19 +141,25 @@ export async function createReservationForRestaurant(
           accessibilityNeeds: input.accessibilityNeeds?.trim() || null,
           manageToken,
           idempotencyKey: input.idempotencyKey || null,
+          comboTables:
+            comboTables.length > 0 ? { create: comboTables.map((ct) => ({ tableId: ct.id })) } : undefined,
         },
       });
-      return { reservation, table };
+      return { reservation, table, comboTables };
     });
 
     // The table's colour on the floor plan is derived from live reservation
     // data (see getFloorState), so this is what actually makes booking a
     // table visibly change its colour — plus a notification so staff see it
     // without having to be staring at the floor when it happens.
+    const tableLabel =
+      comboTables.length > 0
+        ? `Tables ${[table.tableNumber, ...comboTables.map((ct) => ct.tableNumber)].join(" + ")}`
+        : `Table ${table.tableNumber}`;
     await notify(restaurant.id, {
       type: "RESERVATION_MADE",
       title: `New booking: ${input.customerName} (${input.partySize})`,
-      body: `Table ${table.tableNumber} · ${input.date} ${input.time}`,
+      body: `${tableLabel} · ${input.date} ${input.time}`,
       tableId: table.id,
     });
     emitFloorChange(restaurant.id, "reservation");
@@ -150,6 +172,7 @@ export async function createReservationForRestaurant(
         time: input.time,
         partySize: input.partySize,
         tableNumber: table.tableNumber,
+        comboTableNumbers: comboTables.map((ct) => ct.tableNumber),
         manageToken,
       },
     };
@@ -336,7 +359,7 @@ export async function rescheduleReservationById(
 
   try {
     await withSerializableRetry(async (tx) => {
-      const table = await findAvailableTable({
+      const found = await findAvailableTable({
         restaurant,
         dateStr: newDate,
         time: newTime,
@@ -348,7 +371,8 @@ export async function rescheduleReservationById(
         excludeReservationId: reservationId,
         db: tx,
       });
-      if (!table) throw new NoAvailabilityError();
+      if (!found) throw new NoAvailabilityError();
+      const { table, comboTables } = found;
 
       await tx.reservation.update({
         where: { id: reservationId },
@@ -356,6 +380,13 @@ export async function rescheduleReservationById(
           reservationTime: combineDateAndTime(newDate, newTime, restaurant.timezone),
           partySize,
           tableId: table.id,
+          // Replace wholesale rather than diffing — the new slot's combo (if
+          // any) rarely shares tables with the old one, and this reservation
+          // is the only owner of its own ReservationTable rows.
+          comboTables: {
+            deleteMany: {},
+            create: comboTables.map((ct) => ({ tableId: ct.id })),
+          },
         },
       });
     });

@@ -173,6 +173,7 @@ model DiningTable {
   reservations   Reservation[]
   tableSessions  TableSession[]
   statusHistory  TableStatusHistory[]
+  comboFor       ReservationTable[]
 
   @@unique([restaurantId, tableNumber])
   @@index([restaurantId, status])
@@ -218,9 +219,31 @@ model Reservation {
   updatedAt        DateTime     @updatedAt
 
   tableSession     TableSession?
+  // Extra tables held alongside `tableId` (the primary/anchor) for a party
+  // too big for any single table — see findAvailableTable's combo fallback
+  // in availability.ts. Empty for an ordinary single-table booking.
+  comboTables      ReservationTable[]
 
   @@index([restaurantId, reservationTime])
   @@index([restaurantId, status])
+}
+
+// Join row for a multi-table reservation's *extra* tables (the primary table
+// is still `Reservation.tableId`). Kept separate from Reservation/DiningTable
+// rather than a JSON array so conflict-checking can join against it directly
+// with normal relational queries instead of parsing/scanning encoded text —
+// the same reasoning that ruled out JSON for Plan.features not applying here,
+// since this data is queried (not just displayed).
+model ReservationTable {
+  id            String      @id @default(cuid())
+  reservationId String
+  reservation   Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  tableId       String
+  table         DiningTable @relation(fields: [tableId], references: [id], onDelete: Cascade)
+  createdAt     DateTime    @default(now())
+
+  @@unique([reservationId, tableId])
+  @@index([tableId])
 }
 
 // ── Host Flow: an active/closed seating of a table ────────────────────────

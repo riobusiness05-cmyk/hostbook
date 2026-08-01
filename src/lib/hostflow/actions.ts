@@ -218,6 +218,19 @@ export async function seatParty(
   if (table.status === "OCCUPIED") throw new HostFlowError("Table is already occupied");
   if (table.status === "BLOCKED") throw new HostFlowError("Table is blocked");
 
+  // A reservation booked for a party too big for one table (see
+  // findAvailableTable's combo fallback in availability.ts) has its extra
+  // tables recorded on ReservationTable — merge them into the primary now,
+  // as part of seating, so the host never has to click "Merge" separately.
+  if (params.reservationId) {
+    const comboTables = await prisma.reservationTable.findMany({ where: { reservationId: params.reservationId } });
+    for (const ct of comboTables) {
+      if (ct.tableId !== params.tableId) {
+        await mergeTables(restaurantId, params.tableId, ct.tableId);
+      }
+    }
+  }
+
   const seatedAt = new Date();
   const duration = params.durationMinutes ?? settings.avgDiningMinutes;
 

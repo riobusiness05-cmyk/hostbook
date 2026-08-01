@@ -131,6 +131,74 @@ function rangesOverlap(aStart: number, aEnd: number, bStart: number, bEnd: numbe
   return aStart < bEnd && bStart < aEnd;
 }
 
+type TableWithSection = Prisma.DiningTableGetPayload<{ include: { section: true } }>;
+
+function distanceBetween(a: { x: number; y: number; width: number; height: number }, b: typeof a): number {
+  const acx = a.x + a.width / 2;
+  const acy = a.y + a.height / 2;
+  const bcx = b.x + b.width / 2;
+  const bcy = b.y + b.height / 2;
+  return Math.hypot(acx - bcx, acy - bcy);
+}
+
+/**
+ * When no single table seats `partySize`, look for a group of joinable,
+ * same-section tables that together do — anchored on the biggest table that
+ * still isn't big enough alone, then adding its nearest neighbours (closest
+ * first) until capacity is met. This mirrors how a host actually does it in
+ * person: start with the biggest table, pull in whatever's physically next
+ * to it, stop as soon as there's enough seats. Across candidate anchors,
+ * prefers fewer tables, then less wasted capacity, then a tighter cluster.
+ * Returns null if even every free table in the section can't cover the
+ * party (that's a "call the restaurant" case, not a booking bug).
+ */
+function findTableCombo(
+  freeTables: TableWithSection[],
+  partySize: number
+): { primary: TableWithSection; extras: TableWithSection[] } | null {
+  const bySection = new Map<string, TableWithSection[]>();
+  for (const t of freeTables) {
+    if (!t.isJoinable || t.mergedIntoId) continue;
+    const key = t.sectionId ?? "__none__";
+    (bySection.get(key) ?? bySection.set(key, []).get(key)!).push(t);
+  }
+
+  let best: { primary: TableWithSection; extras: TableWithSection[]; tableCount: number; waste: number; spread: number } | null = null;
+
+  for (const tables of bySection.values()) {
+    if (tables.length < 2) continue;
+    const anchors = [...tables].sort((a, b) => b.capacityMax - a.capacityMax || a.tableNumber - b.tableNumber);
+    for (const anchor of anchors) {
+      if (anchor.capacityMax >= partySize) continue; // a single table already covers this — no combo needed
+      const others = tables
+        .filter((t) => t.id !== anchor.id)
+        .sort((a, b) => distanceBetween(anchor, a) - distanceBetween(anchor, b) || a.tableNumber - b.tableNumber);
+      const extras: TableWithSection[] = [];
+      let total = anchor.capacityMax;
+      let spread = 0;
+      for (const t of others) {
+        if (total >= partySize) break;
+        extras.push(t);
+        total += t.capacityMax;
+        spread += distanceBetween(anchor, t);
+      }
+      if (total < partySize) continue;
+      const tableCount = 1 + extras.length;
+      const waste = total - partySize;
+      if (
+        !best ||
+        tableCount < best.tableCount ||
+        (tableCount === best.tableCount && waste < best.waste) ||
+        (tableCount === best.tableCount && waste === best.waste && spread < best.spread)
+      ) {
+        best = { primary: anchor, extras, tableCount, waste, spread };
+      }
+    }
+  }
+
+  return best ? { primary: best.primary, extras: best.extras } : null;
+}
+
 /** Whole calendar days between today and `dateStr` (0 = today), for the
  *  `bookingWindowDays` cap — how far ahead guests may book online. */
 function daysUntil(dateStr: string, timeZone: string): number {
@@ -214,7 +282,17 @@ export async function getAvailableSlots(params: {
   const blackouts = await getBlackoutForDate(restaurant.id, dateStr, restaurant.timezone);
   if (blackouts.some((b) => b.fullDay)) return [];
 
-  return computeSlots({ restaurant, dateStr, partySize, intervalMinutes, hours, blackouts, earliestMinute, maxBookingsPer15Min: settings.maxBookingsPer15Min });
+  return computeSlots({
+    restaurant,
+    dateStr,
+    partySize,
+    intervalMinutes,
+    hours,
+    blackouts,
+    earliestMinute,
+    maxBookingsPer15Min: settings.maxBookingsPer15Min,
+    tableMergingEnabled: settings.tableMergingEnabled,
+  });
 }
 
 // Split out from getAvailableSlots for clarity/testability.
@@ -227,16 +305,20 @@ async function computeSlots(params: {
   blackouts: { fullDay: boolean; startTime: string | null; endTime: string | null }[];
   earliestMinute: number;
   maxBookingsPer15Min: number;
+  tableMergingEnabled: boolean;
 }): Promise<string[]> {
-  const { restaurant, dateStr, partySize, intervalMinutes, hours, blackouts, earliestMinute, maxBookingsPer15Min } = params;
+  const { restaurant, dateStr, partySize, intervalMinutes, hours, blackouts, earliestMinute, maxBookingsPer15Min, tableMergingEnabled } = params;
 
+  // Not pre-filtered by capacity: a party too big for any single table may
+  // still fit a combo of tables (see findTableCombo below), so every active,
+  // in-service table stays a candidate until the per-slot check below.
   const tables = await prisma.diningTable.findMany({
     where: {
       restaurantId: restaurant.id,
       isActive: true,
       status: { not: "BLOCKED" }, // out-of-service tables (e.g. broken furniture) are never bookable
-      capacityMax: { gte: partySize },
     },
+    include: { section: true },
   });
   if (tables.length === 0) return [];
 
@@ -248,8 +330,22 @@ async function computeSlots(params: {
       status: { in: ACTIVE_STATUSES },
       reservationTime: { gte: dayStart, lte: dayEnd },
     },
+    include: { comboTables: true },
   });
   const sessionRanges = await getActiveSessionRanges(restaurant.id, dateStr, restaurant.timezone);
+
+  // Every table a reservation holds for the day — its primary table plus any
+  // combo tables — as time ranges, keyed by table id. A combo's extra tables
+  // aren't anyone's `tableId`, so without this they'd read as free all day.
+  const heldRanges = new Map<string, { start: number; end: number }[]>();
+  for (const r of existingReservations) {
+    const rStart = minutesOfDayInTz(r.reservationTime, restaurant.timezone);
+    const rEnd = rStart + r.durationMinutes;
+    const heldTableIds = [r.tableId, ...r.comboTables.map((ct) => ct.tableId)].filter((id): id is string => !!id);
+    for (const id of heldTableIds) {
+      (heldRanges.get(id) ?? heldRanges.set(id, []).get(id)!).push({ start: rStart, end: rEnd });
+    }
+  }
 
   const duration = restaurant.defaultReservationMinutes;
   const openMin = timeToMinutes(hours.openTime);
@@ -284,18 +380,17 @@ async function computeSlots(params: {
     }).length;
     if (bucketCount >= maxBookingsPer15Min) continue; // kitchen/service pacing cap for this window
 
-    const hasFreeTable = tables.some((table) => {
-      const conflicting = existingReservations.filter((r) => r.tableId === table.id);
-      const reservationConflict = conflicting.some((r) => {
-        const rStart = minutesOfDayInTz(r.reservationTime, restaurant.timezone);
-        const rEnd = rStart + r.durationMinutes;
-        return rangesOverlap(slotStart, slotEnd, rStart, rEnd);
-      });
-      if (reservationConflict) return false;
+    const freeTables = tables.filter((table) => {
+      const held = heldRanges.get(table.id);
+      if (held?.some((r) => rangesOverlap(slotStart, slotEnd, r.start, r.end))) return false;
       const session = sessionRanges.get(table.id);
       if (session && rangesOverlap(slotStart, slotEnd, session.start, session.end)) return false;
       return true;
     });
+
+    const hasFreeTable =
+      freeTables.some((t) => t.capacityMax >= partySize) ||
+      (tableMergingEnabled && findTableCombo(freeTables, partySize) !== null);
 
     if (hasFreeTable) slots.push(minutesToTime(slotStart));
   }
@@ -327,7 +422,7 @@ export async function findAvailableTable(params: {
   seatingPreference?: string;
   excludeReservationId?: string;
   db?: Prisma.TransactionClient;
-}) {
+}): Promise<{ table: TableWithSection; comboTables: TableWithSection[] } | null> {
   const { restaurant, dateStr, time, partySize, seatingPreference, excludeReservationId, db = prisma } = params;
 
   const settings = await getSettings(restaurant.id);
@@ -394,9 +489,23 @@ export async function findAvailableTable(params: {
         status: { in: ACTIVE_STATUSES },
         reservationTime: { gte: dayStart, lte: dayEnd },
       },
+      include: { comboTables: true },
     })
   ).filter((r) => r.id !== excludeReservationId);
   const sessionRanges = await getActiveSessionRanges(restaurant.id, dateStr, restaurant.timezone, db);
+
+  // A combo reservation's extra tables aren't anyone's `tableId`, so without
+  // this a table held as part of someone else's big-party combo would read
+  // as free and get double-booked underneath it.
+  const comboHeldRanges = new Map<string, { start: number; end: number }[]>();
+  for (const r of existingReservations) {
+    if (r.comboTables.length === 0) continue;
+    const rStart = minutesOfDayInTz(r.reservationTime, restaurant.timezone);
+    const rEnd = rStart + r.durationMinutes;
+    for (const ct of r.comboTables) {
+      (comboHeldRanges.get(ct.tableId) ?? comboHeldRanges.set(ct.tableId, []).get(ct.tableId)!).push({ start: rStart, end: rEnd });
+    }
+  }
 
   const bucket = bucketStart(slotStart);
   const bucketCount = existingReservations.filter((r) => {
@@ -413,10 +522,39 @@ export async function findAvailableTable(params: {
       return rangesOverlap(slotStart, slotEnd, rStart, rEnd);
     });
     if (overlaps) continue;
+    const comboHeld = comboHeldRanges.get(table.id);
+    if (comboHeld?.some((r) => rangesOverlap(slotStart, slotEnd, r.start, r.end))) continue;
     const session = sessionRanges.get(table.id);
     if (session && rangesOverlap(slotStart, slotEnd, session.start, session.end)) continue;
-    return table;
+    return { table, comboTables: [] };
   }
 
-  return null;
+  // No single table fits — fall back to combining tables, if the restaurant
+  // allows it. Pulls every active, non-blocked table (not just ones already
+  // big enough alone) and narrows to whichever are actually free for this
+  // exact slot, then hands that pool to findTableCombo.
+  if (!settings.tableMergingEnabled) return null;
+
+  const allTables = await db.diningTable.findMany({
+    where: { restaurantId: restaurant.id, isActive: true, status: { not: "BLOCKED" } },
+    include: { section: true },
+  });
+  const freeTables = allTables.filter((table) => {
+    const conflicting = existingReservations.filter((r) => r.tableId === table.id);
+    const overlaps = conflicting.some((r) => {
+      const rStart = minutesOfDayInTz(r.reservationTime, restaurant.timezone);
+      const rEnd = rStart + r.durationMinutes;
+      return rangesOverlap(slotStart, slotEnd, rStart, rEnd);
+    });
+    if (overlaps) return false;
+    const comboHeld = comboHeldRanges.get(table.id);
+    if (comboHeld?.some((r) => rangesOverlap(slotStart, slotEnd, r.start, r.end))) return false;
+    const session = sessionRanges.get(table.id);
+    if (session && rangesOverlap(slotStart, slotEnd, session.start, session.end)) return false;
+    return true;
+  });
+
+  const combo = findTableCombo(freeTables, partySize);
+  if (!combo) return null;
+  return { table: combo.primary, comboTables: combo.extras };
 }
