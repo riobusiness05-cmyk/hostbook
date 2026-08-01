@@ -14,6 +14,9 @@ export type DayBooking = {
   partySize: number;
   tableId: string | null;
   tableNumber: number | null;
+  // Extra tables held alongside tableId for a party too big for one table —
+  // empty for an ordinary single-table booking.
+  comboTableNumbers: number[];
   sectionName: string | null;
   occasion: string | null;
   seatingPreference: string | null;
@@ -62,13 +65,21 @@ export async function getDayPlan(restaurantId: string, dateStr: string): Promise
         status: { in: ["PENDING", "CONFIRMED", "ARRIVED", "SEATED"] },
         reservationTime: { gte: dayStart, lte: dayEnd },
       },
+      include: { comboTables: true },
       orderBy: { reservationTime: "asc" },
     }),
   ]);
 
+  // A combo reservation's extra tables aren't anyone's `tableId` — without
+  // registering them too, a big-party booking spanning e.g. Tables 15+16
+  // would only show Table 16 as booked on this day's plan, leaving Table 15
+  // free to double-book.
   const bookingsByTable = new Map<string, number>();
   for (const r of reservations) {
-    if (r.tableId) bookingsByTable.set(r.tableId, (bookingsByTable.get(r.tableId) ?? 0) + 1);
+    const heldTableIds = [r.tableId, ...r.comboTables.map((ct) => ct.tableId)].filter((id): id is string => !!id);
+    for (const id of heldTableIds) {
+      bookingsByTable.set(id, (bookingsByTable.get(id) ?? 0) + 1);
+    }
   }
 
   const tableDTOs: TableDTO[] = tables.map((t) => {
@@ -125,6 +136,9 @@ export async function getDayPlan(restaurantId: string, dateStr: string): Promise
       partySize: r.partySize,
       tableId: r.tableId,
       tableNumber: info?.number ?? null,
+      comboTableNumbers: r.comboTables
+        .map((ct) => tableInfoById.get(ct.tableId)?.number)
+        .filter((n): n is number => n != null),
       sectionName: info?.sectionId ? sectionNameById.get(info.sectionId) ?? null : null,
       occasion: r.occasion,
       seatingPreference: r.seatingPreference,

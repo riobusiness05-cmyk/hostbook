@@ -115,7 +115,11 @@ export function DayView({ date, dateLabel }: { date: string; dateLabel: string }
                         b.tableNumber ? "bg-blue-500/15 text-blue-600 hover:bg-blue-500/25 dark:text-blue-300" : "bg-black/5 text-neutral-400 dark:bg-white/10"
                       )}
                     >
-                      {b.tableNumber ? `Table ${b.tableNumber}` : "Unassigned"}
+                      {b.tableNumber
+                        ? b.comboTableNumbers.length > 0
+                          ? `Tables ${[b.tableNumber, ...b.comboTableNumbers].join("+")}`
+                          : `Table ${b.tableNumber}`
+                        : "Unassigned"}
                     </button>
                   </div>
                   <div className="mt-1.5 flex flex-wrap items-center gap-x-2 text-xs text-neutral-500 dark:text-neutral-400">
