@@ -20,12 +20,24 @@ async function recordStatus(
   const table = await prisma.diningTable.findUnique({ where: { id: tableId } });
   if (!table || table.restaurantId !== restaurantId) throw new HostFlowError("Table not found", 404);
   if (table.status === toStatus) return table;
-  await prisma.$transaction([
-    prisma.diningTable.update({ where: { id: tableId }, data: { status: toStatus } }),
-    prisma.tableStatusHistory.create({
-      data: { restaurantId, tableId, fromStatus: table.status, toStatus, note },
-    }),
-  ]);
+  const fromStatus = table.status;
+  // Conditional on the status still matching what we just read — the same
+  // compare-and-swap the seating/merge flows use — so a second transition
+  // that raced this one (e.g. a party got seated between the read above and
+  // this write) can't silently overwrite it or record a stale `fromStatus`
+  // in the audit trail.
+  await prisma.$transaction(async (tx) => {
+    const claimed = await tx.diningTable.updateMany({
+      where: { id: tableId, status: fromStatus },
+      data: { status: toStatus },
+    });
+    if (claimed.count === 0) {
+      throw new HostFlowError("This table's status just changed — refresh and try again.", 409);
+    }
+    await tx.tableStatusHistory.create({
+      data: { restaurantId, tableId, fromStatus, toStatus, note },
+    });
+  });
   return table;
 }
 
@@ -477,7 +489,17 @@ export async function updateReservationStatus(
   if ((status === "CANCELLED" || status === "NO_SHOW") && r.tableId) {
     const t = await prisma.diningTable.findUnique({ where: { id: r.tableId } });
     if (t && (t.status === "RESERVED" || t.status === "LATE" || t.status === "ARRIVING_SOON")) {
-      await recordStatus(restaurantId, r.tableId, "AVAILABLE", `Reservation ${status.toLowerCase()}`);
+      // Best-effort: the reservation itself is already updated above. If
+      // someone else changed this table's status in the meantime (e.g. the
+      // host manually freed it a moment earlier), recordStatus's optimistic
+      // lock rejects the stale write — that's fine, there's nothing left to
+      // free, so don't fail the whole request over a side effect that's
+      // already moot.
+      try {
+        await recordStatus(restaurantId, r.tableId, "AVAILABLE", `Reservation ${status.toLowerCase()}`);
+      } catch (err) {
+        if (!(err instanceof HostFlowError && err.status === 409)) throw err;
+      }
     }
   }
   emitFloorChange(restaurantId, "reservation");
