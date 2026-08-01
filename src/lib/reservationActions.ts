@@ -8,6 +8,8 @@ import {
   minutesOfDayInTz,
   earliestBookableMinute,
   getActiveSessionRanges,
+  toLocalDateStr,
+  toLocalTimeStr,
 } from "@/lib/availability";
 import { notify } from "@/lib/hostflow/actions";
 import { emitFloorChange } from "@/lib/hostflow/events";
@@ -48,15 +50,43 @@ async function withSerializableRetry<T>(fn: (tx: Prisma.TransactionClient) => Pr
   }
 }
 
+type CreatedReservationDTO = { id: string; date: string; time: string; partySize: number; tableNumber: number; manageToken: string };
+
+// Loads an existing reservation by idempotency key and shapes it into the
+// same DTO a fresh create would return — used both for the pre-check and
+// for resolving the race where two near-simultaneous requests with the same
+// key both pass that pre-check and one loses the unique-constraint race.
+async function findByIdempotencyKey(restaurant: Restaurant, key: string): Promise<CreatedReservationDTO | null> {
+  const existing = await prisma.reservation.findUnique({ where: { idempotencyKey: key }, include: { table: true } });
+  if (!existing || existing.restaurantId !== restaurant.id || !existing.table) return null;
+  return {
+    id: existing.id,
+    date: toLocalDateStr(existing.reservationTime, restaurant.timezone),
+    time: toLocalTimeStr(existing.reservationTime, restaurant.timezone),
+    partySize: existing.partySize,
+    tableNumber: existing.table.tableNumber,
+    manageToken: existing.manageToken ?? "",
+  };
+}
+
 export async function createReservationForRestaurant(
   restaurant: Restaurant,
   input: CreateReservationInput
-): Promise<ActionResult<{ id: string; date: string; time: string; partySize: number; tableNumber: number; manageToken: string }>> {
+): Promise<ActionResult<CreatedReservationDTO>> {
   if (input.partySize > restaurant.maxPartySize) {
     return {
       ok: false,
       error: `Parties larger than ${restaurant.maxPartySize} need to call the restaurant directly to book — I can't auto-book that size.`,
     };
+  }
+
+  // A retried/duplicate request for the same submission attempt — a network
+  // retry, or a double form-submit that slips past the disabled-button
+  // guard — resolves to the reservation that attempt already created,
+  // instead of creating a second, genuinely duplicate booking.
+  if (input.idempotencyKey) {
+    const existing = await findByIdempotencyKey(restaurant, input.idempotencyKey);
+    if (existing) return { ok: true, data: existing };
   }
 
   // Fold the boolean "high chair" request into notes so it travels with the
@@ -94,6 +124,7 @@ export async function createReservationForRestaurant(
             input.seatingPreference && input.seatingPreference !== "No preference" ? input.seatingPreference : null,
           accessibilityNeeds: input.accessibilityNeeds?.trim() || null,
           manageToken,
+          idempotencyKey: input.idempotencyKey || null,
         },
       });
       return { reservation, table };
@@ -128,6 +159,14 @@ export async function createReservationForRestaurant(
         ok: false,
         error: "That time is no longer available. Please suggest a different time or ask what's open.",
       };
+    }
+    // Two near-simultaneous requests carrying the same idempotency key can
+    // both pass the pre-check above and both attempt the insert — Postgres
+    // rejects the second on the unique constraint. Resolve it exactly like
+    // the pre-check hit: fetch and return the row the other request created.
+    if (input.idempotencyKey && err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      const existing = await findByIdempotencyKey(restaurant, input.idempotencyKey);
+      if (existing) return { ok: true, data: existing };
     }
     throw err;
   }

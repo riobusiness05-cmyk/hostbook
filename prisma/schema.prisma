@@ -206,6 +206,10 @@ model Reservation {
   // Unguessable token so a guest can view/modify/cancel their own booking
   // from the confirmation link without logging in.
   manageToken      String?      @unique
+  // Client-generated per-submission-attempt key (see createReservationForRestaurant)
+  // — a retried/duplicate request for the same attempt resolves to this same
+  // row instead of creating a second reservation.
+  idempotencyKey   String?      @unique
 
   confirmationSentAt DateTime?
   reminderSentAt     DateTime?

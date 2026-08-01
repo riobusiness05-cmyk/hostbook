@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import type { FloorState, TableDTO } from "@/lib/hostflow/floor";
 import { STATUS_META } from "@/lib/hostflow/constants";
 import { Button, Chip } from "./ui";
-import { cx, minutesLabel, money, timeOfDay } from "@/lib/host/format";
+import { cx, localDateStr, minutesLabel, money, timeOfDay } from "@/lib/host/format";
 import * as api from "@/lib/host/client";
 
 type Mode = "idle" | "seat" | "move" | "merge" | "reserve";
@@ -93,8 +93,8 @@ export function TablePanel({
           <DetailBlock title="Current guests">
             <Row label="Guest">{s.guestName}</Row>
             <Row label="Party size">{s.partySize}</Row>
-            <Row label="Seated">{timeOfDay(s.seatedAt)} · {minutesLabel(s.minutesSeated)} ago</Row>
-            <Row label="Expected finish">{timeOfDay(s.expectedFinishAt)}</Row>
+            <Row label="Seated">{timeOfDay(s.seatedAt, state.timezone)} · {minutesLabel(s.minutesSeated)} ago</Row>
+            <Row label="Expected finish">{timeOfDay(s.expectedFinishAt, state.timezone)}</Row>
             <Row label="Dining time">
               <span className={cx(s.isOverrun && "font-semibold text-red-600 dark:text-red-400")}>
                 {s.isOverrun ? `${minutesLabel(Math.abs(s.minutesRemaining))} over` : `${minutesLabel(s.minutesRemaining)} left`}
@@ -116,7 +116,7 @@ export function TablePanel({
           <DetailBlock title="Reservation">
             <Row label="Name">{r.customerName}</Row>
             <Row label="Party size">{r.partySize}</Row>
-            <Row label="Time">{timeOfDay(r.reservationTime)} · {r.isLate ? `${minutesLabel(Math.abs(r.minutesUntil))} late` : `in ${minutesLabel(r.minutesUntil)}`}</Row>
+            <Row label="Time">{timeOfDay(r.reservationTime, state.timezone)} · {r.isLate ? `${minutesLabel(Math.abs(r.minutesUntil))} late` : `in ${minutesLabel(r.minutesUntil)}`}</Row>
             {r.occasion && <Row label="Occasion">{r.occasion}</Row>}
             {r.seatingPreference && <Row label="Preference">{r.seatingPreference}</Row>}
             {r.accessibilityNeeds && <Row label="Accessibility">{r.accessibilityNeeds}</Row>}
@@ -187,6 +187,7 @@ export function TablePanel({
         {mode === "reserve" && (
           <ReserveForm
             table={table}
+            timezone={state.timezone}
             busy={busy}
             onCancel={() => setMode("idle")}
             onSubmit={(input) =>
@@ -389,18 +390,15 @@ function SeatForm({
   );
 }
 
-function todayStr() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
 function ReserveForm({
   table,
+  timezone,
   busy,
   onSubmit,
   onCancel,
 }: {
   table: TableDTO;
+  timezone: string;
   busy: boolean;
   onSubmit: (v: {
     date: string;
@@ -412,6 +410,7 @@ function ReserveForm({
   }) => void;
   onCancel: () => void;
 }) {
+  const todayStr = () => localDateStr(new Date().toISOString(), timezone);
   const [date, setDate] = useState(todayStr());
   const [time, setTime] = useState("");
   const [partySize, setPartySize] = useState(Math.min(2, table.seatsMax));

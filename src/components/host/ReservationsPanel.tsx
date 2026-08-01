@@ -3,33 +3,26 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FloorState, ReservationDTO } from "@/lib/hostflow/floor";
 import { Button, Card, Chip, SectionTitle } from "./ui";
-import { cx, minutesLabel, timeOfDay } from "@/lib/host/format";
+import { cx, localDateStr, minutesLabel, minutesOfDayInTz, timeOfDay } from "@/lib/host/format";
 import { NewReservationForm } from "./NewReservationForm";
 import * as api from "@/lib/host/client";
 
-function dateKey(iso: string): string {
-  const d = new Date(iso);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+// All date/time grouping here is keyed off the RESTAURANT's timezone (see
+// FloorState.timezone), not the viewing device's — otherwise a host on a
+// device set to a different zone than the venue sees bookings grouped into
+// the wrong day and displayed at the wrong time.
+function dateLabel(iso: string, timeZone: string): string {
+  const today = localDateStr(new Date().toISOString(), timeZone);
+  const tomorrow = localDateStr(new Date(Date.now() + 24 * 60 * 60000).toISOString(), timeZone);
+  const key = localDateStr(iso, timeZone);
+  if (key === today) return "Today";
+  if (key === tomorrow) return "Tomorrow";
+  return new Date(iso).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short", timeZone });
 }
 
 function timeToMinutes(time: string): number {
   const [h, m] = time.split(":").map(Number);
   return h * 60 + m;
-}
-
-function minutesOfDay(iso: string): number {
-  const d = new Date(iso);
-  return d.getHours() * 60 + d.getMinutes();
-}
-
-function dateLabel(iso: string): string {
-  const d = new Date(iso);
-  const today = new Date();
-  const tomorrow = new Date();
-  tomorrow.setDate(today.getDate() + 1);
-  if (dateKey(iso) === dateKey(today.toISOString())) return "Today";
-  if (dateKey(iso) === dateKey(tomorrow.toISOString())) return "Tomorrow";
-  return d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
 }
 
 // Reservations grouped by date (Today, Tomorrow, then future dates), each row
@@ -54,7 +47,7 @@ export function ReservationsPanel({
   // time, staff opening this tab almost always want tonight's bookings, not
   // this afternoon's.
   const [shift, setShift] = useState<"day" | "night">(() =>
-    new Date().getHours() * 60 + new Date().getMinutes() >= shiftStart ? "night" : "day"
+    minutesOfDayInTz(new Date().toISOString(), state.timezone) >= shiftStart ? "night" : "day"
   );
 
   // Pause live refreshes while the New Reservation form is open so a tick
@@ -68,7 +61,7 @@ export function ReservationsPanel({
     () => new Map(state.tables.map((t) => [t.id, t.tableNumber])),
     [state.tables]
   );
-  const todayKey = dateKey(new Date().toISOString());
+  const todayKey = localDateStr(new Date().toISOString(), state.timezone);
 
   // Group by date, preserving chronological order — filtered to whichever
   // shift is selected (bookings before the shift-start time = day, at/after
@@ -76,21 +69,23 @@ export function ReservationsPanel({
   // night" is just as filterable as "tonight."
   const groups = useMemo(() => {
     const filtered = state.reservations.filter((r) =>
-      shift === "night" ? minutesOfDay(r.reservationTime) >= shiftStart : minutesOfDay(r.reservationTime) < shiftStart
+      shift === "night"
+        ? minutesOfDayInTz(r.reservationTime, state.timezone) >= shiftStart
+        : minutesOfDayInTz(r.reservationTime, state.timezone) < shiftStart
     );
     const sorted = [...filtered].sort(
       (a, b) => new Date(a.reservationTime).getTime() - new Date(b.reservationTime).getTime()
     );
     const map = new Map<string, ReservationDTO[]>();
     for (const r of sorted) {
-      const k = dateKey(r.reservationTime);
+      const k = localDateStr(r.reservationTime, state.timezone);
       (map.get(k) ?? map.set(k, []).get(k)!).push(r);
     }
     return Array.from(map.entries());
-  }, [state.reservations, shift, shiftStart]);
+  }, [state.reservations, state.timezone, shift, shiftStart]);
 
-  const dayCount = state.reservations.filter((r) => minutesOfDay(r.reservationTime) < shiftStart).length;
-  const nightCount = state.reservations.filter((r) => minutesOfDay(r.reservationTime) >= shiftStart).length;
+  const dayCount = state.reservations.filter((r) => minutesOfDayInTz(r.reservationTime, state.timezone) < shiftStart).length;
+  const nightCount = state.reservations.filter((r) => minutesOfDayInTz(r.reservationTime, state.timezone) >= shiftStart).length;
 
   const act = async (id: string, status: string) => {
     setBusyId(id);
@@ -147,6 +142,7 @@ export function ReservationsPanel({
       <div className="-mx-1 flex-1 space-y-3 overflow-y-auto px-1">
         {adding && (
           <NewReservationForm
+            timezone={state.timezone}
             onDone={() => {
               setPaused?.(false);
               setAdding(false);
@@ -163,7 +159,7 @@ export function ReservationsPanel({
         {groups.map(([key, rows]) => (
           <div key={key} className="space-y-2">
             <div className="sticky top-0 z-[1] bg-white/80 py-1 text-xs font-semibold uppercase tracking-wide text-neutral-500 backdrop-blur dark:bg-neutral-950/80 dark:text-neutral-400">
-              {dateLabel(rows[0].reservationTime)} · {rows.length}
+              {dateLabel(rows[0].reservationTime, state.timezone)} · {rows.length}
             </div>
             {rows.map((r) => {
               const tableNo = r.tableId ? tableNumberById.get(r.tableId) : undefined;
@@ -181,7 +177,7 @@ export function ReservationsPanel({
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex min-w-0 items-baseline gap-2">
                       <span className="text-base font-bold tabular-nums text-neutral-900 dark:text-white">
-                        {timeOfDay(r.reservationTime)}
+                        {timeOfDay(r.reservationTime, state.timezone)}
                       </span>
                       <span className="truncate text-sm font-medium text-neutral-700 dark:text-neutral-200">
                         {r.customerName}

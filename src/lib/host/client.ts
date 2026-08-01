@@ -91,6 +91,7 @@ export type NewReservationInput = {
   accessibilityNeeds?: string;
   highChair?: boolean;
   notes?: string;
+  idempotencyKey?: string;
 };
 
 export async function createReservation(

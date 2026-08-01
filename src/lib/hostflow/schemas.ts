@@ -4,7 +4,7 @@ import { TABLE_STATUSES, WALKIN_PRIORITIES } from "./constants";
 export const tableActionSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("seat"),
-    guestName: z.string().min(1).max(120),
+    guestName: z.string().trim().min(1).max(120),
     partySize: z.number().int().min(1).max(30),
     source: z.enum(["WALKIN", "RESERVATION"]).default("WALKIN"),
     reservationId: z.string().optional(),
@@ -33,7 +33,7 @@ export const tableActionSchema = z.discriminatedUnion("action", [
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
     partySize: z.number().int().min(1).max(30),
-    customerName: z.string().min(1).max(120),
+    customerName: z.string().trim().min(1).max(120),
     customerPhone: z.string().max(40).optional(),
     occasion: z.string().max(60).optional(),
   }),
@@ -42,7 +42,7 @@ export const tableActionSchema = z.discriminatedUnion("action", [
 export type TableAction = z.infer<typeof tableActionSchema>;
 
 export const createWalkinSchema = z.object({
-  name: z.string().min(1).max(120),
+  name: z.string().trim().min(1).max(120),
   phone: z.string().max(40).optional(),
   partySize: z.number().int().min(1).max(30),
   priority: z.enum(WALKIN_PRIORITIES).default("NORMAL"),

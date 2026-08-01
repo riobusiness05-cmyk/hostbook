@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FloorState } from "@/lib/hostflow/floor";
 import { useFloorStream } from "@/lib/host/useFloorStream";
-import { cx } from "@/lib/host/format";
+import { cx, localDateStr } from "@/lib/host/format";
 import { DashboardMetrics } from "./DashboardMetrics";
 import { FloorPlan } from "./FloorPlan";
 import { TablePanel } from "./TablePanel";
@@ -20,22 +20,23 @@ import Link from "next/link";
 
 type RailTab = "waitlist" | "reservations" | "seated" | "assistant" | "alerts";
 
-function ymd(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+// Keyed off the RESTAURANT's timezone (FloorState.timezone), not the
+// viewing device's — otherwise "Today" can silently mean the wrong day for
+// a host checking in from a device set to a different zone than the venue.
+function todayStr(timeZone: string): string {
+  return localDateStr(new Date().toISOString(), timeZone);
 }
-function todayStr(): string {
-  return ymd(new Date());
+function tomorrowStr(timeZone: string): string {
+  return localDateStr(new Date(Date.now() + 24 * 60 * 60000).toISOString(), timeZone);
 }
-function tomorrowStr(): string {
-  const d = new Date();
-  d.setDate(d.getDate() + 1);
-  return ymd(d);
-}
-function dayLabel(dateStr: string): string {
-  if (dateStr === todayStr()) return "Today";
-  if (dateStr === tomorrowStr()) return "Tomorrow";
+function dayLabel(dateStr: string, timeZone: string): string {
+  if (dateStr === todayStr(timeZone)) return "Today";
+  if (dateStr === tomorrowStr(timeZone)) return "Tomorrow";
   const [y, m, d] = dateStr.split("-").map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+  // Noon UTC sidesteps any date-boundary ambiguity when re-deriving a
+  // weekday label from a bare calendar date — mirrors the "pure calendar
+  // math stays in UTC" approach already used server-side.
+  return new Date(Date.UTC(y, m - 1, d, 12)).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short", timeZone });
 }
 
 export function HostApp({
@@ -64,14 +65,14 @@ export function HostApp({
 
   // Live clock
   useEffect(() => {
-    const update = () => setClock(new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }));
+    const update = () => setClock(new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit", timeZone: state.timezone }));
     update();
     const id = setInterval(update, 15000);
     return () => clearInterval(id);
-  }, []);
+  }, [state.timezone]);
 
-  const [viewDate, setViewDate] = useState<string>(todayStr());
-  const isToday = viewDate === todayStr();
+  const [viewDate, setViewDate] = useState<string>(todayStr(state.timezone));
+  const isToday = viewDate === todayStr(state.timezone);
 
   // Below `lg`, the floor plan and the waitlist/reservations rail can't sit
   // side by side, so only one shows at a time — this picks which. Selecting
@@ -109,7 +110,7 @@ export function HostApp({
             </div>
 
             <div className="flex flex-wrap items-center justify-end gap-2">
-              <DateToggle viewDate={viewDate} setViewDate={setViewDate} />
+              <DateToggle viewDate={viewDate} setViewDate={setViewDate} timezone={state.timezone} />
               <span className="hidden text-sm font-medium tabular-nums text-neutral-500 dark:text-neutral-400 sm:inline">
                 {isToday ? clock : ""}
               </span>
@@ -143,7 +144,7 @@ export function HostApp({
         <main className="mx-auto max-w-[1600px] space-y-3 p-3 sm:p-4">
           <BillingBanner billing={billing} />
           {!isToday ? (
-            <DayView date={viewDate} dateLabel={dayLabel(viewDate)} />
+            <DayView date={viewDate} dateLabel={dayLabel(viewDate, state.timezone)} />
           ) : (
           <>
           <DashboardMetrics state={state} />
@@ -222,9 +223,9 @@ export function HostApp({
   );
 }
 
-function DateToggle({ viewDate, setViewDate }: { viewDate: string; setViewDate: (d: string) => void }) {
-  const today = todayStr();
-  const tomorrow = tomorrowStr();
+function DateToggle({ viewDate, setViewDate, timezone }: { viewDate: string; setViewDate: (d: string) => void; timezone: string }) {
+  const today = todayStr(timezone);
+  const tomorrow = tomorrowStr(timezone);
   const isCustom = viewDate !== today && viewDate !== tomorrow;
   return (
     <div className="flex items-center gap-1 rounded-lg border border-black/10 bg-white/60 p-0.5 text-xs dark:border-white/15 dark:bg-white/5">

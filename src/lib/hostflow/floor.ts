@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
   OCCUPIED_STATUSES,
@@ -151,6 +152,11 @@ export type WaitingOutdoorDTO = {
 export type FloorState = {
   restaurantId: string;
   generatedAt: string;
+  // IANA zone, e.g. "Atlantic/Canary" — every client-side date/time display
+  // (see src/lib/host/format.ts) must format against this, not the
+  // viewing device's own timezone, or a host checking the dashboard from a
+  // device set to a different zone than the venue sees the wrong time.
+  timezone: string;
   tables: TableDTO[];
   sections: SectionDTO[];
   staff: StaffDTO[];
@@ -190,9 +196,29 @@ export type SettingsDTO = {
 const minutesBetween = (a: Date, b: Date) => Math.round((a.getTime() - b.getTime()) / 60000);
 
 export async function getSettings(restaurantId: string): Promise<SettingsDTO> {
-  const s =
-    (await prisma.restaurantSettings.findUnique({ where: { restaurantId } })) ??
-    (await prisma.restaurantSettings.create({ data: { restaurantId } }));
+  // Read-first, not upsert: getSettings is called from deep inside other
+  // requests' code paths, sometimes from within an existing Serializable
+  // transaction (see findAvailableTable) — an upsert forces every single
+  // call to take a write lock even when nothing needs to change, which is
+  // needless overhead and, once nested under a Serializable transaction on
+  // an engine with database-level write locking, can deadlock against
+  // itself. The settings row exists for every restaurant after its first
+  // request ever, so this stays a cheap read in the overwhelmingly common
+  // case; only the genuinely-missing case below touches a write, with a
+  // race-safe fallback for two concurrent first-ever requests both missing
+  // the read and both attempting the create.
+  let s = await prisma.restaurantSettings.findUnique({ where: { restaurantId } });
+  if (!s) {
+    try {
+      s = await prisma.restaurantSettings.create({ data: { restaurantId } });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+        s = await prisma.restaurantSettings.findUniqueOrThrow({ where: { restaurantId } });
+      } else {
+        throw err;
+      }
+    }
+  }
   return {
     maxBookingsPer15Min: s.maxBookingsPer15Min,
     bookingIntervalMinutes: s.bookingIntervalMinutes,
@@ -228,7 +254,8 @@ export async function getFloorState(restaurantId: string): Promise<FloorState> {
   const nowDate = new Date();
   const settings = await getSettings(restaurantId);
 
-  const [tables, sessions, reservations, walkins, notifications, sections, staff, noShowCount] = await Promise.all([
+  const [restaurant, tables, sessions, reservations, walkins, notifications, sections, staff, noShowCount] = await Promise.all([
+    prisma.restaurant.findUniqueOrThrow({ where: { id: restaurantId }, select: { timezone: true } }),
     prisma.diningTable.findMany({
       where: { restaurantId, isActive: true },
       include: { section: true, server: true },
@@ -507,6 +534,7 @@ export async function getFloorState(restaurantId: string): Promise<FloorState> {
   return {
     restaurantId,
     generatedAt: nowDate.toISOString(),
+    timezone: restaurant.timezone,
     tables: tableDTOs,
     sections: sectionDTOs,
     staff: staffDTOs,

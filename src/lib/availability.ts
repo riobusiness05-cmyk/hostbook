@@ -366,7 +366,10 @@ export async function findAvailableTable(params: {
       capacityMax: { gte: partySize },
     },
     include: { section: true },
-    orderBy: { capacityMax: "asc" }, // prefer the smallest table that fits, save big tables for big parties
+    // Prefer the smallest table that fits; tableNumber is a tie-break so two
+    // equal-capacity tables always resolve the same way — Postgres doesn't
+    // guarantee row order on a tie without an explicit secondary sort key.
+    orderBy: [{ capacityMax: "asc" }, { tableNumber: "asc" }],
   });
 
   // Honour an area seating preference (e.g. "Back Terrace"): float tables in

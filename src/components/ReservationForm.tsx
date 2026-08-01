@@ -1,13 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 
-function todayStr(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+// Uses the RESTAURANT's timezone, not the visiting browser's — otherwise a
+// guest booking from a different timezone could pick a date that reads as
+// "today" locally but is already tomorrow (or vice versa) at the venue.
+function localDateStr(date: Date, timeZone: string): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
 }
 
-export default function ReservationForm({ maxPartySize }: { maxPartySize: number }) {
+export default function ReservationForm({ maxPartySize, timezone }: { maxPartySize: number; timezone: string }) {
+  const todayStr = () => localDateStr(new Date(), timezone);
   const [date, setDate] = useState("");
   const [partySize, setPartySize] = useState(2);
   const [slots, setSlots] = useState<string[]>([]);
@@ -19,15 +22,26 @@ export default function ReservationForm({ maxPartySize }: { maxPartySize: number
   const [phone, setPhone] = useState("");
   const [notes, setNotes] = useState("");
   const [status, setStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  // Stable for the lifetime of this booking attempt — a network retry or a
+  // double-click that slips past the disabled-button guard reuses the same
+  // key, so the server resolves it to one reservation instead of two.
+  const idempotencyKeyRef = useRef(crypto.randomUUID());
+  // Guards against an out-of-order response: if the date/party size changes
+  // again before an in-flight availability check returns, a slower earlier
+  // response landing after a newer one would otherwise overwrite the
+  // correct slots with stale ones.
+  const checkSeq = useRef(0);
 
   async function checkAvailability() {
     if (!date) return;
+    const seq = ++checkSeq.current;
     setChecking(true);
     setStatus(null);
     setSelectedTime(null);
     try {
       const res = await fetch(`/api/availability?date=${date}&partySize=${partySize}`);
       const data = await res.json();
+      if (seq !== checkSeq.current) return; // a newer check superseded this one
       if (!res.ok) {
         setStatus({ type: "error", message: data.error ?? "Couldn't check availability." });
         setSlots([]);
@@ -38,15 +52,16 @@ export default function ReservationForm({ maxPartySize }: { maxPartySize: number
         setStatus({ type: "error", message: "No tables open for that date/party size. Try another date." });
       }
     } catch {
+      if (seq !== checkSeq.current) return;
       setStatus({ type: "error", message: "Couldn't reach the server." });
     } finally {
-      setChecking(false);
+      if (seq === checkSeq.current) setChecking(false);
     }
   }
 
   async function submitReservation(e: React.FormEvent) {
     e.preventDefault();
-    if (!selectedTime || !name) return;
+    if (!selectedTime || !name.trim()) return;
     setSubmitting(true);
     setStatus(null);
 
@@ -63,6 +78,7 @@ export default function ReservationForm({ maxPartySize }: { maxPartySize: number
           customerPhone: phone,
           notes,
           source: "WEB_FORM",
+          idempotencyKey: idempotencyKeyRef.current,
         }),
       });
       const data = await res.json();
@@ -74,6 +90,9 @@ export default function ReservationForm({ maxPartySize }: { maxPartySize: number
         type: "success",
         message: `You're booked for ${partySize} on ${date} at ${selectedTime}. A confirmation will be sent shortly.`,
       });
+      // A confirmed booking — the next submit (if any) is a genuinely new
+      // attempt, so it needs its own key rather than resolving to this one.
+      idempotencyKeyRef.current = crypto.randomUUID();
       setSlots([]);
       setSelectedTime(null);
     } catch {
@@ -188,7 +207,7 @@ export default function ReservationForm({ maxPartySize }: { maxPartySize: number
           />
           <button
             type="submit"
-            disabled={submitting || !name}
+            disabled={submitting || !name.trim()}
             className="w-full rounded-sm bg-colonial-ember-500 py-3 text-xs font-medium uppercase tracking-[0.25em] text-colonial-black transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-30"
           >
             {submitting ? "Booking…" : `Confirm Table for ${partySize} at ${selectedTime}`}

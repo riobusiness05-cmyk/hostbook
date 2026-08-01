@@ -1,14 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Button } from "./ui";
 import { OCCASIONS, SEATING_PREFERENCES } from "@/types";
+import { localDateStr } from "@/lib/host/format";
 import * as api from "@/lib/host/client";
-
-function todayStr() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
 
 const input =
   "w-full rounded-lg border border-black/10 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-sky-500 dark:border-white/15 dark:bg-white/5 dark:text-white";
@@ -16,12 +12,15 @@ const input =
 // Host-side "make a future reservation" form: pick a date + party size, check
 // real availability for the venue, choose a time, capture guest details, book.
 export function NewReservationForm({
+  timezone,
   onDone,
   onCancel,
 }: {
+  timezone: string;
   onDone: () => void;
   onCancel: () => void;
 }) {
+  const todayStr = () => localDateStr(new Date().toISOString(), timezone);
   const [date, setDate] = useState(todayStr());
   const [partySize, setPartySize] = useState(2);
   const [slots, setSlots] = useState<string[] | null>(null);
@@ -38,20 +37,32 @@ export function NewReservationForm({
   const [seating, setSeating] = useState("No preference");
   const [highChair, setHighChair] = useState(false);
   const [notes, setNotes] = useState("");
+  // Stable for the lifetime of this booking attempt — a network retry or a
+  // double-click that slips past the disabled-button guard reuses the same
+  // key, so the server resolves it to one reservation instead of two. Only
+  // regenerated when the host explicitly starts a new booking ("Add another").
+  const idempotencyKeyRef = useRef(crypto.randomUUID());
+  // Guards against an out-of-order response: if the date/party size changes
+  // again before an in-flight check returns, a slower earlier response
+  // landing after a newer one would otherwise overwrite the correct slots.
+  const checkSeq = useRef(0);
 
   async function findTimes() {
+    const seq = ++checkSeq.current;
     setChecking(true);
     setError(null);
     setSlots(null);
     setTime(null);
     try {
       const s = await api.fetchReservationSlots(date, partySize);
+      if (seq !== checkSeq.current) return; // a newer check superseded this one
       setSlots(s);
       if (s.length === 0) setError("No availability for that date/party size. Try another date.");
     } catch (e) {
+      if (seq !== checkSeq.current) return;
       setError((e as Error).message);
     } finally {
-      setChecking(false);
+      if (seq === checkSeq.current) setChecking(false);
     }
   }
 
@@ -70,6 +81,7 @@ export function NewReservationForm({
         seatingPreference: seating !== "No preference" ? seating : undefined,
         highChair: highChair || undefined,
         notes: notes || undefined,
+        idempotencyKey: idempotencyKeyRef.current,
       });
       setDone({ tableNumber: r.tableNumber, time: r.time });
     } catch (e) {
@@ -91,6 +103,7 @@ export function NewReservationForm({
           <Button
             variant="ghost"
             onClick={() => {
+              idempotencyKeyRef.current = crypto.randomUUID();
               setDone(null);
               setName("");
               setPhone("");

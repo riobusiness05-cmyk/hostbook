@@ -94,7 +94,7 @@ export default async function HomePage() {
             </div>
           </div>
 
-          <ReservationForm maxPartySize={restaurant.maxPartySize} />
+          <ReservationForm maxPartySize={restaurant.maxPartySize} timezone={restaurant.timezone} />
         </div>
       </section>
 

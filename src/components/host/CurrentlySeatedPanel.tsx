@@ -58,7 +58,7 @@ export function CurrentlySeatedPanel({ state, onSelectTable }: { state: FloorSta
               <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
                 <div>
                   <p className="text-neutral-400">Arrived</p>
-                  <p className="font-medium text-neutral-700 dark:text-neutral-200">{timeOfDay(s.seatedAt)}</p>
+                  <p className="font-medium text-neutral-700 dark:text-neutral-200">{timeOfDay(s.seatedAt, state.timezone)}</p>
                 </div>
                 <div>
                   <p className="text-neutral-400">Seated</p>
@@ -66,7 +66,7 @@ export function CurrentlySeatedPanel({ state, onSelectTable }: { state: FloorSta
                 </div>
                 <div>
                   <p className="text-neutral-400">Finishes</p>
-                  <p className="font-medium text-neutral-700 dark:text-neutral-200">{timeOfDay(s.expectedFinishAt)}</p>
+                  <p className="font-medium text-neutral-700 dark:text-neutral-200">{timeOfDay(s.expectedFinishAt, state.timezone)}</p>
                 </div>
               </div>
             </button>
