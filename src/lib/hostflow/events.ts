@@ -3,9 +3,18 @@
 // subscribes and pushes a lightweight "changed" tick to connected hosts,
 // who then refetch the floor state.
 //
-// This is the single seam that would be swapped for Supabase Realtime /
-// Postgres LISTEN-NOTIFY in a multi-instance deployment — the rest of the
-// app only depends on subscribe()/emit(), not on the transport.
+// Known limitation: on a multi-instance deployment (e.g. Vercel serverless),
+// a mutation handled by one instance only reaches SSE connections held open
+// by that SAME instance — a second connected device attached to a different
+// instance won't see the `change` event. useFloorStream.ts's short
+// heartbeat-driven refetch (see POLL_INTERVAL_MS there) bounds how stale
+// that can get to a few seconds, but it isn't truly instant for every
+// connected client. A real fix needs an external pub/sub channel built for
+// this (e.g. Supabase Realtime, Pusher, Ably) — Postgres LISTEN/NOTIFY alone
+// doesn't solve it, since a serverless function can't hold a LISTEN
+// connection open indefinitely either. Swapping the transport only means
+// changing subscribe()/emit() below and the SSE route; nothing else in the
+// app depends on how this bus is implemented.
 
 import { EventEmitter } from "events";
 

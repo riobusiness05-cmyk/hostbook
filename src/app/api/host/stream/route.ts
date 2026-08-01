@@ -37,8 +37,12 @@ export async function GET(req: NextRequest) {
         send("change", evt);
       });
 
-      // Heartbeat / time-refresh every 20s.
-      interval = setInterval(() => send("tick", { at: Date.now() }), 20000);
+      // Heartbeat / time-refresh, kept short (see useFloorStream.ts) so a
+      // "change" event that doesn't reach this connection — e.g. the write
+      // landed on a different serverless instance than the one holding this
+      // connection open, since the event bus is in-process — still self-heals
+      // quickly instead of leaving the dashboard stale for up to 20s.
+      interval = setInterval(() => send("tick", { at: Date.now() }), 6000);
 
       req.signal.addEventListener("abort", () => {
         unsubscribe();
