@@ -32,7 +32,14 @@ export function DayView({ date, dateLabel }: { date: string; dateLabel: string }
 
   const bookings = useMemo(() => {
     if (!plan) return [];
-    return selectedTableId ? plan.bookings.filter((b) => b.tableId === selectedTableId) : plan.bookings;
+    if (!selectedTableId) return plan.bookings;
+    // A combo booking's extra tables aren't anyone's `tableId` — match by
+    // table number too, or clicking one of those tables (e.g. Table 15 on a
+    // "Tables 16+18+15" booking) shows "No bookings" even though it's held.
+    const selectedNo = plan.tables.find((t) => t.id === selectedTableId)?.tableNumber;
+    return plan.bookings.filter(
+      (b) => b.tableId === selectedTableId || (selectedNo != null && b.comboTableNumbers.includes(selectedNo))
+    );
   }, [plan, selectedTableId]);
 
   if (error) {
