@@ -75,6 +75,7 @@ export function FloorPlan({
   onSelect,
   refresh,
   setPaused,
+  defaultEditMode,
 }: {
   tables: FloorState["tables"];
   sections: FloorState["sections"];
@@ -82,9 +83,14 @@ export function FloorPlan({
   onSelect: (id: string) => void;
   refresh: (opts?: { force?: boolean }) => Promise<void>;
   setPaused: (v: boolean) => void;
+  // Onboarding's "arrange your tables" step opens straight into edit mode —
+  // arranging is the entire point of that step, so making the host find and
+  // click the toggle first would just be friction. Every other caller omits
+  // this and gets the normal read-only-first behavior.
+  defaultEditMode?: boolean;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
-  const [editMode, setEditMode] = useState(false);
+  const [editMode, setEditMode] = useState(defaultEditMode ?? false);
   const [resetting, setResetting] = useState(false);
   // Drag position/rotation lives in a ref (not state) so pointermove doesn't
   // fight React's render cycle — `tick` just forces a re-render to pick up

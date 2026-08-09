@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import * as api from "@/lib/host/client";
 import { Button } from "./ui";
-import { FloorPlanImport } from "./FloorPlanImport";
+import { FloorPlanBuilder } from "./FloorPlanBuilder";
 import { cx } from "@/lib/host/format";
 
 type Step = "settings" | "hours" | "floorplan" | "done";
@@ -33,7 +33,6 @@ export function OnboardingWizard({ restaurantName }: { restaurantName: string })
   const [step, setStep] = useState<Step>("settings");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [tablesAdded, setTablesAdded] = useState<number | null>(null);
 
   const [avgDiningMinutes, setAvgDiningMinutes] = useState(90);
   const [bookingIntervalMinutes, setBookingIntervalMinutes] = useState(30);
@@ -108,7 +107,7 @@ export function OnboardingWizard({ restaurantName }: { restaurantName: string })
   };
 
   return (
-    <div className="mx-auto max-w-xl px-4 py-10">
+    <div className={cx("mx-auto px-4 py-10", step === "floorplan" ? "max-w-3xl" : "max-w-xl")}>
       <div className="mb-6 text-center">
         <h1 className="text-2xl font-bold text-white">Welcome to Host Flow, {restaurantName}</h1>
         <p className="mt-1 text-sm text-neutral-400">A few quick settings, then you&apos;re on the floor.</p>
@@ -213,25 +212,7 @@ export function OnboardingWizard({ restaurantName }: { restaurantName: string })
         {step === "floorplan" && (
           <div className="space-y-4">
             <h2 className="text-lg font-semibold text-white">Your floor plan</h2>
-            {tablesAdded === null ? (
-              <>
-                <p className="text-xs text-neutral-400">
-                  Upload a photo of your real floor plan or POS table map — the AI detects your tables, you review, then
-                  it&apos;s ready to use (and always editable afterward).
-                </p>
-                <FloorPlanImport onApplied={({ tableCount }) => setTablesAdded(tableCount)} />
-                <Button variant="ghost" className="w-full" disabled={busy} onClick={() => setStep("done")}>
-                  Skip — I&apos;ll build my floor plan manually
-                </Button>
-              </>
-            ) : (
-              <div className="space-y-3 text-center">
-                <p className="text-sm text-green-400">Added {tablesAdded} tables to your floor plan.</p>
-                <Button variant="primary" className="w-full" onClick={() => setStep("done")}>
-                  Continue
-                </Button>
-              </div>
-            )}
+            <FloorPlanBuilder onDone={() => setStep("done")} onSkip={() => setStep("done")} />
           </div>
         )}
 
