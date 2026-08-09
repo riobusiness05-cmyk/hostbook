@@ -19,7 +19,7 @@ const FEATURES = [
 const FAQS = [
   {
     q: "Is there really a free trial?",
-    a: "Yes — 30 days, full Professional access, no card required to start. If you decide to continue, you'll add a payment method before the trial ends.",
+    a: "Yes — 7 days, full Professional access, no card required to start. If you decide to continue, you'll add a payment method before the trial ends.",
   },
   {
     q: "Can I cancel anytime?",
@@ -100,7 +100,7 @@ export default async function HostFlowLanding() {
               Sign in to your venue
             </Link>
           </div>
-          <p className="mt-4 text-xs text-neutral-500">30-day free trial · No card required · Cancel anytime.</p>
+          <p className="mt-4 text-xs text-neutral-500">7-day free trial · No card required · Cancel anytime.</p>
         </section>
 
         {/* Feature grid */}
@@ -131,7 +131,7 @@ export default async function HostFlowLanding() {
           <div className="mx-auto max-w-md">
             <div className="rounded-3xl border border-sky-400/30 bg-gradient-to-br from-sky-500/[0.08] to-indigo-500/[0.04] p-8">
               <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2.5 py-1 text-xs font-medium text-emerald-300">
-                30-day free trial
+                7-day free trial
               </span>
               <h3 className="mt-4 text-2xl font-bold">{professional?.name ?? "Professional"}</h3>
               <p className="mt-1 flex items-baseline gap-1">

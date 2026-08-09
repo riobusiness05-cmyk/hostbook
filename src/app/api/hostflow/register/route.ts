@@ -30,7 +30,7 @@ async function uniqueSlug(desired: string): Promise<string> {
 
 /**
  * Self-serve restaurant signup: creates the tenant, an OWNER account, starts
- * the 30-day trial, (best-effort) creates a Stripe customer, and logs the
+ * the free trial (length set by TRIAL_DAYS in billing/subscription.ts), (best-effort) creates a Stripe customer, and logs the
  * new owner straight in — same session cookie /api/hostflow/login issues —
  * so they land in /host immediately rather than a dead-end "check your
  * email" screen. Email verification happens in the background (see

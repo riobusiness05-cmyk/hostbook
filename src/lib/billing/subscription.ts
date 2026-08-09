@@ -14,7 +14,7 @@ import type { Subscription } from "@prisma/client";
  * restaurant" pattern already used in src/lib/hostflow/floor.ts.
  */
 
-export const TRIAL_DAYS = 14;
+export const TRIAL_DAYS = 7;
 export const DEFAULT_PLAN_KEY = "professional";
 
 export type BillingStatus = "COMPLIMENTARY" | "TRIAL" | "ACTIVE" | "PAST_DUE" | "CANCELLED" | "EXPIRED";

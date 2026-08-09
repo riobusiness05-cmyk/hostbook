@@ -55,7 +55,7 @@ export default function HostFlowSignup() {
 
         <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6 backdrop-blur">
           <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2.5 py-1 text-xs font-medium text-emerald-300">
-            30-day free trial · No card required to start
+            7-day free trial · No card required to start
           </span>
           <h1 className="mt-3 text-xl font-semibold">Start your free trial</h1>
           <p className="mt-1 text-sm text-neutral-400">Set up your venue in under a minute.</p>

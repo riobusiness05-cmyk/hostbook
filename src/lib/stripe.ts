@@ -58,7 +58,7 @@ export type CheckoutInterval = "MONTH" | "YEAR";
 
 /**
  * Creates a Stripe Checkout session for a restaurant to subscribe to a plan.
- * New paid signups get a 30-day trial baked into the subscription itself
+ * New paid signups get a free trial (TRIAL_DAYS, billing/subscription.ts) baked into the subscription itself
  * (`subscription_data.trial_period_days`) so the guest never has to leave
  * Checkout to start their trial — Stripe handles the trial→paid conversion
  * automatically when the trial ends.
