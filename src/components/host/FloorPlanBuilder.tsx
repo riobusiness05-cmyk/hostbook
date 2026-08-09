@@ -154,7 +154,12 @@ export function FloorPlanBuilder({ onDone, onSkip }: { onDone: () => void; onSki
           Added {tableCount} table{tableCount === 1 ? "" : "s"}. Drag them into roughly your real layout — you can
           always fine-tune this later.
         </p>
-        <div className="h-[50vh] min-h-[360px] overflow-hidden rounded-xl border border-hf-line">
+        {/* FloorPlan's own toolbar wraps onto 2-3 rows below ~640px wide,
+            which eats into its fixed h-full budget — a short container
+            then squeezes the actual table canvas down to nothing and the
+            legend visually collides with the last row of tables. Enough
+            height on small screens keeps everything legible. */}
+        <div className="h-[60vh] min-h-[460px] overflow-hidden rounded-xl border border-hf-line sm:h-[50vh] sm:min-h-[360px]">
           <FloorPlan
             tables={floor.tables}
             sections={floor.sections}

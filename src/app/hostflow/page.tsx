@@ -51,19 +51,21 @@ export default async function HostFlowLanding() {
       <div className="relative">
         {/* Nav */}
         <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
-          <HostFlowLogo tone="onDark" size={30} />
-          <nav className="flex items-center gap-3">
+          <HostFlowLogo tone="onDark" size={26} showWordmark={false} className="sm:hidden" />
+          <HostFlowLogo tone="onDark" size={30} className="hidden sm:inline-flex" />
+          <nav className="flex items-center gap-2 sm:gap-3">
             <Link
               href="/hostflow/login"
-              className="rounded-lg border border-hf-line px-4 py-2 text-sm font-medium text-hf-ink/80 transition-colors hover:border-hf-ink/25 hover:text-hf-ink"
+              className="whitespace-nowrap rounded-lg border border-hf-line px-3 py-1.5 text-xs font-medium text-hf-ink/80 transition-colors hover:border-hf-ink/25 hover:text-hf-ink sm:px-4 sm:py-2 sm:text-sm"
             >
               Sign in
             </Link>
             <Link
               href="/hostflow/signup"
-              className="rounded-lg bg-brand-400 px-4 py-2 text-sm font-semibold text-hf-bg transition-transform hover:scale-[1.02]"
+              className="whitespace-nowrap rounded-lg bg-brand-400 px-3 py-1.5 text-xs font-semibold text-hf-bg transition-transform hover:scale-[1.02] sm:px-4 sm:py-2 sm:text-sm"
             >
-              Start Free Trial
+              <span className="sm:hidden">Try Free</span>
+              <span className="hidden sm:inline">Start Free Trial</span>
             </Link>
           </nav>
         </header>
