@@ -35,10 +35,27 @@ const config: Config = {
             700: "#8f4620",
           },
         },
+        // Host Flow's own product/marketing surface — separate from `colonial`
+        // (that's the demo tenant's public restaurant site) and from `brand`
+        // (a generic unused scale). Warm charcoal rather than neutral-black:
+        // the whole visual system leans on this being a shade of dark wood /
+        // late-service lighting, not a generic tech-dashboard black.
+        hf: {
+          bg: "#131210",
+          surface: "#1b1916",
+          surfaceHi: "#242019",
+          line: "#332e24",
+          ink: "#f3efe6",
+          inkMuted: "#a49b8a",
+          inkFaint: "#6f6858",
+        },
       },
       fontFamily: {
         serif: ["var(--font-serif)", "Georgia", "serif"],
         sans: ["var(--font-sans)", "system-ui", "sans-serif"],
+        display: ["var(--font-hf-display)", "Georgia", "serif"],
+        body: ["var(--font-hf-sans)", "system-ui", "sans-serif"],
+        mono: ["var(--font-hf-mono)", "ui-monospace", "monospace"],
       },
     },
   },

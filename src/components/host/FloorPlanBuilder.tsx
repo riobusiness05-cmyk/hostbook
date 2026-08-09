@@ -150,11 +150,11 @@ export function FloorPlanBuilder({ onDone, onSkip }: { onDone: () => void; onSki
   if (mode === "arrange" && floor) {
     return (
       <div className="space-y-3">
-        <p className="text-sm text-green-400">
+        <p className="text-sm text-emerald-400">
           Added {tableCount} table{tableCount === 1 ? "" : "s"}. Drag them into roughly your real layout — you can
           always fine-tune this later.
         </p>
-        <div className="h-[50vh] min-h-[360px] overflow-hidden rounded-xl border border-white/10">
+        <div className="h-[50vh] min-h-[360px] overflow-hidden rounded-xl border border-hf-line">
           <FloorPlan
             tables={floor.tables}
             sections={floor.sections}
@@ -183,24 +183,24 @@ export function FloorPlanBuilder({ onDone, onSkip }: { onDone: () => void; onSki
 
       {mode === "choose" && (
         <>
-          <p className="text-xs text-neutral-400">Pick whichever is fastest for you — every option is fully editable afterward.</p>
+          <p className="text-xs text-hf-inkMuted">Pick whichever is fastest for you — every option is fully editable afterward.</p>
           <div className="grid gap-2 sm:grid-cols-3">
             <ChooseCard
               title="Start from a template"
               blurb="Pick your venue size, get instant tables"
-              icon="🏗️"
+              icon="template"
               onClick={() => setMode("template")}
             />
             <ChooseCard
               title="Add tables one by one"
               blurb="Type in your table count and sizes"
-              icon="✏️"
+              icon="manual"
               onClick={() => setMode("manual")}
             />
             <ChooseCard
               title="Upload a photo"
               blurb="AI detects tables from a real floor plan"
-              icon="📷"
+              icon="photo"
               onClick={() => setMode("photo")}
             />
           </div>
@@ -212,7 +212,7 @@ export function FloorPlanBuilder({ onDone, onSkip }: { onDone: () => void; onSki
 
       {mode === "template" && (
         <>
-          <button onClick={() => setMode("choose")} className="text-xs text-sky-400 hover:underline">
+          <button onClick={() => setMode("choose")} className="text-xs text-brand-300 hover:underline">
             ← Back
           </button>
           <div className="grid gap-2 sm:grid-cols-2">
@@ -221,23 +221,23 @@ export function FloorPlanBuilder({ onDone, onSkip }: { onDone: () => void; onSki
                 key={t.key}
                 disabled={busy}
                 onClick={() => applyTemplate(t.key)}
-                className="rounded-xl border border-white/10 bg-white/[0.03] p-4 text-left transition-colors hover:border-sky-400/40 hover:bg-white/[0.06] disabled:opacity-50"
+                className="rounded-xl border border-hf-line bg-hf-surfaceHi/60 p-4 text-left transition-colors hover:border-brand-400/40 hover:bg-hf-surfaceHi disabled:opacity-50"
               >
-                <p className="font-semibold text-white">{t.label}</p>
-                <p className="mt-0.5 text-xs text-neutral-400">{t.blurb}</p>
+                <p className="font-semibold text-hf-ink">{t.label}</p>
+                <p className="mt-0.5 text-xs text-hf-inkMuted">{t.blurb}</p>
               </button>
             ))}
           </div>
-          {busy && <p className="text-center text-xs text-neutral-400">Building your floor plan…</p>}
+          {busy && <p className="text-center text-xs text-hf-inkMuted">Building your floor plan…</p>}
         </>
       )}
 
       {mode === "manual" && (
         <>
-          <button onClick={() => setMode("choose")} className="text-xs text-sky-400 hover:underline">
+          <button onClick={() => setMode("choose")} className="text-xs text-brand-300 hover:underline">
             ← Back
           </button>
-          <label className="block text-xs text-neutral-400">
+          <label className="block text-xs text-hf-inkMuted">
             Area name
             <input
               className={inputCls}
@@ -270,7 +270,7 @@ export function FloorPlanBuilder({ onDone, onSkip }: { onDone: () => void; onSki
                     setManualRows((rs) => rs.map((r, ri) => (ri === i ? { ...r, seats: Math.max(1, Number(e.target.value)) } : r)))
                   }
                 />
-                <span className="text-xs text-neutral-400">seats</span>
+                <span className="text-xs text-hf-inkMuted">seats</span>
                 <button
                   className="ml-auto text-xs text-red-400 hover:underline disabled:opacity-30"
                   disabled={manualRows.length === 1}
@@ -292,10 +292,10 @@ export function FloorPlanBuilder({ onDone, onSkip }: { onDone: () => void; onSki
 
       {mode === "photo" && (
         <>
-          <button onClick={() => setMode("choose")} className="text-xs text-sky-400 hover:underline">
+          <button onClick={() => setMode("choose")} className="text-xs text-brand-300 hover:underline">
             ← Back
           </button>
-          <p className="text-xs text-neutral-400">
+          <p className="text-xs text-hf-inkMuted">
             Upload a photo of your real floor plan or POS table map — the AI detects your tables, you review, then
             it&apos;s ready to use.
           </p>
@@ -306,18 +306,59 @@ export function FloorPlanBuilder({ onDone, onSkip }: { onDone: () => void; onSki
   );
 }
 
-function ChooseCard({ title, blurb, icon, onClick }: { title: string; blurb: string; icon: string; onClick: () => void }) {
+function ChooseCard({
+  title,
+  blurb,
+  icon,
+  onClick,
+}: {
+  title: string;
+  blurb: string;
+  icon: "template" | "manual" | "photo";
+  onClick: () => void;
+}) {
   return (
     <button
       onClick={onClick}
-      className="rounded-xl border border-white/10 bg-white/[0.03] p-4 text-left transition-colors hover:border-sky-400/40 hover:bg-white/[0.06]"
+      className="rounded-xl border border-hf-line bg-hf-surfaceHi/60 p-4 text-left transition-colors hover:border-brand-400/40 hover:bg-hf-surfaceHi"
     >
-      <span className="text-2xl">{icon}</span>
-      <p className="mt-2 font-semibold text-white">{title}</p>
-      <p className="mt-0.5 text-xs text-neutral-400">{blurb}</p>
+      <div className="grid h-9 w-9 place-items-center rounded-lg border border-brand-400/25 bg-brand-500/10 text-brand-300">
+        <BuilderIcon kind={icon} />
+      </div>
+      <p className="mt-2.5 font-semibold text-hf-ink">{title}</p>
+      <p className="mt-0.5 text-xs text-hf-inkMuted">{blurb}</p>
     </button>
   );
 }
 
+function BuilderIcon({ kind }: { kind: "template" | "manual" | "photo" }) {
+  const common = { width: 18, height: 18, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.6, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
+  if (kind === "template") {
+    return (
+      <svg {...common}>
+        <rect x="3" y="3" width="8" height="8" rx="1.5" />
+        <rect x="13" y="3" width="8" height="5" rx="1.5" />
+        <rect x="13" y="10" width="8" height="11" rx="1.5" />
+        <rect x="3" y="13" width="8" height="8" rx="1.5" />
+      </svg>
+    );
+  }
+  if (kind === "manual") {
+    return (
+      <svg {...common}>
+        <path d="M4 20l1-4.5L15.5 5 19 8.5 8.5 19 4 20Z" />
+        <path d="M13.5 6.5 17.5 10.5" />
+      </svg>
+    );
+  }
+  return (
+    <svg {...common}>
+      <rect x="3" y="7" width="18" height="13" rx="2" />
+      <path d="M8 7 9.5 4h5L16 7" />
+      <circle cx="12" cy="13.5" r="3.4" />
+    </svg>
+  );
+}
+
 const inputCls =
-  "mt-1 w-full rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-sky-500";
+  "mt-1 w-full rounded-lg border border-hf-line bg-hf-surfaceHi px-3 py-2 text-sm text-hf-ink outline-none focus:border-brand-400";

@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { HostFlowLogo } from "@/components/HostFlowLogo";
 
 const inputCls =
-  "w-full rounded-lg border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white placeholder:text-neutral-500 outline-none focus:border-sky-400";
+  "w-full rounded-lg border border-hf-line bg-hf-surfaceHi px-3 py-2.5 text-sm text-hf-ink placeholder:text-hf-inkFaint outline-none focus:border-brand-400";
 
 export default function HostFlowSignup() {
   const router = useRouter();
@@ -42,23 +42,21 @@ export default function HostFlowSignup() {
   }
 
   return (
-    <div className="relative grid min-h-screen place-items-center bg-neutral-950 px-6 py-12 text-neutral-100">
-      <div className="pointer-events-none fixed inset-0 overflow-hidden">
-        <div className="absolute -top-40 left-1/3 h-[480px] w-[480px] rounded-full bg-sky-500/20 blur-[140px]" />
-        <div className="absolute bottom-0 right-1/4 h-[380px] w-[380px] rounded-full bg-indigo-500/20 blur-[130px]" />
-      </div>
+    <div className="relative grid min-h-screen place-items-center overflow-hidden px-6 py-12">
+      <div className="hf-blueprint pointer-events-none fixed inset-0 opacity-60 [mask-image:radial-gradient(ellipse_60%_60%_at_50%_30%,black,transparent)]" />
+      <div className="pointer-events-none fixed -top-32 left-1/3 h-[480px] w-[480px] rounded-full bg-brand-500/[0.12] blur-[140px]" />
 
-      <div className="relative w-full max-w-sm">
+      <div className="animate-fade-up relative w-full max-w-sm">
         <Link href="/hostflow" className="mb-8 flex items-center justify-center">
           <HostFlowLogo tone="onDark" size={34} />
         </Link>
 
-        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6 backdrop-blur">
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2.5 py-1 text-xs font-medium text-emerald-300">
-            7-day free trial · No card required to start
+        <div className="rounded-2xl border border-hf-line bg-hf-surface/80 p-6 backdrop-blur">
+          <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-brand-400/30 bg-brand-500/10 px-2.5 py-1 font-mono text-[11px] text-brand-300">
+            7-day free trial
           </span>
-          <h1 className="mt-3 text-xl font-semibold">Start your free trial</h1>
-          <p className="mt-1 text-sm text-neutral-400">Set up your venue in under a minute.</p>
+          <h1 className="mt-3 font-display text-2xl">Start your free trial</h1>
+          <p className="mt-1 text-sm text-hf-inkMuted">Set up your venue in under a minute.</p>
 
           <form onSubmit={submit} className="mt-5 space-y-3">
             <input
@@ -96,24 +94,24 @@ export default function HostFlowSignup() {
             <button
               type="submit"
               disabled={busy}
-              className="w-full rounded-lg bg-white py-2.5 text-sm font-semibold text-neutral-900 transition-opacity hover:opacity-90 disabled:opacity-50"
+              className="w-full rounded-lg bg-brand-400 py-2.5 text-sm font-semibold text-hf-bg transition-opacity hover:opacity-90 disabled:opacity-50"
             >
               {busy ? "Setting up your venue…" : "Start Free Trial"}
             </button>
-            <p className="text-center text-[11px] leading-relaxed text-neutral-500">
+            <p className="text-center text-[11px] leading-relaxed text-hf-inkFaint">
               By continuing you agree to be contacted about your account. You can cancel anytime.
             </p>
           </form>
         </div>
 
-        <p className="mt-6 text-center text-sm text-neutral-400">
+        <p className="mt-6 text-center text-sm text-hf-inkMuted">
           Already have an account?{" "}
-          <Link href="/hostflow/login" className="font-medium text-sky-400 hover:text-sky-300">
+          <Link href="/hostflow/login" className="font-medium text-brand-300 hover:text-brand-200">
             Sign in
           </Link>
         </p>
-        <p className="mt-3 text-center text-xs text-neutral-500">
-          <Link href="/hostflow" className="hover:text-neutral-300">← Back to Host Flow</Link>
+        <p className="mt-3 text-center text-xs text-hf-inkFaint">
+          <Link href="/hostflow" className="hover:text-hf-ink">← Back to Host Flow</Link>
         </p>
       </div>
     </div>

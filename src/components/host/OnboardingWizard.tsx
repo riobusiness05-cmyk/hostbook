@@ -107,26 +107,30 @@ export function OnboardingWizard({ restaurantName }: { restaurantName: string })
   };
 
   return (
-    <div className={cx("mx-auto px-4 py-10", step === "floorplan" ? "max-w-3xl" : "max-w-xl")}>
-      <div className="mb-6 text-center">
-        <h1 className="text-2xl font-bold text-white">Welcome to Host Flow, {restaurantName}</h1>
-        <p className="mt-1 text-sm text-neutral-400">A few quick settings, then you&apos;re on the floor.</p>
-      </div>
+    <div className="relative min-h-screen overflow-hidden">
+      <div className="hf-blueprint pointer-events-none fixed inset-0 opacity-50 [mask-image:radial-gradient(ellipse_70%_50%_at_50%_0%,black,transparent)]" />
+      <div className="pointer-events-none fixed -top-32 left-1/2 h-[520px] w-[820px] -translate-x-1/2 rounded-full bg-brand-500/[0.08] blur-[160px]" />
 
-      <div className="mb-6 flex justify-center gap-1.5">
-        {STEPS.map((s, i) => (
-          <span key={s} className={cx("h-1.5 w-10 rounded-full", i <= stepIndex ? "bg-white" : "bg-white/15")} />
-        ))}
-      </div>
+      <div className={cx("animate-fade-up relative mx-auto px-4 py-10", step === "floorplan" ? "max-w-3xl" : "max-w-xl")}>
+        <div className="mb-6 text-center">
+          <h1 className="font-display text-3xl text-hf-ink">Welcome to Host Flow, {restaurantName}</h1>
+          <p className="mt-1 text-sm text-hf-inkMuted">A few quick settings, then you&apos;re on the floor.</p>
+        </div>
 
-      {error && (
-        <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">{error}</div>
-      )}
+        <div className="mb-6 flex justify-center gap-1.5">
+          {STEPS.map((s, i) => (
+            <span key={s} className={cx("h-1.5 w-10 rounded-full transition-colors", i <= stepIndex ? "bg-brand-400" : "bg-hf-line")} />
+          ))}
+        </div>
 
-      <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6">
-        {step === "settings" && (
-          <div className="space-y-4">
-            <h2 className="text-lg font-semibold text-white">How your floor runs</h2>
+        {error && (
+          <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">{error}</div>
+        )}
+
+        <div className="rounded-2xl border border-hf-line bg-hf-surface/80 p-6 backdrop-blur">
+          {step === "settings" && (
+            <div className="space-y-4">
+              <h2 className="font-display text-xl text-hf-ink">How your floor runs</h2>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Average dining duration (min)">
                 <input type="number" min={30} max={240} className={inputCls} value={avgDiningMinutes} onChange={(e) => setAvgDiningMinutes(Number(e.target.value))} />
@@ -169,11 +173,11 @@ export function OnboardingWizard({ restaurantName }: { restaurantName: string })
               </Field>
             </div>
             <div className="flex gap-4 pt-1">
-              <label className="flex items-center gap-2 text-sm text-neutral-300">
+              <label className="flex items-center gap-2 text-sm text-hf-inkMuted">
                 <input type="checkbox" checked={walkinsEnabled} onChange={(e) => setWalkinsEnabled(e.target.checked)} />
                 Walk-ins enabled
               </label>
-              <label className="flex items-center gap-2 text-sm text-neutral-300">
+              <label className="flex items-center gap-2 text-sm text-hf-inkMuted">
                 <input type="checkbox" checked={tableMergingEnabled} onChange={(e) => setTableMergingEnabled(e.target.checked)} />
                 Table merging enabled
               </label>
@@ -181,50 +185,51 @@ export function OnboardingWizard({ restaurantName }: { restaurantName: string })
             <Button variant="primary" className="w-full" disabled={busy} onClick={saveSettings}>
               {busy ? "Saving…" : "Continue"}
             </Button>
-          </div>
-        )}
-
-        {step === "hours" && (
-          <div className="space-y-4">
-            <h2 className="text-lg font-semibold text-white">Opening hours</h2>
-            <p className="text-xs text-neutral-400">
-              Applied to every day for now — fine-tune individual days later in Settings → Hours.
-            </p>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Opens">
-                <input type="time" className={inputCls} value={openTime} onChange={(e) => setOpenTime(e.target.value)} />
-              </Field>
-              <Field label="Closes">
-                <input type="time" className={inputCls} value={closeTime} onChange={(e) => setCloseTime(e.target.value)} />
-              </Field>
             </div>
-            <div className="flex gap-2">
-              <Button variant="ghost" disabled={busy} onClick={() => saveHours(true)}>
-                Skip
-              </Button>
-              <Button variant="primary" className="flex-1" disabled={busy} onClick={() => saveHours(false)}>
-                {busy ? "Saving…" : "Continue"}
+          )}
+
+          {step === "hours" && (
+            <div className="space-y-4">
+              <h2 className="font-display text-xl text-hf-ink">Opening hours</h2>
+              <p className="text-xs text-hf-inkMuted">
+                Applied to every day for now — fine-tune individual days later in Settings → Hours.
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Opens">
+                  <input type="time" className={inputCls} value={openTime} onChange={(e) => setOpenTime(e.target.value)} />
+                </Field>
+                <Field label="Closes">
+                  <input type="time" className={inputCls} value={closeTime} onChange={(e) => setCloseTime(e.target.value)} />
+                </Field>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="ghost" disabled={busy} onClick={() => saveHours(true)}>
+                  Skip
+                </Button>
+                <Button variant="primary" className="flex-1" disabled={busy} onClick={() => saveHours(false)}>
+                  {busy ? "Saving…" : "Continue"}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {step === "floorplan" && (
+            <div className="space-y-4">
+              <h2 className="font-display text-xl text-hf-ink">Your floor plan</h2>
+              <FloorPlanBuilder onDone={() => setStep("done")} onSkip={() => setStep("done")} />
+            </div>
+          )}
+
+          {step === "done" && (
+            <div className="space-y-4 text-center">
+              <h2 className="font-display text-xl text-hf-ink">You&apos;re all set</h2>
+              <p className="text-sm text-hf-inkMuted">Head to your live floor — you can change any of this later in Settings.</p>
+              <Button variant="primary" className="w-full" disabled={busy} onClick={finish}>
+                {busy ? "Opening…" : "Go to my floor"}
               </Button>
             </div>
-          </div>
-        )}
-
-        {step === "floorplan" && (
-          <div className="space-y-4">
-            <h2 className="text-lg font-semibold text-white">Your floor plan</h2>
-            <FloorPlanBuilder onDone={() => setStep("done")} onSkip={() => setStep("done")} />
-          </div>
-        )}
-
-        {step === "done" && (
-          <div className="space-y-4 text-center">
-            <h2 className="text-lg font-semibold text-white">You&apos;re all set</h2>
-            <p className="text-sm text-neutral-400">Head to your live floor — you can change any of this later in Settings.</p>
-            <Button variant="primary" className="w-full" disabled={busy} onClick={finish}>
-              {busy ? "Opening…" : "Go to my floor"}
-            </Button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );
@@ -232,7 +237,7 @@ export function OnboardingWizard({ restaurantName }: { restaurantName: string })
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <label className="block text-xs text-neutral-400">
+    <label className="block text-xs text-hf-inkMuted">
       {label}
       {children}
     </label>
@@ -240,4 +245,4 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 const inputCls =
-  "mt-1 w-full rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-sky-500";
+  "mt-1 w-full rounded-lg border border-hf-line bg-hf-surfaceHi px-3 py-2 text-sm text-hf-ink outline-none focus:border-brand-400";
