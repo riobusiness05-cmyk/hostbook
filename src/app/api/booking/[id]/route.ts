@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { getActiveRestaurant } from "@/lib/restaurant";
 import { toLocalDateStr, toLocalTimeStr } from "@/lib/availability";
 import { dateStrSchema, timeStrSchema } from "@/types";
 import { updateReservationStatus } from "@/lib/hostflow/actions";
@@ -11,25 +10,32 @@ import { rescheduleReservationById } from "@/lib/reservationActions";
 // unguessable `manageToken` printed on their confirmation link — no login.
 // Every handler requires the token to match the reservation, so knowing an
 // id alone is never enough to view or change a booking.
+//
+// The restaurant is resolved from the reservation's own restaurantId, NOT
+// getActiveRestaurant() (that's the single fixed-per-deployment tenant, used
+// by the legacy Colonial guest site) — this route is reachable by guests of
+// ANY Host Flow restaurant via the widget, so pinning it to "the active
+// restaurant" made every non-Colonial booking's manage link 404.
 
 async function loadOwned(id: string, token: string | null) {
   if (!token) return { error: NextResponse.json({ error: "Missing token" }, { status: 401 }) };
-  const restaurant = await getActiveRestaurant();
   const reservation = await prisma.reservation.findUnique({ where: { id }, include: { table: true } });
-  if (!reservation || reservation.restaurantId !== restaurant.id || reservation.manageToken !== token) {
+  if (!reservation || reservation.manageToken !== token) {
     return { error: NextResponse.json({ error: "Booking not found" }, { status: 404 }) };
   }
+  const restaurant = await prisma.restaurant.findUnique({ where: { id: reservation.restaurantId } });
+  if (!restaurant) return { error: NextResponse.json({ error: "Booking not found" }, { status: 404 }) };
   return { restaurant, reservation };
 }
 
-function publicView(r: Awaited<ReturnType<typeof loadOwned>>["reservation"]) {
+function publicView(r: Awaited<ReturnType<typeof loadOwned>>["reservation"], timezone: string) {
   if (!r) return null;
   return {
     id: r.id,
     customerName: r.customerName,
     partySize: r.partySize,
-    date: toLocalDateStr(r.reservationTime),
-    time: toLocalTimeStr(r.reservationTime),
+    date: toLocalDateStr(r.reservationTime, timezone),
+    time: toLocalTimeStr(r.reservationTime, timezone),
     status: r.status,
     tableNumber: r.table?.tableNumber ?? null,
     occasion: r.occasion,
@@ -43,7 +49,10 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   const token = new URL(req.url).searchParams.get("t");
   const res = await loadOwned(params.id, token);
   if ("error" in res) return res.error;
-  return NextResponse.json({ reservation: publicView(res.reservation) });
+  return NextResponse.json({
+    reservation: publicView(res.reservation, res.restaurant.timezone),
+    restaurantName: res.restaurant.name,
+  });
 }
 
 const patchSchema = z.object({
@@ -62,8 +71,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if ("error" in res) return res.error;
   const { restaurant, reservation } = res;
 
-  const newDate = parsed.data.date ?? toLocalDateStr(reservation.reservationTime);
-  const newTime = parsed.data.time ?? toLocalTimeStr(reservation.reservationTime);
+  const newDate = parsed.data.date ?? toLocalDateStr(reservation.reservationTime, restaurant.timezone);
+  const newTime = parsed.data.time ?? toLocalTimeStr(reservation.reservationTime, restaurant.timezone);
 
   // Delegates to the same Serializable-transaction-protected, self-exclusion-
   // aware reschedule path the AI assistant uses — this route used to
@@ -76,7 +85,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   }
 
   const updated = await prisma.reservation.findUniqueOrThrow({ where: { id: reservation.id }, include: { table: true } });
-  return NextResponse.json({ reservation: publicView(updated) });
+  return NextResponse.json({ reservation: publicView(updated, restaurant.timezone) });
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {

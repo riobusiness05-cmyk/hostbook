@@ -9,7 +9,7 @@ import { isStripeConfigured, listRecentInvoices, getDefaultPaymentMethod } from 
 // — a Stripe outage or missing customer just means an empty/null value,
 // never a broken page).
 export async function GET(req: NextRequest) {
-  const ctx = await hostContext(req);
+  const ctx = await hostContext(req, { requireAccess: false });
   if ("error" in ctx) return ctx.error;
 
   try {

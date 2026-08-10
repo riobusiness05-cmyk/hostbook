@@ -37,3 +37,27 @@ export function verificationEmailHtml(verifyUrl: string, restaurantName: string)
     </div>
   `;
 }
+
+export function reservationConfirmationHtml(params: {
+  restaurantName: string;
+  customerName: string;
+  date: string;
+  time: string;
+  partySize: number;
+  manageUrl: string;
+}): string {
+  const { restaurantName, customerName, date, time, partySize, manageUrl } = params;
+  return `
+    <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
+      <h2>You're booked at ${restaurantName}</h2>
+      <p>Hi ${customerName}, your table is confirmed:</p>
+      <table style="width:100%; border-collapse: collapse; margin: 16px 0;">
+        <tr><td style="padding:4px 0; color:#666;">Date</td><td style="padding:4px 0; font-weight:600;">${date}</td></tr>
+        <tr><td style="padding:4px 0; color:#666;">Time</td><td style="padding:4px 0; font-weight:600;">${time}</td></tr>
+        <tr><td style="padding:4px 0; color:#666;">Party size</td><td style="padding:4px 0; font-weight:600;">${partySize}</td></tr>
+      </table>
+      <p><a href="${manageUrl}" style="display:inline-block;padding:10px 20px;background:#111;color:#fff;text-decoration:none;border-radius:6px;">View or cancel your booking</a></p>
+      <p style="color:#666;font-size:12px;">Or paste this link into your browser: ${manageUrl}</p>
+    </div>
+  `;
+}

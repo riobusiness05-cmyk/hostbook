@@ -7,7 +7,7 @@ import { HostFlowError } from "@/lib/hostflow/actions";
 // Opens the Stripe Billing Portal for the logged-in venue — payment methods,
 // invoice history, and self-serve cancel/reactivate all live there.
 export async function POST(req: NextRequest) {
-  const ctx = await hostContext(req);
+  const ctx = await hostContext(req, { requireAccess: false });
   if ("error" in ctx) return ctx.error;
 
   if (!isStripeConfigured()) {

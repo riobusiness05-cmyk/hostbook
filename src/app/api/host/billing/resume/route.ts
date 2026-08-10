@@ -8,7 +8,7 @@ import { prisma } from "@/lib/prisma";
 // Undoes a scheduled cancellation (Stripe's `cancel_at_period_end`) — only
 // possible while the subscription hasn't actually ended yet.
 export async function POST(req: NextRequest) {
-  const ctx = await hostContext(req);
+  const ctx = await hostContext(req, { requireAccess: false });
   if ("error" in ctx) return ctx.error;
 
   if (!isStripeConfigured()) {

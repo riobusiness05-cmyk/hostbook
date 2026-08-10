@@ -11,7 +11,7 @@ import { prisma } from "@/lib/prisma";
 // will confirm `cancelAtPeriodEnd` back onto the row; we also set it here so
 // the UI reflects the change without waiting on the webhook round-trip.
 export async function POST(req: NextRequest) {
-  const ctx = await hostContext(req);
+  const ctx = await hostContext(req, { requireAccess: false });
   if ("error" in ctx) return ctx.error;
 
   if (!isStripeConfigured()) {

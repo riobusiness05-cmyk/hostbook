@@ -10,7 +10,7 @@ import { HostFlowError } from "@/lib/hostflow/actions";
 // Ensures a Stripe customer exists first so the resulting subscription is
 // always linked back to our Subscription row via stripeCustomerId.
 export async function POST(req: NextRequest) {
-  const ctx = await hostContext(req);
+  const ctx = await hostContext(req, { requireAccess: false });
   if ("error" in ctx) return ctx.error;
 
   if (!isStripeConfigured()) {
