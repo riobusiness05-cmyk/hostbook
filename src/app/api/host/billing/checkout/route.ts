@@ -42,10 +42,20 @@ export async function POST(req: NextRequest) {
     // had one (avoids letting someone repeatedly reset a free trial).
     const trialDays = sub.trialStartedAt ? undefined : TRIAL_DAYS;
 
+    // The Plan row's stripeMonthlyPriceId is normally set once via the
+    // Stripe dashboard/API when a plan is created — it falls back to
+    // STRIPE_PROFESSIONAL_MONTHLY_PRICE_ID here so the Professional plan
+    // works the moment that env var is set, without needing a DB migration
+    // to backfill it.
+    const planWithPrice = {
+      ...plan,
+      stripeMonthlyPriceId: plan.stripeMonthlyPriceId || process.env.STRIPE_PROFESSIONAL_MONTHLY_PRICE_ID || null,
+    };
+
     const url = await createCheckoutSession({
       restaurantId: ctx.restaurantId,
       customerId,
-      plan,
+      plan: planWithPrice,
       interval: parsed.data.interval,
       trialDays,
     });
