@@ -36,6 +36,7 @@ export default async function HostSettingsPage({
   return (
     <SettingsShell
       restaurantName={restaurant.name}
+      restaurantSlug={restaurant.slug}
       initialBilling={billing}
       initialPlans={plans}
       trialDays={TRIAL_DAYS}

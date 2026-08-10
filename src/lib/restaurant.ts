@@ -31,3 +31,17 @@ export async function getActiveRestaurant() {
 
   return restaurant;
 }
+
+/**
+ * Looks up any restaurant by its public slug — used by the embeddable
+ * booking widget (src/app/widget/[slug], src/app/api/widget/[slug]/*),
+ * which is the one genuinely multi-tenant, unauthenticated surface in the
+ * app: unlike getActiveRestaurant() (fixed per-deployment) or hostContext()
+ * (session-authenticated), a widget request arrives from an arbitrary
+ * third-party website and names the restaurant itself via the URL. Returns
+ * null rather than throwing so callers can 404 cleanly on an unknown/typo'd
+ * slug instead of surfacing a 500.
+ */
+export async function getRestaurantBySlug(slug: string) {
+  return prisma.restaurant.findUnique({ where: { slug } });
+}

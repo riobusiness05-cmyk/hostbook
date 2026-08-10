@@ -8,21 +8,24 @@ import { BillingSection } from "./BillingSection";
 import { GeneralSettings } from "./GeneralSettings";
 import { HoursSettings } from "./HoursSettings";
 import { TableAvailabilitySettings } from "./TableAvailabilitySettings";
+import { WebsiteWidgetSettings } from "./WebsiteWidgetSettings";
 import type { BillingState, PlanDTO } from "@/lib/billing/subscription";
 import type { SettingsDTO } from "@/lib/hostflow/floor";
 import type { HourRow, TableRow } from "@/lib/host/client";
 
-type Tab = "billing" | "general" | "hours" | "tables";
+type Tab = "billing" | "general" | "hours" | "tables" | "website";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "billing", label: "Billing" },
   { id: "general", label: "General" },
   { id: "hours", label: "Hours" },
   { id: "tables", label: "Tables" },
+  { id: "website", label: "Website" },
 ];
 
 export function SettingsShell({
   restaurantName,
+  restaurantSlug,
   initialBilling,
   initialPlans,
   trialDays,
@@ -33,6 +36,7 @@ export function SettingsShell({
   checkoutResult = null,
 }: {
   restaurantName: string;
+  restaurantSlug: string;
   initialBilling: BillingState;
   initialPlans: PlanDTO[];
   trialDays: number;
@@ -103,6 +107,7 @@ export function SettingsShell({
           {tab === "general" && <GeneralSettings initialSettings={initialSettings} />}
           {tab === "hours" && <HoursSettings initialHours={initialHours} />}
           {tab === "tables" && <TableAvailabilitySettings initialTables={initialTables} />}
+          {tab === "website" && <WebsiteWidgetSettings restaurantSlug={restaurantSlug} />}
         </main>
       </div>
     </div>
