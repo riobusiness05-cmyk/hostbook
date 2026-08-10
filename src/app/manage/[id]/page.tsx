@@ -147,6 +147,10 @@ export default function ManageBookingPage() {
         Powered by{" "}
         <a href="https://hostflow-booking.vercel.app/hostflow" target="_blank" rel="noopener noreferrer" className="hover:text-neutral-500">
           Host Flow
+        </a>{" "}
+        ·{" "}
+        <a href="https://hostflow-booking.vercel.app/hostflow/privacy" target="_blank" rel="noopener noreferrer" className="hover:text-neutral-500">
+          Privacy
         </a>
       </p>
     </div>

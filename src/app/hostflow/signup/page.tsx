@@ -99,7 +99,11 @@ export default function HostFlowSignup() {
               {busy ? "Setting up your venue…" : "Start Free Trial"}
             </button>
             <p className="text-center text-[11px] leading-relaxed text-hf-inkFaint">
-              By continuing you agree to be contacted about your account. You can cancel anytime.
+              By continuing you agree to our{" "}
+              <Link href="/hostflow/terms" className="text-hf-inkMuted hover:text-hf-ink">Terms</Link>{" "}
+              and{" "}
+              <Link href="/hostflow/privacy" className="text-hf-inkMuted hover:text-hf-ink">Privacy Policy</Link>.
+              You can cancel anytime.
             </p>
           </form>
         </div>

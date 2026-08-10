@@ -240,7 +240,14 @@ export default async function HostFlowLanding() {
         </section>
 
         <footer className="border-t border-hf-line py-8 text-center font-mono text-xs text-hf-inkFaint">
-          Host Flow · A floor-management platform · © {new Date().getFullYear()}
+          <p>
+            Host Flow · A floor-management platform · © {new Date().getFullYear()}
+          </p>
+          <p className="mt-2 flex items-center justify-center gap-3">
+            <Link href="/hostflow/terms" className="hover:text-hf-ink">Terms</Link>
+            <span aria-hidden>·</span>
+            <Link href="/hostflow/privacy" className="hover:text-hf-ink">Privacy</Link>
+          </p>
         </footer>
       </div>
     </div>
