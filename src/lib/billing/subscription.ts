@@ -279,3 +279,36 @@ export async function reactivateSubscription(restaurantId: string) {
   await logBillingEvent(restaurantId, sub.id, "REACTIVATED");
   return sub;
 }
+
+/**
+ * Resets a restaurant to a clean, fresh trial and clears every Stripe
+ * reference on the row. Needed after switching Stripe from test mode to
+ * live mode: a Subscription row can be left pointing at a
+ * stripeCustomerId/stripeSubscriptionId that only ever existed in the old
+ * mode, which is otherwise permanently stuck (every Stripe call against it
+ * 404s in the new mode) — this is the only way back to a working state
+ * short of the row staying broken forever.
+ */
+export async function resetSubscriptionToCleanTrial(restaurantId: string) {
+  const now = new Date();
+  const trialEndsAt = new Date(now.getTime() + TRIAL_DAYS * 24 * 60 * 60000);
+  const sub = await prisma.subscription.update({
+    where: { restaurantId },
+    data: {
+      status: "TRIAL",
+      isComplimentary: false,
+      trialStartedAt: now,
+      trialEndsAt,
+      cancelAtPeriodEnd: false,
+      cancelledAt: null,
+      currentPeriodStart: null,
+      currentPeriodEnd: null,
+      lastPaymentStatus: null,
+      stripeCustomerId: null,
+      stripeSubscriptionId: null,
+      stripePriceId: null,
+    },
+  });
+  await logBillingEvent(restaurantId, sub.id, "TRIAL_STARTED", "Reset to a clean trial (stale Stripe references cleared)");
+  return sub;
+}
