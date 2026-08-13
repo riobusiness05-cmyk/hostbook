@@ -6,6 +6,7 @@ import {
   HOST_COOKIE_NAME,
   HOST_COOKIE_MAX_AGE_SECONDS,
 } from "@/lib/hostAuth";
+import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 
 const schema = z.object({
   email: z.string().email(),
@@ -13,6 +14,17 @@ const schema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  const ip = getClientIp(req);
+  // Loose enough not to lock out a real user mistyping their password a few
+  // times, tight enough to make brute-forcing a password impractical.
+  const rl = await checkRateLimit(`login:${ip}`, 15 * 60 * 1000, 15);
+  if (rl.limited) {
+    return NextResponse.json(
+      { error: "Too many sign-in attempts. Please try again in a few minutes." },
+      { status: 429, headers: { "Retry-After": String(rl.retryAfterSeconds) } }
+    );
+  }
+
   const body = await req.json().catch(() => null);
   const parsed = schema.safeParse(body);
   if (!parsed.success) {

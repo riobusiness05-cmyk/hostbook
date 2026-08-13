@@ -6,6 +6,7 @@ import { hashPassword, createHostSessionToken, HOST_COOKIE_NAME, HOST_COOKIE_MAX
 import { startTrial } from "@/lib/billing/subscription";
 import { getOrCreateStripeCustomer } from "@/lib/stripe";
 import { sendEmail, verificationEmailHtml } from "@/lib/email";
+import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 
 const VERIFY_TOKEN_TTL_MS = 1000 * 60 * 60 * 48; // 48h
 
@@ -37,6 +38,15 @@ async function uniqueSlug(desired: string): Promise<string> {
  * src/lib/email.ts); it doesn't block access.
  */
 export async function POST(req: NextRequest) {
+  const ip = getClientIp(req);
+  const rl = await checkRateLimit(`register:${ip}`, 60 * 60 * 1000, 5);
+  if (rl.limited) {
+    return NextResponse.json(
+      { error: "Too many accounts created from this device. Please try again later." },
+      { status: 429, headers: { "Retry-After": String(rl.retryAfterSeconds) } }
+    );
+  }
+
   const body = await req.json().catch(() => null);
   const parsed = registerSchema.safeParse(body);
   if (!parsed.success) {

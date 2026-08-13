@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getRestaurantBySlug } from "@/lib/restaurant";
 import { createReservationForRestaurant } from "@/lib/reservationActions";
 import { createReservationSchema } from "@/types";
+import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 
 // Public, unauthenticated — the embeddable widget's booking submission.
 // Routes through the exact same createReservationForRestaurant used by the
@@ -12,6 +13,15 @@ import { createReservationSchema } from "@/types";
 // duplicated here, which is what keeps a widget booking exactly as
 // trustworthy as one taken any other way.
 export async function POST(req: NextRequest, { params }: { params: { slug: string } }) {
+  const ip = getClientIp(req);
+  const rl = await checkRateLimit(`widget-booking:${params.slug}:${ip}`, 10 * 60 * 1000, 10);
+  if (rl.limited) {
+    return NextResponse.json(
+      { error: "Too many booking attempts — please try again in a few minutes." },
+      { status: 429, headers: { "Retry-After": String(rl.retryAfterSeconds) } }
+    );
+  }
+
   const restaurant = await getRestaurantBySlug(params.slug);
   if (!restaurant) {
     return NextResponse.json({ error: "Unknown restaurant" }, { status: 404 });

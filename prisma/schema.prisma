@@ -530,3 +530,17 @@ model ChatMessage {
   content       String
   createdAt     DateTime    @default(now())
 }
+
+// Fixed-window rate limiting for public, unauthenticated endpoints
+// (registration, login, widget bookings) — see src/lib/rateLimit.ts. A
+// Postgres-backed counter rather than an in-memory one because Vercel's
+// serverless functions don't share memory across instances/invocations.
+model RateLimitHit {
+  id          String   @id @default(cuid())
+  key         String
+  windowStart DateTime
+  count       Int      @default(1)
+
+  @@unique([key, windowStart])
+  @@index([windowStart])
+}
