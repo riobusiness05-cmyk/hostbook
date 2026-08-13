@@ -13,16 +13,6 @@ export const availabilityQuerySchema = z.object({
   partySize: z.coerce.number().int().min(1).max(30),
 });
 
-// The Colonial's actual seating areas — a guest can request a specific one and
-// the table-assignment engine will prefer a free table in that area.
-export const SEATING_PREFERENCES = [
-  "No preference",
-  "Main Terrace",
-  "Back Terrace",
-  "Restaurant",
-  "Bar",
-  "Lounge",
-] as const;
 export const OCCASIONS = ["None", "Birthday", "Anniversary", "Business", "Celebration", "Date night"] as const;
 
 export const createReservationSchema = z.object({
@@ -35,7 +25,12 @@ export const createReservationSchema = z.object({
   notes: z.string().max(500).optional(),
   // Richer guest context — all optional so existing callers (chat) still work.
   occasion: z.enum(OCCASIONS).optional(),
-  seatingPreference: z.enum(SEATING_PREFERENCES).optional(),
+  // Free text matched against this restaurant's own Section.name (see
+  // findAvailableTable in availability.ts) — every restaurant names its
+  // sections differently, so this can't be a fixed enum. The host-facing
+  // dropdown (NewReservationForm) populates its options from the
+  // restaurant's real sections rather than a hardcoded list.
+  seatingPreference: z.string().trim().min(1).max(60).optional(),
   accessibilityNeeds: z.string().max(200).optional(),
   highChair: z.boolean().optional(),
   source: z.enum(["WEB_CHAT", "WEB_FORM", "PHONE", "ADMIN"]).default("WEB_FORM"),

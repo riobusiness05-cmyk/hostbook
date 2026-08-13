@@ -2,9 +2,11 @@
 
 import { useRef, useState } from "react";
 import { Button } from "./ui";
-import { OCCASIONS, SEATING_PREFERENCES } from "@/types";
+import { OCCASIONS } from "@/types";
 import { localDateStr } from "@/lib/host/format";
 import * as api from "@/lib/host/client";
+
+const NO_PREFERENCE = "No preference";
 
 const input =
   "w-full rounded-lg border border-black/10 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-sky-500 dark:border-white/15 dark:bg-white/5 dark:text-white";
@@ -13,10 +15,12 @@ const input =
 // real availability for the venue, choose a time, capture guest details, book.
 export function NewReservationForm({
   timezone,
+  sectionNames,
   onDone,
   onCancel,
 }: {
   timezone: string;
+  sectionNames: string[];
   onDone: () => void;
   onCancel: () => void;
 }) {
@@ -34,7 +38,7 @@ export function NewReservationForm({
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [occasion, setOccasion] = useState("None");
-  const [seating, setSeating] = useState("No preference");
+  const [seating, setSeating] = useState(NO_PREFERENCE);
   const [highChair, setHighChair] = useState(false);
   const [notes, setNotes] = useState("");
   // Stable for the lifetime of this booking attempt — a network retry or a
@@ -78,7 +82,7 @@ export function NewReservationForm({
         customerName: name.trim(),
         customerPhone: phone || undefined,
         occasion: occasion !== "None" ? occasion : undefined,
-        seatingPreference: seating !== "No preference" ? seating : undefined,
+        seatingPreference: seating !== NO_PREFERENCE ? seating : undefined,
         highChair: highChair || undefined,
         notes: notes || undefined,
         idempotencyKey: idempotencyKeyRef.current,
@@ -175,7 +179,7 @@ export function NewReservationForm({
               {OCCASIONS.map((o) => <option key={o} value={o}>{o === "None" ? "Occasion" : o}</option>)}
             </select>
             <select className={input} value={seating} onChange={(e) => setSeating(e.target.value)}>
-              {SEATING_PREFERENCES.map((s) => <option key={s} value={s}>{s === "No preference" ? "Seating pref" : s}</option>)}
+              {[NO_PREFERENCE, ...sectionNames].map((s) => <option key={s} value={s}>{s === NO_PREFERENCE ? "Seating pref" : s}</option>)}
             </select>
           </div>
           <label className="flex items-center gap-2 text-sm text-neutral-700 dark:text-neutral-200">

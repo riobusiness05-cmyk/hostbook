@@ -143,6 +143,7 @@ export function ReservationsPanel({
         {adding && (
           <NewReservationForm
             timezone={state.timezone}
+            sectionNames={state.sections.map((s) => s.name)}
             onDone={() => {
               setPaused?.(false);
               setAdding(false);
