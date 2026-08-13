@@ -2,9 +2,24 @@ import Link from "next/link";
 import { HostFlowLogo } from "@/components/HostFlowLogo";
 import { listActivePlans } from "@/lib/billing/subscription";
 
+const TITLE = "Host Flow — The operating system for your floor";
+const DESCRIPTION =
+  "Live floor plan, smart seating, walk-ins, waitlist, rush prediction and an AI host assistant — one calm screen for a busy service.";
+
 export const metadata = {
-  title: "Host Flow — The operating system for your floor",
-  description: "Live floor plan, smart seating, walk-ins, waitlist, rush prediction and an AI host assistant — one calm screen for a busy service.",
+  title: TITLE,
+  description: DESCRIPTION,
+  openGraph: {
+    title: TITLE,
+    description: DESCRIPTION,
+    type: "website",
+    siteName: "Host Flow",
+  },
+  twitter: {
+    card: "summary",
+    title: TITLE,
+    description: DESCRIPTION,
+  },
 };
 
 const FEATURES = [
