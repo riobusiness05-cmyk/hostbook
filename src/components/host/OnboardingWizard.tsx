@@ -41,7 +41,17 @@ export function OnboardingWizard({ restaurantName }: { restaurantName: string })
   const [serviceChargePct, setServiceChargePct] = useState<number | "">("");
   const [walkinsEnabled, setWalkinsEnabled] = useState(true);
   const [tableMergingEnabled, setTableMergingEnabled] = useState(true);
-  const [timezone, setTimezone] = useState("Atlantic/Canary");
+  // Guessing the host's own timezone beats defaulting to a fixed one — most
+  // hosts are setting up their venue from the venue itself (or nearby), so
+  // the browser's timezone is almost always the right one. Falls back to a
+  // widely-recognized zone rather than an unusual one if detection fails.
+  const [timezone, setTimezone] = useState(() => {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone || "America/New_York";
+    } catch {
+      return "America/New_York";
+    }
+  });
 
   const [openTime, setOpenTime] = useState("10:00");
   const [closeTime, setCloseTime] = useState("23:00");
@@ -143,6 +153,7 @@ export function OnboardingWizard({ restaurantName }: { restaurantName: string })
               </Field>
               <Field label="Timezone">
                 <select className={inputCls} value={timezone} onChange={(e) => setTimezone(e.target.value)}>
+                  {!TIMEZONES.includes(timezone) && <option value={timezone}>{timezone}</option>}
                   {TIMEZONES.map((tz) => (
                     <option key={tz} value={tz}>
                       {tz}

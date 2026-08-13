@@ -55,8 +55,24 @@ export async function POST(req: NextRequest) {
   const { room, sections, tables } = parsed.data;
 
   try {
-    const existingCount = await prisma.diningTable.count({ where: { restaurantId: ctx.restaurantId } });
-    let nextAutoNumber = 1000 + existingCount; // guaranteed-free-looking range for tables the AI couldn't read a number on
+    // Auto-numbered tables (t.number === null — either the AI couldn't read
+    // a number off the photo, or this is the template/manual path where no
+    // table ever has a real number) start right after the highest number
+    // already in use, so a brand-new restaurant gets plain "1, 2, 3…"
+    // instead of an arbitrary-looking "1000, 1001…". Only actually needs to
+    // jump ahead when there's a real number to avoid colliding with — from
+    // existing tables, or from other tables in this same batch that the AI
+    // did successfully read.
+    const existingTables = await prisma.diningTable.findMany({
+      where: { restaurantId: ctx.restaurantId },
+      select: { tableNumber: true },
+    });
+    const highestKnownNumber = Math.max(
+      0,
+      ...existingTables.map((t) => t.tableNumber),
+      ...tables.map((t) => t.number ?? 0)
+    );
+    let nextAutoNumber = highestKnownNumber + 1;
 
     const created = await prisma.$transaction(async (tx) => {
       // Sections are @@unique([restaurantId, name]) — upsert so re-running
