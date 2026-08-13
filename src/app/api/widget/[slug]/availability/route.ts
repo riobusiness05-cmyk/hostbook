@@ -4,6 +4,12 @@ import { getAvailableSlots } from "@/lib/availability";
 import { availabilityQuerySchema } from "@/types";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 
+// Without this, Next.js can treat a GET route handler as statically
+// cacheable and serve a stale response without ever re-invoking this
+// function — which would silently skip the rate-limit check below on every
+// repeat request for the same date/partySize.
+export const dynamic = "force-dynamic";
+
 // Public, unauthenticated — same availability engine as the admin-facing
 // /api/availability, just resolved by slug instead of the single
 // per-deployment active restaurant. Deliberately reuses getAvailableSlots
