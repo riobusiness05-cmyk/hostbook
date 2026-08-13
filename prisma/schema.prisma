@@ -77,6 +77,10 @@ model Account {
   emailVerifyToken      String?  @unique
   emailVerifyExpiresAt  DateTime?
 
+  // ── Password reset ──────────────────────────────────────────────────
+  passwordResetToken      String?   @unique
+  passwordResetExpiresAt  DateTime?
+
   @@index([restaurantId])
 }
 

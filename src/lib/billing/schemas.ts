@@ -19,6 +19,16 @@ export const verifyEmailSchema = z.object({
   token: z.string().min(1),
 });
 
+// ── Password reset ──────────────────────────────────────────────────────
+export const forgotPasswordSchema = z.object({
+  email: z.string().email(),
+});
+
+export const resetPasswordSchema = z.object({
+  token: z.string().min(1),
+  password: z.string().min(8).max(200),
+});
+
 // ── Checkout / portal ──────────────────────────────────────────────────
 export const checkoutSchema = z.object({
   planKey: z.string().min(1).max(60).default("professional"),

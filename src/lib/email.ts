@@ -38,6 +38,18 @@ export function verificationEmailHtml(verifyUrl: string, restaurantName: string)
   `;
 }
 
+export function passwordResetEmailHtml(resetUrl: string, ownerName: string): string {
+  return `
+    <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
+      <h2>Reset your Host Flow password</h2>
+      <p>Hi ${ownerName}, we got a request to reset your password. This link expires in 1 hour.</p>
+      <p><a href="${resetUrl}" style="display:inline-block;padding:10px 20px;background:#111;color:#fff;text-decoration:none;border-radius:6px;">Reset password</a></p>
+      <p style="color:#666;font-size:12px;">Or paste this link into your browser: ${resetUrl}</p>
+      <p style="color:#666;font-size:12px;">If you didn't request this, you can safely ignore this email.</p>
+    </div>
+  `;
+}
+
 export function reservationConfirmationHtml(params: {
   restaurantName: string;
   customerName: string;
