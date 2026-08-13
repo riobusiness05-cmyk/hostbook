@@ -106,7 +106,14 @@ export async function analyzeFloorPlanImage(base64Data: string, mediaType: strin
       ],
     });
   } catch (err) {
-    throw new HostFlowError(`AI request failed: ${(err as Error).message}`, 502);
+    // The raw SDK error embeds Anthropic's own API/vendor error body (e.g.
+    // "credit balance too low") — useful in server logs, not something to
+    // show a host, who'd just see a confusing, unactionable wall of JSON.
+    console.error("[floor-plan-vision] AI request failed", err);
+    throw new HostFlowError(
+      "AI floor-plan detection is temporarily unavailable — try again shortly, or build your floor plan from a template or by adding tables manually.",
+      502
+    );
   }
 
   const textBlock = response.content.find((b): b is Anthropic.TextBlock => b.type === "text");

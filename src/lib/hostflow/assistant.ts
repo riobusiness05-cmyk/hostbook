@@ -26,7 +26,7 @@ import {
 
 export type AssistantResult = {
   reply: string;
-  source: "engine" | "claude";
+  source: "engine" | "claude" | "unavailable";
   action?: string;
   data?: unknown;
 };
@@ -530,10 +530,23 @@ export async function runAssistant(
       return await answerWithClaude(message, state, restaurant, history);
     } catch (e) {
       console.error("[hostflow] assistant Claude error", e);
+      // A configured key that still fails (exhausted credit, outage, rate
+      // limit) is a real fault, not "the host asked something odd" — say so
+      // rather than quietly reusing the not-configured fallback below, which
+      // reads as "I didn't understand you" and hides that anything is wrong.
+      return {
+        reply:
+          "The AI assistant is temporarily unavailable, so I can only handle simple floor questions right now — try:\n" +
+          "• What tables are free?\n• Who's arriving next?\n• Can we fit a walk-in of 6?\n" +
+          "• Move Rossi to Table 14.\n• Cancel Blackwood's reservation.\n\n" +
+          "For anything else, use + New reservation or the floor plan directly.",
+        source: "unavailable",
+      };
     }
   }
 
-  // Grounded fallback — never guesses.
+  // No ANTHROPIC_API_KEY configured at all — expected/intentional, not a
+  // fault, so this reads as "here's what I can do" rather than an error.
   return {
     reply:
       "I can answer from live floor data — try:\n" +
