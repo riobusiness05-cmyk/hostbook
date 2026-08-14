@@ -19,11 +19,12 @@ import type { Restaurant } from "@prisma/client";
  * bot's answers immediately, with zero code changes or redeploys.
  */
 
-// Anthropic model to use. claude-3-5-sonnet is a solid, cost-effective
-// default for tool-calling chat. Check https://docs.claude.com/en/docs/about-claude/models
-// for newer models and bump this (or override via ANTHROPIC_MODEL env var)
-// as Anthropic releases better/cheaper ones.
-export const MODEL = process.env.ANTHROPIC_MODEL || "claude-3-5-sonnet-20241022";
+// Anthropic model to use. claude-sonnet-5 is a solid, cost-effective
+// default for tool-calling chat and vision. Check
+// https://docs.claude.com/en/docs/about-claude/models for newer models and
+// bump this (or override via ANTHROPIC_MODEL env var) as Anthropic releases
+// better/cheaper ones — older dated model ids get retired over time.
+export const MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-5";
 const MAX_TOOL_ITERATIONS = 4;
 
 let _client: Anthropic | null = null;

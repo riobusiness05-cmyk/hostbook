@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { Restaurant } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { MODEL } from "@/lib/claude";
 import { minutesLabel } from "@/lib/host/format";
 import { getAvailableSlots, toLocalDateStr } from "@/lib/availability";
 import { createReservationForRestaurant } from "@/lib/reservationActions";
@@ -462,7 +463,7 @@ async function answerWithClaude(
   history: { role: "user" | "assistant"; text: string }[]
 ): Promise<AssistantResult> {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
-  const model = process.env.ANTHROPIC_MODEL || "claude-3-5-sonnet-20241022";
+  const model = MODEL;
   const today = toLocalDateStr(new Date(), restaurant.timezone);
   const system =
     "You are the AI Host Assistant for a busy restaurant floor. For questions about the live floor, answer ONLY using the JSON DATA block below — " +
