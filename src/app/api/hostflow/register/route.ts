@@ -93,13 +93,14 @@ export async function POST(req: NextRequest) {
 
   try {
     const verifyUrl = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/hostflow/verify?token=${emailVerifyToken}`;
-    await sendEmail({
+    const result = await sendEmail({
       to: normalizedEmail,
-      subject: "Verify your Host Flow account",
+      subject: "Welcome to Host Flow — confirm your email",
       html: verificationEmailHtml(verifyUrl, restaurantName),
     });
+    if (!result.ok) console.error("[register] welcome email failed:", result.error);
   } catch (err) {
-    console.error("[register] verification email failed:", err);
+    console.error("[register] welcome email failed:", err);
   }
 
   const token = createHostSessionToken(restaurant.id, account.id);

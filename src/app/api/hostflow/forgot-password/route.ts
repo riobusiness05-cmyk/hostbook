@@ -40,11 +40,12 @@ export async function POST(req: NextRequest) {
 
     const resetUrl = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/hostflow/reset-password?token=${passwordResetToken}`;
     try {
-      await sendEmail({
+      const result = await sendEmail({
         to: normalizedEmail,
         subject: "Reset your Host Flow password",
         html: passwordResetEmailHtml(resetUrl, account.name),
       });
+      if (!result.ok) console.error("[forgot-password] email failed:", result.error);
     } catch (err) {
       console.error("[forgot-password] email failed:", err);
     }

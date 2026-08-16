@@ -1,8 +1,34 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { prisma } from "@/lib/prisma";
-import { getClient, mapStripeStatus } from "@/lib/stripe";
+import { getClient, mapStripeStatus, createBillingPortalSession } from "@/lib/stripe";
 import { logBillingEvent, wasStripeEventProcessed } from "@/lib/billing/subscription";
+import { sendEmail, paymentFailedEmailHtml } from "@/lib/email";
+
+async function notifyOwnerPaymentFailed(restaurantId: string, stripeCustomerId: string | null) {
+  // Never lets an email failure affect the webhook's response — the
+  // Subscription update + BillingEvent log (what actually matters for
+  // correctness/idempotency) have already committed by the time this runs.
+  try {
+    if (!stripeCustomerId) return;
+    const owner = await prisma.account.findFirst({
+      where: { restaurantId, role: "OWNER" },
+      orderBy: { createdAt: "asc" },
+    });
+    if (!owner) return;
+    const restaurant = await prisma.restaurant.findUnique({ where: { id: restaurantId }, select: { name: true } });
+    if (!restaurant) return;
+    const portalUrl = await createBillingPortalSession(stripeCustomerId);
+    const result = await sendEmail({
+      to: owner.email,
+      subject: "Action needed: your Host Flow payment failed",
+      html: paymentFailedEmailHtml({ restaurantName: restaurant.name, portalUrl }),
+    });
+    if (!result.ok) console.error("[stripe webhook] payment-failed email failed", result.error);
+  } catch (err) {
+    console.error("[stripe webhook] payment-failed email failed", err);
+  }
+}
 
 // Public endpoint — Stripe calls this directly, no session cookie. Signature
 // verification (below) is what proves a request genuinely came from Stripe.
@@ -100,6 +126,7 @@ async function handleInvoiceFailed(event: Stripe.Event) {
     data: { status: "PAST_DUE", lastPaymentStatus: "failed" },
   });
   await logBillingEvent(updated.restaurantId, updated.id, "PAYMENT_FAILED", undefined, event.id);
+  await notifyOwnerPaymentFailed(updated.restaurantId, updated.stripeCustomerId);
 }
 
 export async function POST(req: NextRequest) {

@@ -71,6 +71,10 @@ model Account {
   role         String     @default("MANAGER")
   createdAt    DateTime   @default(now())
   lastLoginAt  DateTime?
+  // IP of the most recent successful login — used only to detect a new/
+  // unrecognized login for the security-alert email (see hostAuth.ts's
+  // authenticate()); not full device fingerprinting, just a low-cost signal.
+  lastLoginIp  String?
 
   // ── Email verification (self-serve registration) ──────────────────────
   emailVerified        Boolean   @default(false)
@@ -218,6 +222,9 @@ model Reservation {
 
   confirmationSentAt DateTime?
   reminderSentAt     DateTime?
+  // Set when the restaurant owner's new-booking notification email succeeds
+  // (never set for source: "ADMIN" bookings — the owner made those themselves).
+  ownerNotifiedAt    DateTime?
 
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt

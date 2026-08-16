@@ -7,6 +7,7 @@ import {
   HOST_COOKIE_MAX_AGE_SECONDS,
 } from "@/lib/hostAuth";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
+import { sendEmail, loginAlertEmailHtml } from "@/lib/email";
 
 const schema = z.object({
   email: z.string().email(),
@@ -33,12 +34,32 @@ export async function POST(req: NextRequest) {
 
   let session: Awaited<ReturnType<typeof authenticate>>;
   try {
-    session = await authenticate(parsed.data.email, parsed.data.password);
+    session = await authenticate(parsed.data.email, parsed.data.password, ip);
   } catch {
     return NextResponse.json({ error: "Sign-in is not configured yet." }, { status: 500 });
   }
   if (!session) {
     return NextResponse.json({ error: "Incorrect email or password" }, { status: 401 });
+  }
+
+  if (session.isNewIp) {
+    try {
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+      const result = await sendEmail({
+        to: parsed.data.email.trim().toLowerCase(),
+        subject: "New sign-in to your Host Flow account",
+        html: loginAlertEmailHtml({
+          accountName: session.accountName,
+          restaurantName: session.restaurantName,
+          ip,
+          whenLabel: new Date().toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" }) + " UTC",
+          resetPasswordUrl: `${appUrl}/hostflow/forgot-password`,
+        }),
+      });
+      if (!result.ok) console.error("[login] alert email failed:", result.error);
+    } catch (err) {
+      console.error("[login] alert email failed:", err);
+    }
   }
 
   const token = createHostSessionToken(session.restaurantId, session.accountId);

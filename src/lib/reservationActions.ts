@@ -13,7 +13,7 @@ import {
 } from "@/lib/availability";
 import { notify } from "@/lib/hostflow/actions";
 import { emitFloorChange } from "@/lib/hostflow/events";
-import { sendEmail, reservationConfirmationHtml } from "@/lib/email";
+import { sendEmail, reservationConfirmationHtml, ownerBookingNotificationHtml } from "@/lib/email";
 import type { Restaurant } from "@prisma/client";
 import type { CreateReservationInput } from "@/types";
 
@@ -165,17 +165,18 @@ export async function createReservationForRestaurant(
     });
     emitFloorChange(restaurant.id, "reservation");
 
-    // Best-effort — a guest's booking must never fail because their
-    // confirmation email couldn't be sent (Resend outage, bad address, etc),
-    // so errors are caught rather than thrown. Still *awaited* (not fired
-    // and forgotten): on Vercel, a serverless function can be frozen the
-    // instant it returns its response, which would silently kill an
-    // in-flight fetch to Resend before it ever left the box.
+    // Best-effort — a guest's booking must never fail because a
+    // confirmation/notification email couldn't be sent (Resend outage, bad
+    // address, etc), so errors are caught rather than thrown. Still
+    // *awaited* (not fired and forgotten): on Vercel, a serverless function
+    // can be frozen the instant it returns its response, which would
+    // silently kill an in-flight fetch to Resend before it ever left the box.
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+
     if (input.customerEmail) {
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
       const manageUrl = `${appUrl}/manage/${reservation.id}?t=${manageToken}`;
       try {
-        await sendEmail({
+        const result = await sendEmail({
           to: input.customerEmail,
           subject: `You're booked at ${restaurant.name}`,
           html: reservationConfirmationHtml({
@@ -187,8 +188,50 @@ export async function createReservationForRestaurant(
             manageUrl,
           }),
         });
+        if (result.ok) {
+          await prisma.reservation.update({ where: { id: reservation.id }, data: { confirmationSentAt: new Date() } });
+        } else {
+          console.error("[reservation] confirmation email failed", result.error);
+        }
       } catch (err) {
         console.error("[reservation] confirmation email failed", err);
+      }
+    }
+
+    // Notify the owner about guest-initiated bookings only — not bookings
+    // the owner/staff just made themselves from the dashboard (those always
+    // arrive with source: "ADMIN", forced server-side in
+    // src/app/api/host/reservations/route.ts). Independent of whether the
+    // guest left an email — a phone-only booking still notifies the owner.
+    if (input.source !== "ADMIN") {
+      try {
+        const owner = await prisma.account.findFirst({
+          where: { restaurantId: restaurant.id, role: "OWNER" },
+          orderBy: { createdAt: "asc" },
+        });
+        const ownerEmail = owner?.email ?? restaurant.email;
+        if (ownerEmail) {
+          const result = await sendEmail({
+            to: ownerEmail,
+            subject: `New booking: ${input.customerName} (${input.partySize})`,
+            html: ownerBookingNotificationHtml({
+              restaurantName: restaurant.name,
+              customerName: input.customerName,
+              date: input.date,
+              time: input.time,
+              partySize: input.partySize,
+              tableLabel,
+              dashboardUrl: `${appUrl}/host`,
+            }),
+          });
+          if (result.ok) {
+            await prisma.reservation.update({ where: { id: reservation.id }, data: { ownerNotifiedAt: new Date() } });
+          } else {
+            console.error("[reservation] owner notification email failed", result.error);
+          }
+        }
+      } catch (err) {
+        console.error("[reservation] owner notification email failed", err);
       }
     }
 

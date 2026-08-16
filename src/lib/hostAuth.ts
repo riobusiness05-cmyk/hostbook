@@ -69,15 +69,36 @@ export function readHostSession(token: string | undefined): HostSession | null {
 }
 
 // ── Login ───────────────────────────────────────────────────────────────────
-export async function authenticate(
-  email: string,
-  password: string
-): Promise<{ restaurantId: string; accountId: string } | null> {
-  const account = await prisma.account.findUnique({ where: { email: email.trim().toLowerCase() } });
+export type AuthenticateResult = {
+  restaurantId: string;
+  accountId: string;
+  accountName: string;
+  restaurantName: string;
+  // True only when this account has logged in successfully from a different
+  // IP before (never on the very first login ever — that happens seconds
+  // after registration, and alerting on it would just duplicate the welcome
+  // email) — see loginAlertEmailHtml in src/lib/email.ts.
+  isNewIp: boolean;
+};
+
+export async function authenticate(email: string, password: string, ip: string): Promise<AuthenticateResult | null> {
+  const account = await prisma.account.findUnique({
+    where: { email: email.trim().toLowerCase() },
+    include: { restaurant: { select: { name: true } } },
+  });
   if (!account) return null;
   if (!verifyPassword(password, account.passwordHash)) return null;
-  await prisma.account.update({ where: { id: account.id }, data: { lastLoginAt: new Date() } });
-  return { restaurantId: account.restaurantId, accountId: account.id };
+
+  const isNewIp = account.lastLoginIp !== null && account.lastLoginIp !== ip;
+  await prisma.account.update({ where: { id: account.id }, data: { lastLoginAt: new Date(), lastLoginIp: ip } });
+
+  return {
+    restaurantId: account.restaurantId,
+    accountId: account.id,
+    accountName: account.name,
+    restaurantName: account.restaurant.name,
+    isNewIp,
+  };
 }
 
 // ── Cookie helpers ────────────────────────────────────────────────────────
