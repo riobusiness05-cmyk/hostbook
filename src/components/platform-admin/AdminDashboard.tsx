@@ -1,17 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { Chip, Button } from "@/components/host/ui";
+import Link from "next/link";
+import { Chip, Button, StatCard, Card, SectionTitle } from "@/components/host/ui";
 import { HostFlowLogo } from "@/components/HostFlowLogo";
-
-const STATUS_META: Record<string, { label: string; color: string }> = {
-  COMPLIMENTARY: { label: "Complimentary", color: "#a855f7" },
-  TRIAL: { label: "Trial", color: "#3b82f6" },
-  ACTIVE: { label: "Active", color: "#22c55e" },
-  PAST_DUE: { label: "Past due", color: "#f97316" },
-  CANCELLED: { label: "Cancelled", color: "#6b7280" },
-  EXPIRED: { label: "Expired", color: "#ef4444" },
-};
+import { TimeSeriesChart } from "./TimeSeriesChart";
+import { STATUS_META, formatCents, formatDate, formatDateTime } from "./format";
+import type {
+  PlatformMetrics,
+  SeriesPoint,
+  RecentRestaurantRow,
+  ActiveRestaurantRow,
+  RecentBookingRow,
+  FailedPaymentRow,
+} from "@/lib/platformAdmin";
 
 export type RestaurantRow = {
   id: string;
@@ -26,22 +28,28 @@ export type RestaurantRow = {
   isComplimentary: boolean;
 };
 
-function formatCents(cents: number): string {
-  // Locale pinned (not `undefined`) so server-rendered and client-hydrated
-  // output always match — the runtime's default locale can differ between
-  // Node (SSR) and the browser (hydration), which otherwise triggers a
-  // hydration mismatch on this exact string.
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(cents / 100);
-}
-
 export function AdminDashboard({
   restaurants,
-  mrrCents,
   counts,
+  metrics,
+  growthSeries,
+  bookingSeries,
+  mrrSeries,
+  recentRestaurants,
+  mostActive,
+  recentBookings,
+  recentFailedPayments,
 }: {
   restaurants: RestaurantRow[];
-  mrrCents: number;
   counts: Record<string, number>;
+  metrics: PlatformMetrics;
+  growthSeries: SeriesPoint[];
+  bookingSeries: SeriesPoint[];
+  mrrSeries: SeriesPoint[];
+  recentRestaurants: RecentRestaurantRow[];
+  mostActive: ActiveRestaurantRow[];
+  recentBookings: RecentBookingRow[];
+  recentFailedPayments: FailedPaymentRow[];
 }) {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -66,7 +74,7 @@ export function AdminDashboard({
   }
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100">
+    <div className="dark min-h-screen bg-neutral-950 text-neutral-100">
       <header className="border-b border-white/10 px-6 py-4">
         <div className="mx-auto flex max-w-6xl items-center justify-between">
           <div className="flex items-center gap-3">
@@ -79,29 +87,131 @@ export function AdminDashboard({
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl space-y-5 p-6">
+      <main className="mx-auto max-w-6xl space-y-6 p-6">
         {error && (
           <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">{error}</div>
         )}
 
-        {/* Aggregate stats */}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-          <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">MRR</p>
-            <p className="mt-1 text-2xl font-bold text-white">{formatCents(mrrCents)}</p>
+        {/* Metrics */}
+        <div>
+          <SectionTitle>Business metrics</SectionTitle>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+            <StatCard label="Total restaurants" value={metrics.totalRestaurants} />
+            <StatCard label="Active restaurants" value={metrics.activeRestaurants} tone="good" />
+            <StatCard label="New this month" value={metrics.newRestaurantsThisMonth} sub="restaurants" />
+            <StatCard label="Staff accounts" value={metrics.totalStaffAccounts} sub="across all restaurants" />
+            <StatCard label="MRR" value={formatCents(metrics.mrrCents)} tone="good" />
+            <StatCard label="Total bookings" value={metrics.totalBookings.toLocaleString("en-US")} />
+            <StatCard label="Bookings today" value={metrics.bookingsToday} />
+            <StatCard label="Bookings this week" value={metrics.bookingsThisWeek} />
+            <StatCard label="Bookings this month" value={metrics.bookingsThisMonth} />
+            <StatCard label="Active subscriptions" value={metrics.activeSubscriptions} tone="good" />
+            <StatCard label="Trial accounts" value={metrics.trialAccounts} />
+            <StatCard label="Cancelled subscriptions" value={metrics.cancelledSubscriptions} tone={metrics.cancelledSubscriptions > 0 ? "warn" : "default"} />
+            <StatCard
+              label="Failed payments"
+              value={metrics.failedPayments30d}
+              sub="last 30 days"
+              tone={metrics.failedPayments30d > 0 ? "bad" : "default"}
+            />
           </div>
-          <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">Restaurants</p>
-            <p className="mt-1 text-2xl font-bold text-white">{restaurants.length}</p>
+        </div>
+
+        {/* Charts */}
+        <div>
+          <SectionTitle>Trends (last 12 months)</SectionTitle>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+            <Card className="p-4">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-400">Restaurant growth</p>
+              <TimeSeriesChart data={growthSeries} color="#3b82f6" />
+            </Card>
+            <Card className="p-4">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-400">Booking volume</p>
+              <TimeSeriesChart data={bookingSeries} color="#22c55e" />
+            </Card>
+            <Card className="p-4">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-400">Revenue (MRR)</p>
+              <TimeSeriesChart data={mrrSeries} color="#a855f7" formatValue={(v) => `$${v}`} />
+            </Card>
           </div>
-          {Object.entries(STATUS_META).map(([key, meta]) => (
-            <div key={key} className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">{meta.label}</p>
-              <p className="mt-1 text-2xl font-bold" style={{ color: meta.color }}>
-                {counts[key] ?? 0}
-              </p>
+        </div>
+
+        {/* Activity tables */}
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <Card className="p-4">
+            <SectionTitle>Recently registered</SectionTitle>
+            <div className="space-y-2">
+              {recentRestaurants.length === 0 && <p className="text-sm text-neutral-500">No restaurants yet.</p>}
+              {recentRestaurants.map((r) => {
+                const meta = STATUS_META[r.status] ?? { label: r.status, color: "#6b7280" };
+                return (
+                  <Link
+                    key={r.id}
+                    href={`/hostflow/admin/${r.id}`}
+                    className="flex items-center justify-between rounded-lg px-2 py-1.5 text-sm hover:bg-white/5"
+                  >
+                    <div>
+                      <span className="font-medium text-white">{r.name}</span>
+                      <span className="ml-2 text-xs text-neutral-500">{formatDate(r.createdAt)}</span>
+                    </div>
+                    <Chip color={meta.color}>{meta.label}</Chip>
+                  </Link>
+                );
+              })}
             </div>
-          ))}
+          </Card>
+
+          <Card className="p-4">
+            <SectionTitle>Most active restaurants</SectionTitle>
+            <div className="space-y-2">
+              {mostActive.length === 0 && <p className="text-sm text-neutral-500">No bookings yet.</p>}
+              {mostActive.map((r) => (
+                <Link
+                  key={r.id}
+                  href={`/hostflow/admin/${r.id}`}
+                  className="flex items-center justify-between rounded-lg px-2 py-1.5 text-sm hover:bg-white/5"
+                >
+                  <span className="font-medium text-white">{r.name}</span>
+                  <span className="text-neutral-400">{r.bookingCount} bookings</span>
+                </Link>
+              ))}
+            </div>
+          </Card>
+
+          <Card className="p-4">
+            <SectionTitle>Recent bookings</SectionTitle>
+            <div className="max-h-80 space-y-2 overflow-y-auto">
+              {recentBookings.length === 0 && <p className="text-sm text-neutral-500">No bookings yet.</p>}
+              {recentBookings.map((b) => (
+                <div key={b.id} className="flex items-center justify-between rounded-lg px-2 py-1.5 text-sm">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-white">
+                      {b.customerName} <span className="text-neutral-500">· {b.partySize}</span>
+                    </p>
+                    <p className="truncate text-xs text-neutral-500">{b.restaurantName}</p>
+                  </div>
+                  <span className="shrink-0 text-xs text-neutral-500">{formatDateTime(b.createdAt)}</span>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          <Card className="p-4">
+            <SectionTitle>Recent failed payments</SectionTitle>
+            <div className="max-h-80 space-y-2 overflow-y-auto">
+              {recentFailedPayments.length === 0 && <p className="text-sm text-neutral-500">No failed payments.</p>}
+              {recentFailedPayments.map((f) => (
+                <Link
+                  key={f.id}
+                  href={`/hostflow/admin/${f.restaurantId}`}
+                  className="flex items-center justify-between rounded-lg px-2 py-1.5 text-sm hover:bg-white/5"
+                >
+                  <span className="font-medium text-white">{f.restaurantName}</span>
+                  <span className="text-xs text-red-400">{formatDateTime(f.createdAt)}</span>
+                </Link>
+              ))}
+            </div>
+          </Card>
         </div>
 
         {/* Restaurants table */}
@@ -126,8 +236,10 @@ export function AdminDashboard({
                   return (
                     <tr key={r.id} className="border-b border-white/5 align-top last:border-0">
                       <td className="py-3 pr-4">
-                        <p className="font-medium text-white">{r.name}</p>
-                        <p className="text-xs text-neutral-500">{r.slug}</p>
+                        <Link href={`/hostflow/admin/${r.id}`} className="hover:underline">
+                          <p className="font-medium text-white">{r.name}</p>
+                          <p className="text-xs text-neutral-500">{r.slug}</p>
+                        </Link>
                       </td>
                       <td className="py-3 pr-4">
                         <Chip color={meta.color}>{meta.label}</Chip>
