@@ -671,27 +671,38 @@ function TableGlyph({
         </g>
       )}
 
-      {/* Table number */}
-      <text x={cxp} y={cyp - (s || r || ur ? 8 : -1)} textAnchor="middle" fontSize={17} fontWeight={800} fill={textFill}>
+      {/* Table number — secondary once there's a name to find someone by
+          (seated or booked): a host scanning for "table with Dan on it"
+          cares about the name first, the number second. Stays the dominant
+          element when there's nothing more urgent to show. */}
+      <text
+        x={cxp}
+        y={s || r ? cyp - 13 : cyp - (ur ? 8 : -1)}
+        textAnchor="middle"
+        fontSize={s || r ? 10 : 17}
+        fontWeight={800}
+        fill={textFill}
+        opacity={s || r ? 0.75 : 1}
+      >
         {table.tableNumber}
       </text>
 
       {/* Contextual line */}
       {s ? (
         <>
-          <text x={cxp} y={cyp + 9} textAnchor="middle" fontSize={11} fontWeight={600} fill={textFill} opacity={0.95}>
+          <text x={cxp} y={cyp + 5} textAnchor="middle" fontSize={15} fontWeight={800} fill={textFill}>
             {truncate(s.guestName, 12)}
           </text>
-          <text x={cxp} y={cyp + 22} textAnchor="middle" fontSize={10} fill={textFill} opacity={0.85}>
+          <text x={cxp} y={cyp + 19} textAnchor="middle" fontSize={9} fill={textFill} opacity={0.85}>
             {s.partySize}p · {s.isOverrun ? "over" : minutesLabel(s.minutesRemaining)}
           </text>
         </>
       ) : r ? (
         <>
-          <text x={cxp} y={cyp + 9} textAnchor="middle" fontSize={11} fontWeight={600} fill={textFill} opacity={0.95}>
+          <text x={cxp} y={cyp + 5} textAnchor="middle" fontSize={15} fontWeight={800} fill={textFill}>
             {truncate(r.customerName, 12)}
           </text>
-          <text x={cxp} y={cyp + 22} textAnchor="middle" fontSize={10} fill={textFill} opacity={0.85}>
+          <text x={cxp} y={cyp + 19} textAnchor="middle" fontSize={9} fill={textFill} opacity={0.85}>
             {r.isLate ? `${minutesLabel(Math.abs(r.minutesUntil))} late` : `in ${minutesLabel(r.minutesUntil)}`}
           </text>
         </>
