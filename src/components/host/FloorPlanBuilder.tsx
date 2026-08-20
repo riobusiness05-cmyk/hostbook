@@ -171,6 +171,7 @@ export function FloorPlanBuilder({ onDone, onSkip }: { onDone: () => void; onSki
             }}
             setPaused={() => {}}
             defaultEditMode
+            timezone={floor.timezone}
           />
         </div>
         <Button variant="primary" className="w-full" onClick={onDone}>

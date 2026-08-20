@@ -171,6 +171,7 @@ export function HostApp({
                 onSelect={selectTable}
                 refresh={refresh}
                 setPaused={setPaused}
+                timezone={state.timezone}
               />
             </div>
 

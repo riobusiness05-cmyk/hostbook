@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FloorState, TableDTO } from "@/lib/hostflow/floor";
 import { STATUS_META, TABLE_STATUSES, statusColor } from "@/lib/hostflow/constants";
-import { cx, minutesLabel } from "@/lib/host/format";
+import { cx, minutesLabel, timeOfDay } from "@/lib/host/format";
 import * as api from "@/lib/host/client";
 
 // The live floor plan. Pure SVG so it scales crisply from phone to the host
@@ -76,6 +76,7 @@ export function FloorPlan({
   refresh,
   setPaused,
   defaultEditMode,
+  timezone,
 }: {
   tables: FloorState["tables"];
   sections: FloorState["sections"];
@@ -88,6 +89,10 @@ export function FloorPlan({
   // click the toggle first would just be friction. Every other caller omits
   // this and gets the normal read-only-first behavior.
   defaultEditMode?: boolean;
+  // Only needed to format a reservation's clock time on its table glyph —
+  // DayView's tables never carry a reservation/upcomingReservation (it's a
+  // booking-count-only view), so that caller omits this.
+  timezone?: string;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [editMode, setEditMode] = useState(defaultEditMode ?? false);
@@ -548,6 +553,7 @@ export function FloorPlan({
               editMode={editMode}
               onDragStart={(e) => beginMove(e, rawById.get(t.id) ?? t)}
               onRotateStart={(e) => beginRotate(e, rawById.get(t.id) ?? t)}
+              timezone={timezone}
             />
           ))}
         </svg>
@@ -566,6 +572,7 @@ function TableGlyph({
   editMode,
   onDragStart,
   onRotateStart,
+  timezone,
 }: {
   table: TableDTO;
   selected: boolean;
@@ -574,6 +581,7 @@ function TableGlyph({
   editMode?: boolean;
   onDragStart?: (e: React.PointerEvent) => void;
   onRotateStart?: (e: React.PointerEvent) => void;
+  timezone?: string;
 }) {
   const cxp = table.x + table.width / 2;
   const cyp = table.y + table.height / 2;
@@ -703,7 +711,8 @@ function TableGlyph({
             {truncate(r.customerName, 12)}
           </text>
           <text x={cxp} y={cyp + 19} textAnchor="middle" fontSize={9} fill={textFill} opacity={0.85}>
-            {r.isLate ? `${minutesLabel(Math.abs(r.minutesUntil))} late` : `in ${minutesLabel(r.minutesUntil)}`}
+            {timeOfDay(r.reservationTime, timezone)}
+            {r.isLate ? " · late" : ""}
           </text>
         </>
       ) : ur ? (
@@ -716,7 +725,7 @@ function TableGlyph({
             {truncate(ur.customerName, 12)}
           </text>
           <text x={cxp} y={cyp + 22} textAnchor="middle" fontSize={10} fill={textFill} opacity={0.7}>
-            in {minutesLabel(ur.minutesUntil)}
+            {timeOfDay(ur.reservationTime, timezone)}
           </text>
         </>
       ) : mergedIntoNumber ? (

@@ -11,7 +11,12 @@
 // call site should pass state.timezone.
 
 export function timeOfDay(iso: string, timeZone?: string): string {
-  return new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", timeZone });
+  // Locale pinned (not `undefined`/`[]`) so this renders identically on the
+  // server and in the browser — an unpinned locale resolves to each
+  // runtime's own default and can format the same instant as "10:01 PM" on
+  // the server vs "22:01" on the client, a hydration mismatch. See
+  // BillingSection.tsx / AdminDashboard.tsx for the same fix.
+  return new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone });
 }
 
 // "YYYY-MM-DD" in `timeZone`, mirroring toLocalDateStr in availability.ts —
