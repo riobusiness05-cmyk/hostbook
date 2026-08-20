@@ -141,7 +141,7 @@ export function HostApp({
           </div>
         </header>
 
-        <main className="mx-auto max-w-[1600px] space-y-3 p-3 sm:p-4">
+        <main className="mx-auto max-w-[1880px] space-y-3 p-3 sm:p-4">
           <BillingBanner billing={billing} />
           {!isToday ? (
             <DayView date={viewDate} dateLabel={dayLabel(viewDate, state.timezone)} />
@@ -163,7 +163,7 @@ export function HostApp({
 
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_384px]">
             {/* Floor plan */}
-            <div className={cx(mobileView === "floor" ? "block" : "hidden", "lg:block h-[68vh] min-h-[420px] lg:h-[calc(100vh-230px)]")}>
+            <div className={cx(mobileView === "floor" ? "block" : "hidden", "lg:block h-[76vh] min-h-[480px] lg:h-[calc(100vh-180px)]")}>
               <FloorPlan
                 tables={state.tables}
                 sections={state.sections}
@@ -175,7 +175,7 @@ export function HostApp({
             </div>
 
             {/* Right rail */}
-            <div className={cx(mobileView === "list" ? "block" : "hidden", "lg:block h-[68vh] min-h-[420px] lg:h-[calc(100vh-230px)]")}>
+            <div className={cx(mobileView === "list" ? "block" : "hidden", "lg:block h-[76vh] min-h-[480px] lg:h-[calc(100vh-180px)]")}>
               {selected ? (
                 <div className="h-full overflow-hidden rounded-2xl border border-black/5 shadow-sm dark:border-white/10">
                   <TablePanel table={selected} state={state} onClose={() => selectTable(null)} refresh={refresh} />

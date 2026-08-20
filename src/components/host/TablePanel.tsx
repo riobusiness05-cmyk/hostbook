@@ -288,6 +288,18 @@ export function TablePanel({
                 </Button>
               </>
             )}
+            {/* Booking a table for a different date/time should always be
+                reachable, even while it's currently occupied or already
+                has a near-term reservation — the reserve form's own date
+                picker (min = today) and bookSpecificTable's date-scoped
+                availability check already handle "is this table actually
+                free at THAT time" correctly; the only thing missing was a
+                way to open the form at all in these states. */}
+            {(s || r) && table.status !== "BLOCKED" && (
+              <Button className="col-span-2" onClick={() => setMode("reserve")} disabled={busy}>
+                Reserve for another time
+              </Button>
+            )}
             {mergedChildren.length > 0 ? (
               <Button
                 className="col-span-2"
