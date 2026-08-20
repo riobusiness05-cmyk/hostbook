@@ -14,11 +14,13 @@ export function TablePanel({
   state,
   onClose,
   refresh,
+  setPaused,
 }: {
   table: TableDTO;
   state: FloorState;
   onClose: () => void;
   refresh: () => Promise<void>;
+  setPaused: (v: boolean) => void;
 }) {
   const [mode, setMode] = useState<Mode>("idle");
   const [busy, setBusy] = useState(false);
@@ -29,6 +31,16 @@ export function TablePanel({
     setMode("idle");
     setError(null);
   }, [table.id]);
+
+  // Any open form (seat/move/merge/reserve) is mid-composition — a live
+  // floor refresh landing while the host is filling one in would reset the
+  // native date/time inputs' partial in-progress entry, since React
+  // re-applies the (still-unchanged) controlled value on every re-render.
+  // Same pattern as FloorPlan's edit-mode pause.
+  useEffect(() => {
+    setPaused(mode !== "idle");
+    return () => setPaused(false);
+  }, [mode, setPaused]);
 
   const run = async (fn: () => Promise<unknown>) => {
     setBusy(true);

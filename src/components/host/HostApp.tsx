@@ -178,7 +178,7 @@ export function HostApp({
             <div className={cx(mobileView === "list" ? "block" : "hidden", "lg:block h-[76vh] min-h-[480px] lg:h-[calc(100vh-180px)]")}>
               {selected ? (
                 <div className="h-full overflow-hidden rounded-2xl border border-black/5 shadow-sm dark:border-white/10">
-                  <TablePanel table={selected} state={state} onClose={() => selectTable(null)} refresh={refresh} />
+                  <TablePanel table={selected} state={state} onClose={() => selectTable(null)} refresh={refresh} setPaused={setPaused} />
                 </div>
               ) : (
                 <div className="flex h-full flex-col gap-3">
