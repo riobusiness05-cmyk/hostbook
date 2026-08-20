@@ -157,7 +157,7 @@ export function RestaurantDetail({ restaurant }: { restaurant: RestaurantDetailD
                 </span>
                 <div className="flex items-center gap-2">
                   <Chip>{b.status}</Chip>
-                  <span className="text-xs text-neutral-500">{formatDateTime(b.reservationTime)}</span>
+                  <span className="text-xs text-neutral-500">{b.reservationTimeLabel}</span>
                 </div>
               </div>
             ))}

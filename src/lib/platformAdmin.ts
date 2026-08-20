@@ -1,5 +1,12 @@
 import { prisma } from "@/lib/prisma";
 
+// Same "pin the locale, pass the restaurant's real IANA timezone" approach
+// as toLocalDateStr/toLocalTimeStr in src/lib/availability.ts, just with a
+// friendlier "Aug 17, 8:00 PM" output for this display.
+function formatInTimezone(date: Date, timeZone: string): string {
+  return date.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone });
+}
+
 /**
  * Cross-restaurant business metrics for the Host Flow operator's own admin
  * dashboard (src/app/hostflow/admin) — distinct from any single restaurant's
@@ -283,7 +290,10 @@ export type RestaurantDetail = {
   tableCount: number;
   totalBookings: number;
   bookingsThisMonth: number;
-  recentBookings: { id: string; customerName: string; partySize: number; reservationTime: string; status: string }[];
+  // Pre-formatted in the restaurant's own timezone (not UTC) — a booking is
+  // for whatever time the guest picked *locally*, and displaying the raw
+  // UTC instant instead would silently shift it by the timezone offset.
+  recentBookings: { id: string; customerName: string; partySize: number; reservationTimeLabel: string; status: string }[];
 };
 
 export async function getRestaurantDetail(restaurantId: string): Promise<RestaurantDetail | null> {
@@ -338,7 +348,7 @@ export async function getRestaurantDetail(restaurantId: string): Promise<Restaur
       id: r.id,
       customerName: r.customerName,
       partySize: r.partySize,
-      reservationTime: r.reservationTime.toISOString(),
+      reservationTimeLabel: formatInTimezone(r.reservationTime, restaurant.timezone),
       status: r.status,
     })),
   };
