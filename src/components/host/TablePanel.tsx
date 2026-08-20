@@ -447,7 +447,18 @@ function ReserveForm({
 }) {
   const todayStr = () => localDateStr(new Date().toISOString(), timezone);
   const [date, setDate] = useState(todayStr());
-  const [time, setTime] = useState("");
+  // Native <input type="time"> is a segmented widget that's notoriously
+  // unreliable to click/tap into reliably (confirmed: a click that lands
+  // squarely on the element per elementFromPoint still doesn't always focus
+  // it) — plain <select> dropdowns are slower to type but never just fail
+  // to respond, which matters more on a host stand under pressure.
+  const [hour, setHour] = useState("");
+  const [minute, setMinute] = useState("");
+  const [period, setPeriod] = useState<"AM" | "PM">("PM");
+  const time =
+    hour === "" || minute === ""
+      ? ""
+      : `${String((Number(hour) % 12) + (period === "PM" ? 12 : 0)).padStart(2, "0")}:${minute}`;
   const [partySize, setPartySize] = useState(Math.min(2, table.seatsMax));
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
@@ -460,14 +471,29 @@ function ReserveForm({
         <Field label="Guest name">
           <input className={inputCls} value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Name on the booking" />
         </Field>
-        <div className="grid grid-cols-2 gap-2.5">
-          <Field label="Date">
-            <input type="date" min={todayStr()} className={inputCls + " [color-scheme:light] dark:[color-scheme:dark]"} value={date} onChange={(e) => setDate(e.target.value)} />
-          </Field>
-          <Field label="Time">
-            <input type="time" className={inputCls + " [color-scheme:light] dark:[color-scheme:dark]"} value={time} onChange={(e) => setTime(e.target.value)} />
-          </Field>
-        </div>
+        <Field label="Date">
+          <input type="date" min={todayStr()} className={inputCls + " [color-scheme:light] dark:[color-scheme:dark]"} value={date} onChange={(e) => setDate(e.target.value)} />
+        </Field>
+        <Field label="Time">
+          <div className="grid grid-cols-3 gap-1.5">
+            <select className={inputCls} value={hour} onChange={(e) => setHour(e.target.value)}>
+              <option value="">HH</option>
+              {Array.from({ length: 12 }, (_, i) => i + 1).map((h) => (
+                <option key={h} value={h}>{h}</option>
+              ))}
+            </select>
+            <select className={inputCls} value={minute} onChange={(e) => setMinute(e.target.value)}>
+              <option value="">MM</option>
+              {["00", "15", "30", "45"].map((m) => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+            <select className={inputCls} value={period} onChange={(e) => setPeriod(e.target.value as "AM" | "PM")}>
+              <option value="AM">AM</option>
+              <option value="PM">PM</option>
+            </select>
+          </div>
+        </Field>
         <Field label={`Party size (${table.seatsMin}–${table.seatsMax})`}>
           <input
             type="number"
