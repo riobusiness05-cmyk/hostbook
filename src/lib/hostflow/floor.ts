@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { combineDateAndTime, toLocalDateStr } from "@/lib/availability";
 import {
   OCCUPIED_STATUSES,
   PRIORITY_WEIGHT,
@@ -65,6 +66,10 @@ export type TableDTO = {
   server: { id: string; name: string; color: string } | null;
   session: SessionDTO | null;
   reservation: ReservationDTO | null;
+  /** Soonest booking later today beyond the near-term service window that
+   *  `reservation` covers — display-only, never affects `status`. Null
+   *  whenever `reservation` is already set (nothing further to surface). */
+  upcomingReservation: ReservationDTO | null;
   /** Set when this table is merged into another (the "primary") table. */
   mergedIntoId: string | null;
   /** Day-plan mode only: how many bookings this table has on the viewed date. */
@@ -310,6 +315,9 @@ export async function getFloorState(restaurantId: string): Promise<FloorState> {
   // Reservation to surface on a held table: the soonest upcoming/late one, but
   // only within the current service window (next 4h) so a booking made for a
   // future date doesn't paint an otherwise-free table as reserved right now.
+  // This is the field that drives table STATUS (and therefore whether a
+  // walk-in can be auto-seated there — see recommendSeating's AVAILABLE-only
+  // filter) — deliberately narrow, not just a display choice.
   // A combo reservation's extra tables aren't anyone's `tableId`, so they're
   // registered here too (same reservation) — otherwise a host could hand one
   // of them to a walk-in right out from under a big party's booking.
@@ -320,6 +328,23 @@ export async function getFloorState(restaurantId: string): Promise<FloorState> {
     const heldTableIds = [r.tableId, ...r.comboTables.map((ct) => ct.tableId)].filter((id): id is string => !!id);
     for (const id of heldTableIds) {
       if (!reservationByTable.has(id)) reservationByTable.set(id, r);
+    }
+  }
+
+  // Separately, the soonest booking for the REST OF TODAY regardless of the
+  // 4h window — display-only (the guest's name on the floor plan), never
+  // touches table status/availability. Lets a host see who's booked in
+  // later today at a glance without narrowing walk-in auto-seating (which
+  // only offers tables currently at status AVAILABLE). Skips any table
+  // already covered by the near-term map above, so the two never disagree.
+  const endOfToday = combineDateAndTime(toLocalDateStr(nowDate, restaurant.timezone), "23:59", restaurant.timezone);
+  const upcomingReservationByTable = new Map<string, (typeof reservations)[number]>();
+  for (const r of reservations) {
+    if (r.reservationTime.getTime() > endOfToday.getTime()) continue;
+    const heldTableIds = [r.tableId, ...r.comboTables.map((ct) => ct.tableId)].filter((id): id is string => !!id);
+    for (const id of heldTableIds) {
+      if (reservationByTable.has(id)) continue;
+      if (!upcomingReservationByTable.has(id)) upcomingReservationByTable.set(id, r);
     }
   }
 
@@ -347,6 +372,7 @@ export async function getFloorState(restaurantId: string): Promise<FloorState> {
   const tableDTOs: TableDTO[] = tables.map((t) => {
     const s = sessionByTable.get(t.id);
     const r = reservationByTable.get(t.id);
+    const ur = upcomingReservationByTable.get(t.id);
     const session: SessionDTO | null = s
       ? {
           id: s.id,
@@ -365,6 +391,7 @@ export async function getFloorState(restaurantId: string): Promise<FloorState> {
         }
       : null;
     const reservation = r ? toReservationDTO(r) : null;
+    const upcomingReservation = ur ? toReservationDTO(ur) : null;
 
     // A table sitting on the stored AVAILABLE status with an upcoming
     // reservation should read as reserved on the floor, not free — this is
@@ -402,6 +429,7 @@ export async function getFloorState(restaurantId: string): Promise<FloorState> {
       server: t.server ? { id: t.server.id, name: t.server.name, color: t.server.color } : null,
       session,
       reservation,
+      upcomingReservation,
       mergedIntoId: t.mergedIntoId,
     };
   });

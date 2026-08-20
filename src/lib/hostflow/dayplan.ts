@@ -104,6 +104,7 @@ export async function getDayPlan(restaurantId: string, dateStr: string): Promise
       server: t.server ? { id: t.server.id, name: t.server.name, color: t.server.color } : null,
       session: null,
       reservation: null,
+      upcomingReservation: null,
       mergedIntoId: t.mergedIntoId,
       bookingCount: count,
     };

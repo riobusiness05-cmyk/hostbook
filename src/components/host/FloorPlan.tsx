@@ -581,6 +581,7 @@ function TableGlyph({
   const round = table.shape === "ROUND";
   const s = table.session;
   const r = table.reservation;
+  const ur = table.upcomingReservation;
   const pulse = table.status === "LATE" || s?.isOverrun;
   const textFill = "#ffffff";
 
@@ -671,7 +672,7 @@ function TableGlyph({
       )}
 
       {/* Table number */}
-      <text x={cxp} y={cyp - (s || r ? 8 : -1)} textAnchor="middle" fontSize={17} fontWeight={800} fill={textFill}>
+      <text x={cxp} y={cyp - (s || r || ur ? 8 : -1)} textAnchor="middle" fontSize={17} fontWeight={800} fill={textFill}>
         {table.tableNumber}
       </text>
 
@@ -692,6 +693,19 @@ function TableGlyph({
           </text>
           <text x={cxp} y={cyp + 22} textAnchor="middle" fontSize={10} fill={textFill} opacity={0.85}>
             {r.isLate ? `${minutesLabel(Math.abs(r.minutesUntil))} late` : `in ${minutesLabel(r.minutesUntil)}`}
+          </text>
+        </>
+      ) : ur ? (
+        // Booked later today, outside the near-term window — table still
+        // reads AVAILABLE (walk-ins can still be seated here), so this name
+        // is informational only, not a status change. Slightly dimmer than
+        // the near-term cases to read as "later," not "coming up now."
+        <>
+          <text x={cxp} y={cyp + 9} textAnchor="middle" fontSize={11} fontWeight={600} fill={textFill} opacity={0.8}>
+            {truncate(ur.customerName, 12)}
+          </text>
+          <text x={cxp} y={cyp + 22} textAnchor="middle" fontSize={10} fill={textFill} opacity={0.7}>
+            in {minutesLabel(ur.minutesUntil)}
           </text>
         </>
       ) : mergedIntoNumber ? (

@@ -47,6 +47,7 @@ export function TablePanel({
   const meta = STATUS_META[table.status];
   const s = table.session;
   const r = table.reservation;
+  const ur = table.upcomingReservation;
   const mergedChildren = state.tables.filter((t) => t.mergedIntoId === table.id);
   const mergedIntoTable = table.mergedIntoId ? state.tables.find((t) => t.id === table.mergedIntoId) ?? null : null;
 
@@ -120,6 +121,16 @@ export function TablePanel({
             {r.occasion && <Row label="Occasion">{r.occasion}</Row>}
             {r.seatingPreference && <Row label="Preference">{r.seatingPreference}</Row>}
             {r.accessibilityNeeds && <Row label="Accessibility">{r.accessibilityNeeds}</Row>}
+          </DetailBlock>
+        )}
+
+        {/* Booked later today — informational only, table is still open for walk-ins */}
+        {ur && !s && !r && (
+          <DetailBlock title="Booked later today">
+            <Row label="Name">{ur.customerName}</Row>
+            <Row label="Party size">{ur.partySize}</Row>
+            <Row label="Time">{timeOfDay(ur.reservationTime, state.timezone)} · in {minutesLabel(ur.minutesUntil)}</Row>
+            {ur.occasion && <Row label="Occasion">{ur.occasion}</Row>}
           </DetailBlock>
         )}
 
