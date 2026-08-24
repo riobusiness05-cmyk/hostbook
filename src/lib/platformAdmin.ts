@@ -294,6 +294,10 @@ export type RestaurantDetail = {
   // for whatever time the guest picked *locally*, and displaying the raw
   // UTC instant instead would silently shift it by the timezone offset.
   recentBookings: { id: string; customerName: string; partySize: number; reservationTimeLabel: string; status: string }[];
+  // Upcoming (today or later) only — a support agent looking at this page is
+  // trying to answer "why can't a guest book right now", so past blackouts
+  // are just noise here.
+  upcomingBlackouts: { id: string; dateLabel: string; fullDay: boolean; startTime: string | null; endTime: string | null; reason: string | null }[];
 };
 
 export async function getRestaurantDetail(restaurantId: string): Promise<RestaurantDetail | null> {
@@ -310,13 +314,22 @@ export async function getRestaurantDetail(restaurantId: string): Promise<Restaur
   });
   if (!restaurant) return null;
 
-  const [bookingsThisMonth, recentBookings] = await Promise.all([
+  const [bookingsThisMonth, recentBookings, upcomingBlackouts] = await Promise.all([
     prisma.reservation.count({ where: { restaurantId, createdAt: { gte: startOfMonth } } }),
     prisma.reservation.findMany({
       where: { restaurantId },
       orderBy: { createdAt: "desc" },
       take: 10,
       select: { id: true, customerName: true, partySize: true, reservationTime: true, status: true },
+    }),
+    // "gte yesterday" rather than a precise midnight cutoff — this is just
+    // trimming ancient history for a support view, and a restaurant's own
+    // timezone (not this server's UTC) is what actually defines "today", so
+    // a same-day-either-way margin avoids hiding a blackout that IS still
+    // relevant purely because of that offset.
+    prisma.blackoutDate.findMany({
+      where: { restaurantId, date: { gte: new Date(Date.now() - 24 * 60 * 60000) } },
+      orderBy: { date: "asc" },
     }),
   ]);
 
@@ -350,6 +363,14 @@ export async function getRestaurantDetail(restaurantId: string): Promise<Restaur
       partySize: r.partySize,
       reservationTimeLabel: formatInTimezone(r.reservationTime, restaurant.timezone),
       status: r.status,
+    })),
+    upcomingBlackouts: upcomingBlackouts.map((b) => ({
+      id: b.id,
+      dateLabel: b.date.toISOString().slice(0, 10),
+      fullDay: b.fullDay,
+      startTime: b.startTime,
+      endTime: b.endTime,
+      reason: b.reason,
     })),
   };
 }

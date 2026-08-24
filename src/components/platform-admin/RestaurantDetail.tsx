@@ -30,6 +30,20 @@ export function RestaurantDetail({ restaurant }: { restaurant: RestaurantDetailD
     }
   }
 
+  async function removeBlackout(id: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/platform/blackouts/${id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Couldn't remove blackout date");
+      window.location.reload();
+    } catch (e) {
+      setError((e as Error).message);
+      setBusy(false);
+    }
+  }
+
   const meta = STATUS_META[restaurant.status] ?? { label: restaurant.status, color: "#6b7280" };
 
   return (
@@ -152,6 +166,34 @@ export function RestaurantDetail({ restaurant }: { restaurant: RestaurantDetailD
               Reconcile from Stripe
             </Button>
           </div>
+        </Card>
+
+        <Card className="p-4">
+          <SectionTitle>Blackout dates</SectionTitle>
+          <p className="mb-3 text-xs text-neutral-500">
+            Dates this restaurant is closed to online bookings — a full-day blackout here blocks every slot on that
+            date regardless of opening hours. Useful if a guest reports &quot;no availability&quot; on a day that should be open.
+          </p>
+          {restaurant.upcomingBlackouts.length === 0 ? (
+            <p className="text-sm text-neutral-500">No upcoming blackout dates.</p>
+          ) : (
+            <div className="space-y-1.5">
+              {restaurant.upcomingBlackouts.map((b) => (
+                <div key={b.id} className="flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm">
+                  <div className="min-w-0">
+                    <span className="font-medium text-white">{b.dateLabel}</span>{" "}
+                    <span className="text-neutral-400">
+                      {b.fullDay ? "· full day" : `· ${b.startTime}–${b.endTime}`}
+                      {b.reason ? ` · ${b.reason}` : ""}
+                    </span>
+                  </div>
+                  <Button size="sm" variant="danger" disabled={busy} onClick={() => removeBlackout(b.id)}>
+                    Remove
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
         </Card>
 
         <Card className="p-4">
