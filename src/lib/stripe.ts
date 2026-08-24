@@ -44,12 +44,35 @@ export async function getOrCreateStripeCustomer(
   const stripe = getClient();
   if (existingCustomerId) return existingCustomerId;
 
+  // Don't trust "no local link" to mean "no Stripe customer" — that's
+  // exactly the state a restaurant is in after a missed webhook, and
+  // blindly creating a new one here is how they end up with two Stripe
+  // customers (and get billed twice) the moment they retry checkout. Ask
+  // Stripe directly by email first; only create a genuinely new customer
+  // if Stripe doesn't already have one.
+  const email = restaurant.email || account.email;
+  if (email) {
+    const existing = await stripe.customers.list({ email, limit: 1 });
+    if (existing.data[0]) return existing.data[0].id;
+  }
+
   const customer = await stripe.customers.create({
     name: restaurant.name,
-    email: restaurant.email || account.email,
+    email,
     metadata: { restaurantId: restaurant.id },
   });
   return customer.id;
+}
+
+/** True if this Stripe customer already has a subscription that's actively
+ *  billing (active, or still in its trial) — checked right before starting
+ *  a new Checkout session so a stale/stuck local `status` (our own bug
+ *  once, and the reason to never trust it blindly here) can't let someone
+ *  pay for a second subscription on top of one that already exists. */
+export async function hasLiveStripeSubscription(customerId: string): Promise<boolean> {
+  const stripe = getClient();
+  const subs = await stripe.subscriptions.list({ customer: customerId, status: "all", limit: 10 });
+  return subs.data.some((s) => s.status === "active" || s.status === "trialing");
 }
 
 // ── Checkout ─────────────────────────────────────────────────────────────

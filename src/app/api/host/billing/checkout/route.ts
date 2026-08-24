@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { hostContext, handleActionError } from "@/lib/hostflow/apiContext";
 import { checkoutSchema } from "@/lib/billing/schemas";
-import { getOrCreateSubscriptionRow, TRIAL_DAYS } from "@/lib/billing/subscription";
-import { createCheckoutSession, getOrCreateStripeCustomer, isStripeConfigured } from "@/lib/stripe";
+import { getOrCreateSubscriptionRow, reconcileSubscriptionFromStripe, TRIAL_DAYS } from "@/lib/billing/subscription";
+import { createCheckoutSession, getOrCreateStripeCustomer, hasLiveStripeSubscription, isStripeConfigured } from "@/lib/stripe";
 import { HostFlowError } from "@/lib/hostflow/actions";
 
 // Starts (or resumes) a Stripe Checkout session for the logged-in venue.
@@ -36,6 +36,17 @@ export async function POST(req: NextRequest) {
     const customerId = await getOrCreateStripeCustomer(restaurant, account, sub.stripeCustomerId);
     if (customerId !== sub.stripeCustomerId) {
       await prisma.subscription.update({ where: { restaurantId: ctx.restaurantId }, data: { stripeCustomerId: customerId } });
+    }
+
+    // Refuse to start a second Checkout session if Stripe already shows a
+    // live subscription for this customer. Trusting our own `status` column
+    // here is exactly what let a restaurant get billed twice once already —
+    // a missed webhook left it stuck looking unsubscribed even after they'd
+    // paid, so they paid again. Self-heal the local row to match Stripe
+    // instead of just blocking, so the fix is immediate.
+    if (await hasLiveStripeSubscription(customerId)) {
+      await reconcileSubscriptionFromStripe(ctx.restaurantId);
+      throw new HostFlowError("You already have an active subscription — refresh this page to see it.", 409);
     }
 
     // Only offer Stripe's built-in trial for accounts that haven't already
