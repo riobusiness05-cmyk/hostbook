@@ -395,3 +395,71 @@ export async function reconcileSubscriptionFromStripe(restaurantId: string): Pro
   );
   return { matched: true, source, before, after: { status: updated.status, stripeCustomerId: updated.stripeCustomerId } };
 }
+
+// Read-only visibility for exactly the situation reconcileSubscriptionFromStripe
+// can't fully untangle on its own: a duplicate checkout creates a SECOND
+// Stripe customer for the same restaurant (getOrCreateStripeCustomer only
+// reuses an existing one if the link was already present), so there can be
+// more than one customer/subscription pair to sort out by hand — cancel the
+// duplicate, keep the real one. This never mutates anything in Stripe or the
+// database; it only lists what's there so a human can decide.
+export type StripeCustomerSummary = {
+  id: string;
+  createdAt: string;
+  isCurrentlyLinked: boolean;
+  subscriptions: {
+    id: string;
+    status: string;
+    priceId: string | null;
+    amountCents: number | null;
+    currency: string | null;
+    currentPeriodEnd: string | null;
+    cancelAtPeriodEnd: boolean;
+  }[];
+};
+
+export async function listStripeCustomersForRestaurant(restaurantId: string): Promise<StripeCustomerSummary[]> {
+  const stripe = getClient();
+  const sub = await prisma.subscription.findUniqueOrThrow({
+    where: { restaurantId },
+    include: { restaurant: { select: { email: true } } },
+  });
+  const owner = await prisma.account.findFirst({ where: { restaurantId, role: "OWNER" }, orderBy: { createdAt: "asc" } });
+  const email = sub.restaurant.email || owner?.email;
+
+  // Every customer Stripe has for this email, not just the first — this is
+  // the whole point: `.list` with `limit: 1` (used elsewhere for the normal
+  // reconcile path) would silently hide a duplicate.
+  const customers = email ? (await stripe.customers.list({ email, limit: 20 })).data : [];
+  // The linked stripeCustomerId might belong to a *different* email if it
+  // was set by hand or via an old/renamed account — always include it too,
+  // deduplicated, so it's never missing from the picture even if the email
+  // search above wouldn't have found it.
+  if (sub.stripeCustomerId && !customers.some((c) => c.id === sub.stripeCustomerId)) {
+    const linked = await stripe.customers.retrieve(sub.stripeCustomerId);
+    if (!linked.deleted) customers.push(linked);
+  }
+
+  const results: StripeCustomerSummary[] = [];
+  for (const customer of customers) {
+    const subs = await stripe.subscriptions.list({ customer: customer.id, status: "all", limit: 10 });
+    results.push({
+      id: customer.id,
+      createdAt: new Date(customer.created * 1000).toISOString(),
+      isCurrentlyLinked: customer.id === sub.stripeCustomerId,
+      subscriptions: subs.data.map((s) => {
+        const item = s.items.data[0];
+        return {
+          id: s.id,
+          status: s.status,
+          priceId: item?.price?.id ?? null,
+          amountCents: item?.price?.unit_amount ?? null,
+          currency: item?.price?.currency ?? null,
+          currentPeriodEnd: item ? new Date(item.current_period_end * 1000).toISOString() : null,
+          cancelAtPeriodEnd: s.cancel_at_period_end,
+        };
+      }),
+    });
+  }
+  return results;
+}

@@ -6,11 +6,29 @@ import { Chip, Button, StatCard, Card, SectionTitle } from "@/components/host/ui
 import { HostFlowLogo } from "@/components/HostFlowLogo";
 import { STATUS_META, formatCents, formatDate, formatDateTime } from "./format";
 import type { RestaurantDetail as RestaurantDetailData } from "@/lib/platformAdmin";
+import type { StripeCustomerSummary } from "@/lib/billing/subscription";
 
 export function RestaurantDetail({ restaurant }: { restaurant: RestaurantDetailData }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [extendDays, setExtendDays] = useState(7);
+  const [stripeCustomers, setStripeCustomers] = useState<StripeCustomerSummary[] | null>(null);
+  const [stripeLoading, setStripeLoading] = useState(false);
+
+  async function loadStripeCustomers() {
+    setStripeLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/platform/stripe-customers?restaurantId=${restaurant.id}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Lookup failed");
+      setStripeCustomers(data.customers);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setStripeLoading(false);
+    }
+  }
 
   async function act(path: string, body?: Record<string, unknown>) {
     setBusy(true);
@@ -165,7 +183,54 @@ export function RestaurantDetail({ restaurant }: { restaurant: RestaurantDetailD
             >
               Reconcile from Stripe
             </Button>
+            <Button
+              size="sm"
+              disabled={stripeLoading}
+              title="List every Stripe customer/subscription found for this restaurant's email — read-only, use this to spot a duplicate from a repeated checkout"
+              onClick={loadStripeCustomers}
+            >
+              {stripeLoading ? "Looking up…" : "Show Stripe customers"}
+            </Button>
           </div>
+
+          {stripeCustomers && (
+            <div className="mt-4 space-y-3 border-t border-white/10 pt-4">
+              {stripeCustomers.length === 0 ? (
+                <p className="text-sm text-neutral-500">No Stripe customers found for this restaurant&apos;s email.</p>
+              ) : (
+                stripeCustomers.map((c) => (
+                  <div key={c.id} className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                      <span className="font-mono text-white">{c.id}</span>
+                      {c.isCurrentlyLinked && <Chip color="#22c55e">linked in Host Flow</Chip>}
+                      <span className="text-neutral-500">created {formatDateTime(c.createdAt)}</span>
+                    </div>
+                    {c.subscriptions.length === 0 ? (
+                      <p className="mt-2 text-xs text-neutral-500">No subscriptions on this customer.</p>
+                    ) : (
+                      <div className="mt-2 space-y-1.5">
+                        {c.subscriptions.map((s) => (
+                          <div key={s.id} className="flex flex-wrap items-center gap-2 rounded-md bg-black/20 px-2 py-1.5 text-xs">
+                            <span className="font-mono text-neutral-300">{s.id}</span>
+                            <Chip color={s.status === "active" || s.status === "trialing" ? "#22c55e" : s.status === "canceled" ? "#6b7280" : "#f59e0b"}>
+                              {s.status}
+                              {s.cancelAtPeriodEnd ? " (cancels at period end)" : ""}
+                            </Chip>
+                            {s.amountCents != null && (
+                              <span className="text-neutral-400">
+                                {formatCents(s.amountCents)}/{s.currency?.toUpperCase()}
+                              </span>
+                            )}
+                            {s.currentPeriodEnd && <span className="text-neutral-500">renews {formatDate(s.currentPeriodEnd)}</span>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          )}
         </Card>
 
         <Card className="p-4">
