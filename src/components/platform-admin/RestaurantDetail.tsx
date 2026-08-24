@@ -143,6 +143,14 @@ export function RestaurantDetail({ restaurant }: { restaurant: RestaurantDetailD
                 Reactivate
               </Button>
             )}
+            <Button
+              size="sm"
+              disabled={busy}
+              title="Look up this restaurant's actual subscription in Stripe and correct this row to match — use this if a payment went through but the status here didn't update"
+              onClick={() => act("reconcile-stripe")}
+            >
+              Reconcile from Stripe
+            </Button>
           </div>
         </Card>
 

@@ -80,7 +80,14 @@ export async function createCheckoutSession(params: {
     mode: "subscription",
     customer: params.customerId,
     line_items: [{ price: priceId, quantity: 1 }],
-    subscription_data: params.trialDays ? { trial_period_days: params.trialDays } : undefined,
+    // Metadata set only on the Checkout Session (not here too) never makes
+    // it onto the Subscription Stripe creates — so every later
+    // customer.subscription.* / invoice.* event for it would have no
+    // restaurantId to fall back on if stripeCustomerId ever fails to match.
+    subscription_data: {
+      trial_period_days: params.trialDays,
+      metadata: { restaurantId: params.restaurantId },
+    },
     success_url: `${appUrl()}/host/settings?checkout=success`,
     cancel_url: `${appUrl()}/host/settings?checkout=cancelled`,
     client_reference_id: params.restaurantId,

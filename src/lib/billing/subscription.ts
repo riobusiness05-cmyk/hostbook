@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { isStripeConfigured } from "@/lib/stripe";
+import { getClient, isStripeConfigured, mapStripeStatus } from "@/lib/stripe";
 import type { Subscription } from "@prisma/client";
 
 /**
@@ -311,4 +311,87 @@ export async function resetSubscriptionToCleanTrial(restaurantId: string) {
   });
   await logBillingEvent(restaurantId, sub.id, "TRIAL_STARTED", "Reset to a clean trial (stale Stripe references cleared)");
   return sub;
+}
+
+// ── Reconciliation ─────────────────────────────────────────────────────
+// Every webhook handler only updates a Subscription row it can already find
+// by stripeCustomerId — if that link is missing or stale (the customer paid
+// through a path that never wrote it back, or a webhook delivery was lost),
+// the row silently never advances past TRIAL and nothing about it is logged.
+// This asks Stripe directly "what does this restaurant actually have right
+// now" and corrects the row to match, so a missed webhook is recoverable
+// instead of being permanent. Used by the platform admin's "Reconcile from
+// Stripe" action and by the reconcile-billing cron.
+
+export type ReconcileResult = {
+  matched: boolean;
+  source: "existing_customer" | "email_search" | "none";
+  before: { status: string; stripeCustomerId: string | null };
+  after: { status: string; stripeCustomerId: string | null } | null;
+};
+
+export async function reconcileSubscriptionFromStripe(restaurantId: string): Promise<ReconcileResult> {
+  const stripe = getClient();
+  const sub = await prisma.subscription.findUniqueOrThrow({
+    where: { restaurantId },
+    include: { restaurant: { select: { email: true } } },
+  });
+  const before = { status: sub.status, stripeCustomerId: sub.stripeCustomerId };
+
+  let customerId = sub.stripeCustomerId;
+  let source: ReconcileResult["source"] = "existing_customer";
+
+  if (!customerId) {
+    const owner = await prisma.account.findFirst({ where: { restaurantId, role: "OWNER" }, orderBy: { createdAt: "asc" } });
+    const email = sub.restaurant.email || owner?.email;
+    if (email) {
+      const found = await stripe.customers.list({ email, limit: 1 });
+      if (found.data[0]) {
+        customerId = found.data[0].id;
+        source = "email_search";
+      }
+    }
+  }
+
+  if (!customerId) {
+    await logBillingEvent(restaurantId, sub.id, "RECONCILE_NO_STRIPE_MATCH", "No Stripe customer found by existing id or account email");
+    return { matched: false, source: "none", before, after: null };
+  }
+
+  // Most recent subscription for this customer, any status — a cancelled or
+  // past_due one still tells us the truth, which matters more than only
+  // ever looking at "active" ones.
+  const stripeSubs = await stripe.subscriptions.list({ customer: customerId, status: "all", limit: 1 });
+  const stripeSub = stripeSubs.data[0];
+
+  if (!stripeSub) {
+    if (customerId !== sub.stripeCustomerId) {
+      await prisma.subscription.update({ where: { id: sub.id }, data: { stripeCustomerId: customerId } });
+    }
+    await logBillingEvent(restaurantId, sub.id, "RECONCILE_NO_SUBSCRIPTION", `Found Stripe customer ${customerId} (via ${source}) but it has no subscription`);
+    return { matched: true, source, before, after: null };
+  }
+
+  const item = stripeSub.items.data[0];
+  const status = mapStripeStatus(stripeSub.status);
+  const updated = await prisma.subscription.update({
+    where: { id: sub.id },
+    data: {
+      status,
+      stripeCustomerId: customerId,
+      stripeSubscriptionId: stripeSub.id,
+      stripePriceId: item?.price?.id ?? null,
+      currentPeriodStart: item ? new Date(item.current_period_start * 1000) : sub.currentPeriodStart,
+      currentPeriodEnd: item ? new Date(item.current_period_end * 1000) : sub.currentPeriodEnd,
+      cancelAtPeriodEnd: stripeSub.cancel_at_period_end,
+      lastPaymentStatus: stripeSub.status,
+    },
+  });
+  await logBillingEvent(
+    restaurantId,
+    sub.id,
+    "RECONCILED_FROM_STRIPE",
+    `${before.status} → ${status} (matched via ${source}, stripe subscription ${stripeSub.id})`
+  );
+  return { matched: true, source, before, after: { status: updated.status, stripeCustomerId: updated.stripeCustomerId } };
 }

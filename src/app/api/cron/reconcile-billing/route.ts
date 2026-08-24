@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { logBillingEvent } from "@/lib/billing/subscription";
-import { createCheckoutSession } from "@/lib/stripe";
+import { logBillingEvent, reconcileSubscriptionFromStripe } from "@/lib/billing/subscription";
+import { createCheckoutSession, isStripeConfigured } from "@/lib/stripe";
 import { sendEmail, paymentRequiredEmailHtml } from "@/lib/email";
 
 export const dynamic = "force-dynamic";
@@ -98,14 +98,31 @@ async function reconcile(req: NextRequest): Promise<NextResponse> {
     where: { status: "TRIAL", isComplimentary: false, trialEndsAt: { lt: new Date() } },
   });
 
+  let expired = 0;
   for (const sub of lapsed) {
+    // A trial that reached its end date but already has a Stripe customer
+    // attached is exactly the shape of a missed webhook: they went through
+    // checkout (maybe even paid) and the row just never got the update.
+    // Ask Stripe directly before assuming it's a real lapse — this is the
+    // same recovery path as the platform admin's "Reconcile from Stripe"
+    // button, just run automatically so a missed webhook fixes itself
+    // within a day instead of needing someone to notice and click it.
+    if (sub.stripeCustomerId && isStripeConfigured()) {
+      try {
+        const result = await reconcileSubscriptionFromStripe(sub.restaurantId);
+        if (result.after && result.after.status !== "TRIAL") continue; // reconciled to something real — leave it
+      } catch (err) {
+        console.error(`[reconcile-billing] reconcile failed for restaurant ${sub.restaurantId}`, err);
+      }
+    }
     await prisma.subscription.update({ where: { id: sub.id }, data: { status: "EXPIRED" } });
     await logBillingEvent(sub.restaurantId, sub.id, "TRIAL_EXPIRED");
+    expired++;
   }
 
   const paymentRequiredEmailsSent = await sendTrialEndingSoonEmails();
 
-  return NextResponse.json({ reconciled: lapsed.length, paymentRequiredEmailsSent });
+  return NextResponse.json({ checked: lapsed.length, expired, recoveredFromStripe: lapsed.length - expired, paymentRequiredEmailsSent });
 }
 
 export async function POST(req: NextRequest) {

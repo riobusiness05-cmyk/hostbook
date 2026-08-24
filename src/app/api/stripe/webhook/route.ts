@@ -44,11 +44,46 @@ async function findSubByCustomer(customerId: string) {
   return prisma.subscription.findUnique({ where: { stripeCustomerId: customerId } });
 }
 
+// Every handler's real point of failure: stripeCustomerId can be missing or
+// stale (payment made outside the app's own checkout route, a Stripe
+// test-mode → live-mode switch, a race between checkout and the first
+// webhook). Falling back to the restaurantId Stripe carries in metadata —
+// set on both the Checkout Session and the Subscription itself, see
+// createCheckoutSession in src/lib/stripe.ts — recovers from that instead
+// of silently dropping the event. When it saves the day, it also re-links
+// stripeCustomerId so the next event doesn't need the fallback again.
+async function findSubOrFallback(
+  event: Stripe.Event,
+  customerId: string | null,
+  metadataRestaurantId: string | null | undefined
+) {
+  if (customerId) {
+    const byCustomer = await findSubByCustomer(customerId);
+    if (byCustomer) return byCustomer;
+  }
+  if (metadataRestaurantId) {
+    const byRestaurant = await prisma.subscription.findUnique({ where: { restaurantId: metadataRestaurantId } });
+    if (byRestaurant) {
+      if (customerId && byRestaurant.stripeCustomerId !== customerId) {
+        return prisma.subscription.update({ where: { id: byRestaurant.id }, data: { stripeCustomerId: customerId } });
+      }
+      return byRestaurant;
+    }
+  }
+  // Genuinely nothing to attach this to — can't log a BillingEvent (it
+  // requires a real restaurantId), so this console.error is the only trace.
+  // Check Vercel logs for this line, or use the platform admin's "Reconcile
+  // from Stripe" action once you know which restaurant it should have been.
+  console.error(
+    `[stripe webhook] no Subscription matched — event=${event.id} type=${event.type} customer=${customerId ?? "none"} metadataRestaurantId=${metadataRestaurantId ?? "none"}`
+  );
+  return null;
+}
+
 async function handleCheckoutCompleted(event: Stripe.Event) {
   const session = event.data.object as Stripe.Checkout.Session;
   const customerId = customerIdOf(session);
-  if (!customerId) return;
-  const sub = await findSubByCustomer(customerId);
+  const sub = await findSubOrFallback(event, customerId, session.metadata?.restaurantId ?? session.client_reference_id);
   if (!sub) return;
   // Status/period fields are set by the subscription.created/updated event
   // that Stripe fires alongside this one — this handler just logs the event.
@@ -58,8 +93,7 @@ async function handleCheckoutCompleted(event: Stripe.Event) {
 async function handleSubscriptionUpsert(event: Stripe.Event) {
   const stripeSub = event.data.object as Stripe.Subscription;
   const customerId = customerIdOf(stripeSub);
-  if (!customerId) return;
-  const existing = await findSubByCustomer(customerId);
+  const existing = await findSubOrFallback(event, customerId, stripeSub.metadata?.restaurantId);
   if (!existing) return;
 
   const item = stripeSub.items.data[0];
@@ -89,8 +123,7 @@ async function handleSubscriptionUpsert(event: Stripe.Event) {
 async function handleSubscriptionDeleted(event: Stripe.Event) {
   const stripeSub = event.data.object as Stripe.Subscription;
   const customerId = customerIdOf(stripeSub);
-  if (!customerId) return;
-  const existing = await findSubByCustomer(customerId);
+  const existing = await findSubOrFallback(event, customerId, stripeSub.metadata?.restaurantId);
   if (!existing) return;
 
   const updated = await prisma.subscription.update({
@@ -103,8 +136,12 @@ async function handleSubscriptionDeleted(event: Stripe.Event) {
 async function handleInvoicePaid(event: Stripe.Event) {
   const invoice = event.data.object as Stripe.Invoice;
   const customerId = customerIdOf(invoice);
-  if (!customerId) return;
-  const existing = await findSubByCustomer(customerId);
+  // Invoices don't carry restaurantId metadata themselves — by the time one
+  // fires, the subscription.created/updated handler above should already
+  // have linked (or self-healed) stripeCustomerId, so customerId-only
+  // lookup is enough; findSubOrFallback still logs instead of dropping
+  // silently on the rare miss.
+  const existing = await findSubOrFallback(event, customerId, null);
   if (!existing) return;
 
   const updated = await prisma.subscription.update({
@@ -117,8 +154,7 @@ async function handleInvoicePaid(event: Stripe.Event) {
 async function handleInvoiceFailed(event: Stripe.Event) {
   const invoice = event.data.object as Stripe.Invoice;
   const customerId = customerIdOf(invoice);
-  if (!customerId) return;
-  const existing = await findSubByCustomer(customerId);
+  const existing = await findSubOrFallback(event, customerId, null);
   if (!existing) return;
 
   const updated = await prisma.subscription.update({
