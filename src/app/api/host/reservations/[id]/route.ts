@@ -12,8 +12,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     return NextResponse.json({ error: "Invalid status" }, { status: 400 });
   }
   try {
-    await updateReservationStatus(ctx.restaurantId, params.id, parsed.data.status);
-    return NextResponse.json({ ok: true });
+    const result = await updateReservationStatus(ctx.restaurantId, params.id, parsed.data.status);
+    return NextResponse.json({ ok: true, noShowCharge: result.noShowCharge ?? null });
   } catch (err) {
     return handleActionError(err);
   }

@@ -14,6 +14,8 @@ import {
 import { notify } from "@/lib/hostflow/actions";
 import { emitFloorChange } from "@/lib/hostflow/events";
 import { sendEmail, reservationConfirmationHtml, ownerBookingNotificationHtml } from "@/lib/email";
+import { getSettings } from "@/lib/hostflow/floor";
+import { verifyGuestCardSetup } from "@/lib/stripeConnect";
 import type { Restaurant } from "@prisma/client";
 import type { CreateReservationInput } from "@/types";
 
@@ -110,6 +112,37 @@ export async function createReservationForRestaurant(
   const noteParts = [input.notes?.trim(), input.highChair ? "High chair requested" : ""].filter(Boolean);
   const manageToken = crypto.randomBytes(24).toString("base64url");
 
+  // No-show protection: staff-entered bookings (source "ADMIN") are always
+  // exempt, and protection only actually applies once the restaurant's own
+  // Stripe account is connected — never trust the client's word that a card
+  // was saved, always re-verify the SetupIntent server-side.
+  let stripePaymentMethodId: string | null = null;
+  if (input.source !== "ADMIN") {
+    const settings = await getSettings(restaurant.id);
+    const requiresCard =
+      settings.noShowProtectionEnabled &&
+      !!restaurant.stripeConnectAccountId &&
+      input.partySize >= (settings.noShowMinPartySize ?? 1);
+    if (requiresCard) {
+      if (!input.stripeSetupIntentId) {
+        // Reached by the AI chat tool (never collects a card, per design —
+        // see src/lib/claude.ts) and by the rare case of a web form's card
+        // step failing client-side. The booking link works for both: a
+        // human reading this in chat gets somewhere to actually finish.
+        return {
+          ok: false,
+          error: `A card is required to hold this reservation — please book online at ${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/widget/${restaurant.slug} to add one.`,
+        };
+      }
+      try {
+        const verified = await verifyGuestCardSetup(restaurant, input.stripeSetupIntentId);
+        stripePaymentMethodId = verified.paymentMethodId;
+      } catch (err) {
+        return { ok: false, error: (err as Error).message };
+      }
+    }
+  }
+
   try {
     const { reservation, table, comboTables } = await withSerializableRetry(async (tx) => {
       const found = await findAvailableTable({
@@ -142,6 +175,8 @@ export async function createReservationForRestaurant(
           accessibilityNeeds: input.accessibilityNeeds?.trim() || null,
           manageToken,
           idempotencyKey: input.idempotencyKey || null,
+          stripeSetupIntentId: input.stripeSetupIntentId || null,
+          stripePaymentMethodId,
           comboTables:
             comboTables.length > 0 ? { create: comboTables.map((ct) => ({ tableId: ct.id })) } : undefined,
         },

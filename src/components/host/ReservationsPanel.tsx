@@ -87,11 +87,15 @@ export function ReservationsPanel({
   const dayCount = state.reservations.filter((r) => minutesOfDayInTz(r.reservationTime, state.timezone) < shiftStart).length;
   const nightCount = state.reservations.filter((r) => minutesOfDayInTz(r.reservationTime, state.timezone) >= shiftStart).length;
 
+  const [noShowNote, setNoShowNote] = useState<string | null>(null);
   const act = async (id: string, status: string) => {
     setBusyId(id);
     setError(null);
+    setNoShowNote(null);
     try {
-      await api.setReservationStatus(id, status);
+      const { noShowCharge } = await api.setReservationStatus(id, status);
+      if (noShowCharge?.outcome === "charged") setNoShowNote("No-show fee charged.");
+      else if (noShowCharge?.outcome === "failed") setNoShowNote(`No-show fee not charged — ${noShowCharge.reason}`);
       await refresh();
     } catch (e) {
       setError((e as Error).message);
@@ -138,6 +142,7 @@ export function ReservationsPanel({
       </div>
 
       {error && <p className="mb-2 text-xs text-red-500">{error}</p>}
+      {noShowNote && <p className="mb-2 text-xs text-amber-600 dark:text-amber-400">{noShowNote}</p>}
 
       <div className="-mx-1 flex-1 space-y-3 overflow-y-auto px-1">
         {adding && (

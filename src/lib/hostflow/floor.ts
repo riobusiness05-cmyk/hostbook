@@ -200,6 +200,9 @@ export type SettingsDTO = {
   depositPerPersonCents: number | null;
   serviceChargePct: number | null;
   cancellationPolicy: string | null;
+  noShowProtectionEnabled: boolean;
+  noShowFeeCents: number | null;
+  noShowMinPartySize: number | null;
 };
 
 const minutesBetween = (a: Date, b: Date) => Math.round((a.getTime() - b.getTime()) / 60000);
@@ -250,6 +253,9 @@ export async function getSettings(restaurantId: string): Promise<SettingsDTO> {
     depositPerPersonCents: s.depositPerPersonCents,
     serviceChargePct: s.serviceChargePct,
     cancellationPolicy: s.cancellationPolicy,
+    noShowProtectionEnabled: s.noShowProtectionEnabled,
+    noShowFeeCents: s.noShowFeeCents,
+    noShowMinPartySize: s.noShowMinPartySize,
   };
 }
 

@@ -56,6 +56,24 @@ export function TablePanel({
     }
   };
 
+  const [noShowNote, setNoShowNote] = useState<string | null>(null);
+  const markNoShow = async (reservationId: string) => {
+    setBusy(true);
+    setError(null);
+    setNoShowNote(null);
+    try {
+      const { noShowCharge } = await api.setReservationStatus(reservationId, "NO_SHOW");
+      if (noShowCharge?.outcome === "charged") setNoShowNote("No-show fee charged.");
+      else if (noShowCharge?.outcome === "failed") setNoShowNote(`No-show fee not charged — ${noShowCharge.reason}`);
+      await refresh();
+      setMode("idle");
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const meta = STATUS_META[table.status];
   const s = table.session;
   const r = table.reservation;
@@ -98,6 +116,11 @@ export function TablePanel({
         {error && (
           <div className="mb-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-400">
             {error}
+          </div>
+        )}
+        {noShowNote && (
+          <div className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
+            {noShowNote}
           </div>
         )}
 
@@ -270,7 +293,7 @@ export function TablePanel({
                 </Button>
                 <Button
                   className="text-amber-600 dark:text-amber-400"
-                  onClick={() => run(() => api.setReservationStatus(r.id, "NO_SHOW"))}
+                  onClick={() => markNoShow(r.id)}
                   disabled={busy}
                 >
                   No show

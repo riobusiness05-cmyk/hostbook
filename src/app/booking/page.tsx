@@ -34,13 +34,21 @@ function groupMenu(
 
 export default async function HomePage() {
   const restaurant = await getActiveRestaurant();
-  const [hours, menuItems] = await Promise.all([
+  const [hours, menuItems, settings] = await Promise.all([
     prisma.openingHour.findMany({ where: { restaurantId: restaurant.id }, orderBy: { dayOfWeek: "asc" } }),
     prisma.menuItem.findMany({
       where: { restaurantId: restaurant.id, isAvailable: true },
       orderBy: { sortOrder: "asc" },
     }),
+    prisma.restaurantSettings.findUnique({ where: { restaurantId: restaurant.id } }),
   ]);
+  // Only actually required once the restaurant's own Stripe account is
+  // connected — a toggle flipped on before finishing onboarding shouldn't
+  // block a guest from booking.
+  const noShowProtection =
+    settings?.noShowProtectionEnabled && restaurant.stripeConnectAccountId
+      ? { feeCents: settings.noShowFeeCents ?? 0, minPartySize: settings.noShowMinPartySize ?? 1 }
+      : null;
 
   const sections = groupMenu(menuItems);
   const mapQuery = encodeURIComponent(restaurant.address ?? "Costa Adeje, Tenerife");
@@ -94,7 +102,11 @@ export default async function HomePage() {
             </div>
           </div>
 
-          <ReservationForm maxPartySize={restaurant.maxPartySize} timezone={restaurant.timezone} />
+          <ReservationForm
+            maxPartySize={restaurant.maxPartySize}
+            timezone={restaurant.timezone}
+            noShowProtection={noShowProtection}
+          />
         </div>
       </section>
 

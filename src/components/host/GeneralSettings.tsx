@@ -37,10 +37,28 @@ export function GeneralSettings({ initialSettings }: { initialSettings: Settings
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [paymentsStatus, setPaymentsStatus] = useState<api.PaymentsConnectStatus | null>(null);
+  const [connecting, setConnecting] = useState(false);
 
   useEffect(() => {
     api.fetchRestaurant().then((r) => setTimezone(r.timezone)).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    api.getPaymentsStatus().then(setPaymentsStatus).catch(() => {});
+  }, []);
+
+  const connectStripe = async () => {
+    setConnecting(true);
+    setError(null);
+    try {
+      const { url } = await api.startStripeConnect();
+      window.location.href = url;
+    } catch (e) {
+      setError((e as Error).message);
+      setConnecting(false);
+    }
+  };
 
   const set = <K extends keyof SettingsDTO>(key: K, value: SettingsDTO[K]) => {
     setForm((f) => ({ ...f, [key]: value }));
@@ -68,6 +86,9 @@ export function GeneralSettings({ initialSettings }: { initialSettings: Settings
           depositPerPersonCents: form.depositPerPersonCents,
           serviceChargePct: form.serviceChargePct,
           cancellationPolicy: form.cancellationPolicy,
+          noShowProtectionEnabled: form.noShowProtectionEnabled,
+          noShowFeeCents: form.noShowFeeCents,
+          noShowMinPartySize: form.noShowMinPartySize,
         }),
         timezone ? api.updateRestaurant({ timezone }) : Promise.resolve(),
       ]);
@@ -176,6 +197,64 @@ export function GeneralSettings({ initialSettings }: { initialSettings: Settings
             onChange={(e) => set("cancellationPolicy", e.target.value || null)}
           />
         </Field>
+      </Card>
+
+      <Card className="p-5">
+        <SectionTitle>No-show protection</SectionTitle>
+        <p className="mb-3 text-xs text-neutral-400">
+          Online guests save a card when booking — nothing is charged unless a staff member marks that
+          reservation as a no-show, in which case the fee below is charged to their card automatically.
+        </p>
+
+        {paymentsStatus?.chargesEnabled ? (
+          <p className="mb-4 inline-flex items-center gap-1.5 rounded-md bg-emerald-500/15 px-2 py-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+            ✓ Stripe connected
+          </p>
+        ) : (
+          <div className="mb-4">
+            <p className="mb-2 text-xs text-neutral-500 dark:text-neutral-400">
+              {paymentsStatus?.connected
+                ? "Stripe onboarding isn't finished yet — finish it to start collecting cards."
+                : "Connect your own Stripe account to charge no-show fees directly to your account (Host Flow never touches this money)."}
+            </p>
+            <Button size="sm" disabled={connecting} onClick={connectStripe}>
+              {connecting ? "Redirecting…" : paymentsStatus?.connected ? "Finish Stripe setup" : "Connect Stripe"}
+            </Button>
+          </div>
+        )}
+
+        <div className={paymentsStatus?.chargesEnabled ? "" : "pointer-events-none opacity-40"}>
+          <label className="mb-3 flex items-center gap-2 text-sm text-neutral-700 dark:text-neutral-200">
+            <input
+              type="checkbox"
+              checked={form.noShowProtectionEnabled}
+              onChange={(e) => set("noShowProtectionEnabled", e.target.checked)}
+            />
+            Require a card for online bookings
+          </label>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field label="No-show fee (€)">
+              <input
+                type="number"
+                min={0}
+                step={0.5}
+                className={inputCls}
+                value={form.noShowFeeCents != null ? form.noShowFeeCents / 100 : ""}
+                onChange={(e) => set("noShowFeeCents", e.target.value === "" ? null : Math.round(Number(e.target.value) * 100))}
+              />
+            </Field>
+            <Field label="Minimum party size" hint="Leave blank to require a card for every online booking.">
+              <input
+                type="number"
+                min={1}
+                max={30}
+                className={inputCls}
+                value={form.noShowMinPartySize ?? ""}
+                onChange={(e) => set("noShowMinPartySize", e.target.value === "" ? null : Number(e.target.value))}
+              />
+            </Field>
+          </div>
+        </div>
       </Card>
 
       <div className="flex items-center gap-3">

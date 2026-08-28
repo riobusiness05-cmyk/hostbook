@@ -38,6 +38,10 @@ export const createReservationSchema = z.object({
   // a double form-submit that slips past the disabled-button guard) can't
   // create two separate bookings — see createReservationForRestaurant.
   idempotencyKey: z.string().uuid().optional(),
+  // Present only when the restaurant has no-show protection enabled and the
+  // guest completed a card save on the client — re-verified server-side in
+  // createReservationForRestaurant, never trusted at face value.
+  stripeSetupIntentId: z.string().optional(),
 });
 
 export type CreateReservationInput = z.infer<typeof createReservationSchema>;

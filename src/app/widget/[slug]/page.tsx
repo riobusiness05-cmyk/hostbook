@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { prisma } from "@/lib/prisma";
 import { getRestaurantBySlug } from "@/lib/restaurant";
 import { WidgetBookingForm } from "@/components/WidgetBookingForm";
 
@@ -16,6 +17,14 @@ export async function generateMetadata({ params }: { params: { slug: string } })
 export default async function WidgetPage({ params }: { params: { slug: string } }) {
   const restaurant = await getRestaurantBySlug(params.slug);
   if (!restaurant) notFound();
+  const settings = await prisma.restaurantSettings.findUnique({ where: { restaurantId: restaurant.id } });
+  // Only actually required once the restaurant's own Stripe account is
+  // connected — a toggle flipped on before finishing onboarding shouldn't
+  // block a guest from booking.
+  const noShowProtection =
+    settings?.noShowProtectionEnabled && restaurant.stripeConnectAccountId
+      ? { feeCents: settings.noShowFeeCents ?? 0, minPartySize: settings.noShowMinPartySize ?? 1 }
+      : null;
 
   return (
     <div className="min-h-screen p-3 sm:p-4">
@@ -25,6 +34,7 @@ export default async function WidgetPage({ params }: { params: { slug: string } 
         maxPartySize={restaurant.maxPartySize}
         timezone={restaurant.timezone}
         brandColor={restaurant.brandColor}
+        noShowProtection={noShowProtection}
       />
     </div>
   );

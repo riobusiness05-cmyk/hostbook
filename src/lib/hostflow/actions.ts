@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { emitFloorChange } from "./events";
 import { getSettings } from "./floor";
 import { TableStatus } from "./constants";
+import { chargeNoShowFee } from "@/lib/stripeConnect";
 
 // Every function here is a small, auditable state transition. They all:
 //   1. mutate the DB,
@@ -515,5 +516,36 @@ export async function updateReservationStatus(
       }
     }
   }
+
+  // No-show fee — best-effort, never lets a payment problem block the
+  // no-show status itself from being recorded (same discipline as the
+  // email side effects in reservationActions.ts). Only attempted when the
+  // guest actually saved a card at booking time.
+  let noShowCharge: { outcome: "charged" | "failed"; reason?: string } | undefined;
+  if (status === "NO_SHOW" && r.stripePaymentMethodId) {
+    try {
+      const [restaurant, settings] = await Promise.all([
+        prisma.restaurant.findUniqueOrThrow({ where: { id: restaurantId } }),
+        getSettings(restaurantId),
+      ]);
+      if (restaurant.stripeConnectAccountId && settings.noShowFeeCents) {
+        const result = await chargeNoShowFee(restaurant, r, settings.noShowFeeCents, "eur");
+        noShowCharge = result.outcome === "charged" ? { outcome: "charged" } : { outcome: "failed", reason: result.reason };
+        await prisma.reservation.update({
+          where: { id: reservationId },
+          data: {
+            noShowChargeStatus: result.outcome === "charged" ? "CHARGED" : "FAILED",
+            noShowChargeId: result.outcome === "charged" ? result.chargeId : null,
+            noShowChargedAt: result.outcome === "charged" ? new Date() : null,
+          },
+        });
+      }
+    } catch (err) {
+      console.error("[no-show charge]", reservationId, err);
+      noShowCharge = { outcome: "failed", reason: "Unexpected error while charging the card." };
+    }
+  }
+
   emitFloorChange(restaurantId, "reservation");
+  return { noShowCharge };
 }

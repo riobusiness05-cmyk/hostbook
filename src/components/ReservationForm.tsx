@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { NoShowCardField, type NoShowCardFieldHandle } from "./NoShowCardField";
 
 // Uses the RESTAURANT's timezone, not the visiting browser's — otherwise a
 // guest booking from a different timezone could pick a date that reads as
@@ -9,7 +10,15 @@ function localDateStr(date: Date, timeZone: string): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
 }
 
-export default function ReservationForm({ maxPartySize, timezone }: { maxPartySize: number; timezone: string }) {
+export default function ReservationForm({
+  maxPartySize,
+  timezone,
+  noShowProtection,
+}: {
+  maxPartySize: number;
+  timezone: string;
+  noShowProtection: { feeCents: number; minPartySize: number } | null;
+}) {
   const todayStr = () => localDateStr(new Date(), timezone);
   const [date, setDate] = useState("");
   const [partySize, setPartySize] = useState(2);
@@ -31,6 +40,8 @@ export default function ReservationForm({ maxPartySize, timezone }: { maxPartySi
   // response landing after a newer one would otherwise overwrite the
   // correct slots with stale ones.
   const checkSeq = useRef(0);
+  const cardFieldRef = useRef<NoShowCardFieldHandle>(null);
+  const requiresCard = !!noShowProtection && partySize >= noShowProtection.minPartySize;
 
   async function checkAvailability() {
     if (!date) return;
@@ -66,6 +77,16 @@ export default function ReservationForm({ maxPartySize, timezone }: { maxPartySi
     setStatus(null);
 
     try {
+      let stripeSetupIntentId: string | undefined;
+      if (requiresCard) {
+        try {
+          stripeSetupIntentId = await cardFieldRef.current?.confirmSetup();
+        } catch (err) {
+          setStatus({ type: "error", message: (err as Error).message });
+          return;
+        }
+      }
+
       const res = await fetch("/api/reservations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -79,6 +100,7 @@ export default function ReservationForm({ maxPartySize, timezone }: { maxPartySi
           notes,
           source: "WEB_FORM",
           idempotencyKey: idempotencyKeyRef.current,
+          stripeSetupIntentId,
         }),
       });
       const data = await res.json();
@@ -205,6 +227,16 @@ export default function ReservationForm({ maxPartySize, timezone }: { maxPartySi
             className="w-full rounded-sm border border-colonial-cream/20 bg-transparent px-3 py-2 text-sm text-colonial-cream placeholder:text-colonial-fade/50 focus:border-colonial-ember-400 focus:outline-none"
             rows={2}
           />
+          {requiresCard && noShowProtection && (
+            <div className="rounded-sm border border-colonial-ember-500/30 bg-colonial-ember-500/[0.06] p-3">
+              <p className="mb-2 text-xs text-colonial-fade">
+                A card is required to hold this table. If you don&apos;t show up, a{" "}
+                {(noShowProtection.feeCents / 100).toLocaleString(undefined, { style: "currency", currency: "EUR" })}{" "}
+                no-show fee will be charged — nothing is charged otherwise.
+              </p>
+              <NoShowCardField ref={cardFieldRef} setupIntentUrl="/api/setup-intent" dark />
+            </div>
+          )}
           <button
             type="submit"
             disabled={submitting || !name.trim()}

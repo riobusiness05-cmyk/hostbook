@@ -14,7 +14,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -35,6 +35,14 @@ model Restaurant {
   onboardingCompletedAt DateTime? // null = still on the post-signup setup wizard
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+
+  // ── No-show protection: the restaurant's OWN Stripe account (Connect),
+  // separate from the platform's SaaS-billing Stripe account used by
+  // Subscription below — money here flows guest -> restaurant, not
+  // restaurant -> Host Flow. Null onboardedAt = Connect onboarding not yet
+  // completed (Stripe hasn't confirmed chargesEnabled).
+  stripeConnectAccountId    String?
+  stripeConnectOnboardedAt  DateTime?
 
   openingHours    OpeningHour[]
   tables          DiningTable[]
@@ -226,6 +234,17 @@ model Reservation {
   // (never set for source: "ADMIN" bookings — the owner made those themselves).
   ownerNotifiedAt    DateTime?
 
+  // ── No-show protection — see Restaurant.stripeConnectAccountId /
+  //    RestaurantSettings.noShowProtectionEnabled / stripeConnect.ts.
+  //    Null on every reservation unless the restaurant required a card at
+  //    booking time (staff-entered bookings are always exempt).
+  stripeSetupIntentId   String?
+  stripePaymentMethodId String?
+  // noShowChargeStatus: null | PENDING | CHARGED | FAILED
+  noShowChargeStatus    String?
+  noShowChargeId        String?
+  noShowChargedAt       DateTime?
+
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
 
@@ -389,6 +408,12 @@ model RestaurantSettings {
   depositPerPersonCents Int?       // null = no deposit required
   serviceChargePct      Int?       // null = no service charge added
   cancellationPolicy    String?    // free text, e.g. notice period required
+
+  // ── No-show protection — requires Restaurant.stripeConnectAccountId to
+  //    actually be onboarded before this can take effect; see stripeConnect.ts
+  noShowProtectionEnabled Boolean  @default(false)
+  noShowFeeCents          Int?     // null while protection is off or not yet configured
+  noShowMinPartySize      Int?     // null = applies to every online booking regardless of size
 
   updatedAt             DateTime   @updatedAt
 }

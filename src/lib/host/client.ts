@@ -114,13 +114,15 @@ export async function createReservation(input: NewReservationInput): Promise<Cre
   return data.reservation;
 }
 
-export async function setReservationStatus(id: string, status: string): Promise<void> {
+export type NoShowChargeOutcome = { outcome: "charged" | "failed"; reason?: string } | null;
+
+export async function setReservationStatus(id: string, status: string): Promise<{ noShowCharge: NoShowChargeOutcome }> {
   const res = await fetch(`/api/host/reservations/${id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ status }),
   });
-  await jsonOrThrow(res);
+  return jsonOrThrow<{ ok: true; noShowCharge: NoShowChargeOutcome }>(res);
 }
 
 export async function markNotifications(id?: string): Promise<void> {
@@ -268,6 +270,18 @@ export async function updateRestaurant(patch: { timezone?: string; onboardingCom
     body: JSON.stringify(patch),
   });
   await jsonOrThrow(res);
+}
+
+export type PaymentsConnectStatus = { connected: boolean; chargesEnabled: boolean; detailsSubmitted: boolean };
+
+export async function getPaymentsStatus(): Promise<PaymentsConnectStatus> {
+  const res = await fetch("/api/host/payments/status", { cache: "no-store" });
+  return jsonOrThrow<PaymentsConnectStatus>(res);
+}
+
+export async function startStripeConnect(): Promise<{ url: string }> {
+  const res = await fetch("/api/host/payments/connect", { method: "POST" });
+  return jsonOrThrow<{ url: string }>(res);
 }
 
 export type DetectedTable = {

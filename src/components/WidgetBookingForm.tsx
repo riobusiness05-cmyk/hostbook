@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { NoShowCardField, type NoShowCardFieldHandle } from "./NoShowCardField";
 
 // Uses the RESTAURANT's timezone, not the visiting browser's — otherwise a
 // guest booking from a different timezone could pick a date that reads as
@@ -24,12 +25,14 @@ export function WidgetBookingForm({
   maxPartySize,
   timezone,
   brandColor,
+  noShowProtection,
 }: {
   slug: string;
   restaurantName: string;
   maxPartySize: number;
   timezone: string;
   brandColor: string;
+  noShowProtection: { feeCents: number; minPartySize: number } | null;
 }) {
   const todayStr = () => localDateStr(new Date(), timezone);
   const [date, setDate] = useState("");
@@ -45,6 +48,8 @@ export function WidgetBookingForm({
   const [status, setStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const idempotencyKeyRef = useRef(crypto.randomUUID());
   const checkSeq = useRef(0);
+  const cardFieldRef = useRef<NoShowCardFieldHandle>(null);
+  const requiresCard = !!noShowProtection && partySize >= noShowProtection.minPartySize;
 
   async function checkAvailability() {
     if (!date) return;
@@ -80,6 +85,16 @@ export function WidgetBookingForm({
     setStatus(null);
 
     try {
+      let stripeSetupIntentId: string | undefined;
+      if (requiresCard) {
+        try {
+          stripeSetupIntentId = await cardFieldRef.current?.confirmSetup();
+        } catch (err) {
+          setStatus({ type: "error", message: (err as Error).message });
+          return;
+        }
+      }
+
       const res = await fetch(`/api/widget/${slug}/reservations`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -92,6 +107,7 @@ export function WidgetBookingForm({
           customerPhone: phone,
           notes,
           idempotencyKey: idempotencyKeyRef.current,
+          stripeSetupIntentId,
         }),
       });
       const data = await res.json();
@@ -212,6 +228,16 @@ export function WidgetBookingForm({
             className={inputCls}
             rows={2}
           />
+          {requiresCard && noShowProtection && (
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/[0.06] p-3">
+              <p className="mb-2 text-xs text-neutral-600">
+                A card is required to hold this table. If you don&apos;t show up, a{" "}
+                {(noShowProtection.feeCents / 100).toLocaleString(undefined, { style: "currency", currency: "EUR" })}{" "}
+                no-show fee will be charged — nothing is charged otherwise.
+              </p>
+              <NoShowCardField ref={cardFieldRef} setupIntentUrl={`/api/widget/${slug}/setup-intent`} />
+            </div>
+          )}
           <button
             type="submit"
             disabled={submitting || !name.trim()}

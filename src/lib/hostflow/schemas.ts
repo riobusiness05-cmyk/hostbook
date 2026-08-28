@@ -93,6 +93,9 @@ export const settingsSchema = z.object({
   depositPerPersonCents: z.number().int().min(0).max(100000).nullable().optional(),
   serviceChargePct: z.number().int().min(0).max(100).nullable().optional(),
   cancellationPolicy: z.string().max(2000).nullable().optional(),
+  noShowProtectionEnabled: z.boolean().optional(),
+  noShowFeeCents: z.number().int().min(0).max(100000).nullable().optional(),
+  noShowMinPartySize: z.number().int().min(1).max(30).nullable().optional(),
 });
 
 export const assistantSchema = z.object({
