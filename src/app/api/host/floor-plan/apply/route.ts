@@ -17,7 +17,11 @@ const tableSchema = z.object({
   tempId: z.string(),
   number: z.number().int().min(0).nullable(),
   shape: z.enum(["ROUND", "SQUARE", "RECT"]),
-  seats: z.number().int().min(1).max(30),
+  // A single dining table tops out well under this, but a real bar
+  // counter/rail can legitimately seat well past 30 — this is table
+  // capacity, not a booking's party size (see partySize's own, separate
+  // max(30) elsewhere), so it needs its own higher ceiling.
+  seats: z.number().int().min(1).max(40),
   x: z.number().min(0).max(1),
   y: z.number().min(0).max(1),
   rotation: z.number(),
@@ -37,7 +41,12 @@ function dimensionsFor(shape: "ROUND" | "SQUARE" | "RECT", seats: number): { wid
     return { width: d, height: d };
   }
   if (shape === "RECT") {
-    return { width: 92, height: Math.max(90, Math.min(220, seats * 25)) };
+    // The old 220px cap boxed in anything past ~9 seats — fine for an
+    // 8-top dining table, but a real bar counter/rail routinely seats
+    // 12-20+ along its length and needs to actually read as a long
+    // counter, not a squarish block. Depth (width) stays constant —
+    // a counter doesn't get deeper just because it's longer.
+    return { width: 92, height: Math.max(90, Math.min(560, seats * 24)) };
   }
   const s = seats <= 2 ? 70 : seats <= 4 ? 90 : 112;
   return { width: s, height: s };

@@ -269,7 +269,7 @@ export function FloorPlanBuilder({ onDone, onSkip }: { onDone: () => void; onSki
                 <input
                   type="number"
                   min={1}
-                  max={30}
+                  max={40}
                   className={cx(inputCls, "mt-0 w-20")}
                   value={row.seats}
                   onChange={(e) =>

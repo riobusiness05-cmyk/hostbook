@@ -37,9 +37,23 @@ export type FloorPlanAnalysis = {
   notes: string[]; // things the model wasn't sure about, in plain English
 };
 
-const SYSTEM_PROMPT = `You are a precise floor-plan digitizer for a restaurant table-management app.
-You will be shown a photo or screenshot of a restaurant's real floor plan (it may be hand-drawn, a POS
-system's table map, or an architectural sketch). Identify every individual table you can see.
+const SYSTEM_PROMPT = `You are a precise floor-plan digitizer for a restaurant and bar table-management app.
+You will be shown a photo or screenshot of a real venue's floor plan (it may be hand-drawn, a POS
+system's table map, or an architectural sketch, and the venue may be a restaurant, a bar, or a lounge).
+Identify every individual bookable seating unit you can see — this includes ordinary dining tables AND
+bar-specific furniture:
+- A bar counter or rail (guests seated in a row along a straight or L/U-shaped counter) is ONE table:
+  use shape "RECT", "seats" = the number of stools/seats actually visible along it (count them; a long
+  counter routinely seats 10-20+), and set "rotation" so the long axis of the resulting rectangle matches
+  the counter's real orientation in the photo (0 or 180 for a counter running left-right, 90 or 270 for
+  one running top-to-bottom). Never split one continuous counter into several small tables just because
+  it's long — length is expected, not a reason to break it up.
+- High-top / cocktail tables (small standing-height round or square tables, often with 2-4 stools) are
+  ordinary tables — "ROUND" or "SQUARE" depending on their visible shape.
+- Booths and banquette seating are "RECT".
+- If a counter has a visibly distinct curved or L-shaped corner section, you may still represent the
+  whole thing as one RECT positioned/rotated at its dominant straight run — precision on the corner
+  geometry matters far less than getting the seat count and rough position right.
 
 Respond with ONLY a single JSON object (no markdown fences, no prose before or after) matching exactly:
 {
@@ -147,7 +161,10 @@ function normalizeAnalysis(raw: unknown): FloorPlanAnalysis {
     tempId: typeof t.tempId === "string" ? t.tempId : `table-${i}`,
     number: typeof t.number === "number" ? t.number : null,
     shape: t.shape === "ROUND" || t.shape === "RECT" ? t.shape : "SQUARE",
-    seats: typeof t.seats === "number" && t.seats > 0 ? Math.round(t.seats) : 2,
+    // Clamped to the apply route's own max (see tableSchema in
+    // floor-plan/apply/route.ts) so a wildly overcounted bar counter can't
+    // reach the review screen showing a number that fails to apply later.
+    seats: typeof t.seats === "number" && t.seats > 0 ? Math.min(40, Math.round(t.seats)) : 2,
     x: clamp01(typeof t.x === "number" ? t.x : 0.5),
     y: clamp01(typeof t.y === "number" ? t.y : 0.5),
     rotation: typeof t.rotation === "number" ? ((Math.round(t.rotation) % 360) + 360) % 360 : 0,
