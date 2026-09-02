@@ -107,7 +107,12 @@ export async function analyzeFloorPlanImage(base64Data: string, mediaType: strin
   try {
     response = await client.messages.create({
       model: MODEL,
-      max_tokens: 4096,
+      // A busy restaurant or bar floor plan can easily run 30-50+ detected
+      // tables; each one's JSON is a few hundred characters, so the old
+      // 4096-token cap could truncate mid-object on a genuinely large venue
+      // — the exact failure mode that surfaces to a host as "response
+      // wasn't valid JSON" with no way to tell what actually went wrong.
+      max_tokens: 8192,
       system: SYSTEM_PROMPT,
       messages: [
         {
@@ -118,6 +123,11 @@ export async function analyzeFloorPlanImage(base64Data: string, mediaType: strin
           ],
         },
       ],
+      // NOTE: tried prefilling the assistant turn with "{" to force a
+      // JSON-only response (the usual fix for a model adding prose before
+      // JSON) — claude-sonnet-5 rejects that outright ("This model does not
+      // support assistant message prefill"), confirmed live. Extraction
+      // below has to tolerate stray prose instead.
     });
   } catch (err) {
     // The raw SDK error embeds Anthropic's own API/vendor error body (e.g.
@@ -133,13 +143,39 @@ export async function analyzeFloorPlanImage(base64Data: string, mediaType: strin
   const textBlock = response.content.find((b): b is Anthropic.TextBlock => b.type === "text");
   if (!textBlock) throw new HostFlowError("The AI didn't return a readable response. Try a clearer photo.", 422);
 
+  const rawText = textBlock.text;
+
   let parsed: unknown;
   try {
-    // Models sometimes wrap JSON in a fenced code block despite instructions — strip it defensively.
-    const cleaned = textBlock.text.trim().replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
+    // No prefill available on this model (see the note above the API call),
+    // so the response can genuinely start/end with prose despite the system
+    // prompt saying not to — strip a markdown fence if present, then fall
+    // back to slicing out the outermost {...} span rather than assuming the
+    // whole trimmed string is the JSON object.
+    let cleaned = rawText.trim().replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
+    const first = cleaned.indexOf("{");
+    const last = cleaned.lastIndexOf("}");
+    if (first === -1 || last === -1 || last < first) {
+      throw new Error("no JSON object found in response");
+    }
+    cleaned = cleaned.slice(first, last + 1);
     parsed = JSON.parse(cleaned);
-  } catch {
-    throw new HostFlowError("The AI's response wasn't valid JSON. Try again, or a different photo.", 422);
+  } catch (err) {
+    // Without this, a bad response leaves zero trace of what the AI
+    // actually sent — every past occurrence of this error was undiagnosable
+    // for exactly that reason. Truncated to a sane length for the logs.
+    console.error(
+      "[floor-plan-vision] response wasn't valid JSON",
+      { stopReason: response.stop_reason, length: rawText.length, preview: rawText.slice(0, 2000) },
+      err
+    );
+    const truncated = response.stop_reason === "max_tokens";
+    throw new HostFlowError(
+      truncated
+        ? "That floor plan was too large for the AI to digitize in one pass — try a photo of one room/section at a time."
+        : "The AI's response wasn't valid JSON. Try again, or a different photo.",
+      422
+    );
   }
 
   return normalizeAnalysis(parsed);
