@@ -74,20 +74,40 @@ Respond with ONLY a single JSON object (no markdown fences, no prose before or a
   "notes": [string]
 }
 
-Rules:
+Before listing a single table, do this as its own step: scan the whole image for distinct
+areas/rooms and decide the "sections" list first. A real venue's floor plan is very rarely one
+undivided space — treat "everything in one section" as your least likely answer, not your default,
+and actively look for evidence of separate areas rather than waiting for it to be obvious:
+- Printed text labels are the strongest signal — room/area names ("PATIO", "BAR", "MAIN DINING",
+  "LOUNGE", "TERRACE", section letters/numbers, etc.) are extremely common on real floor plans and
+  POS table maps. If you see ANY such label anywhere in the image, every one of them is its own
+  section — do not merge two differently-labeled areas into one just because they're both indoors.
+- Structural/visual boundaries also count even without a text label: walls, partitions, a change in
+  flooring/shading, a clear physical gap between two clusters of tables, or a bar counter (the area
+  around a bar counter is its own section, not part of the dining room).
+- A floor plan with many tables (a large or multi-room venue) is a signal to look *harder* for
+  sections, not a reason to give up and lump everything under one generic name — dumping 30+ tables
+  into a single "Main Dining Room" because splitting them felt tedious is exactly the failure mode to
+  avoid. If you truly cannot find any dividing evidence anywhere in the image, one section is fine —
+  but that should be a deliberate conclusion after looking, not a default.
+- Every single table's "sectionTempId" MUST reference one of the tempIds in your own "sections" list —
+  never leave it blank/undefined and never invent a tempId that isn't in "sections". A table you're
+  unsure about still needs your best-guess section, not a missing one.
+
+Other rules:
 - "x" and "y" are normalized 0..1 coordinates of the table's center within the image (0,0 = top-left).
 - "number" is the table's printed/labeled number if visible, otherwise null — never invent one.
 - "seats" is the chair count actually drawn/visible around that table, not a guess from table size alone.
 - If two or more tables are drawn pushed together / joined as one combined surface, set "mergedWithTempId"
   on every table except the largest/primary one in that group to that primary table's tempId.
-- Group tables into sections by visibly distinct areas (indoor rooms, terraces, bar, patio). If the image
-  shows only one area, return a single section. Mark "isOutdoor" true only for terraces/patios/gardens —
-  never guess when it isn't visually clear either way (default false).
+- Mark "isOutdoor" true only for terraces/patios/gardens — never guess when it isn't visually clear
+  either way (default false).
 - "confidence" per table: 1.0 = clearly labeled and unambiguous, 0.5 or below = you are guessing at the
   number, seat count, or position. Be honest and conservative — the app will ask a human to confirm any
   table below 0.6 rather than silently trusting a guess.
 - "notes": plain-English flags for anything you weren't sure about (illegible numbers, ambiguous shapes,
-  tables that might be merged but you're not certain, areas that might be indoor or outdoor).
+  tables that might be merged but you're not certain, areas that might be indoor or outdoor, or areas you
+  suspect are distinct but couldn't find a label for).
 - Never fabricate tables that aren't visibly present in the image.`;
 
 export async function analyzeFloorPlanImage(base64Data: string, mediaType: string): Promise<FloorPlanAnalysis> {
@@ -193,23 +213,51 @@ function normalizeAnalysis(raw: unknown): FloorPlanAnalysis {
   }));
   if (sections.length === 0) sections.push({ tempId: "section-0", name: "Main Room", isOutdoor: false });
 
-  const tables: DetectedTable[] = rawTables.map((t: Record<string, unknown>, i: number) => ({
-    tempId: typeof t.tempId === "string" ? t.tempId : `table-${i}`,
-    number: typeof t.number === "number" ? t.number : null,
-    shape: t.shape === "ROUND" || t.shape === "RECT" ? t.shape : "SQUARE",
-    // Clamped to the apply route's own max (see tableSchema in
-    // floor-plan/apply/route.ts) so a wildly overcounted bar counter can't
-    // reach the review screen showing a number that fails to apply later.
-    seats: typeof t.seats === "number" && t.seats > 0 ? Math.min(40, Math.round(t.seats)) : 2,
-    x: clamp01(typeof t.x === "number" ? t.x : 0.5),
-    y: clamp01(typeof t.y === "number" ? t.y : 0.5),
-    rotation: typeof t.rotation === "number" ? ((Math.round(t.rotation) % 360) + 360) % 360 : 0,
-    mergedWithTempId: typeof t.mergedWithTempId === "string" ? t.mergedWithTempId : null,
-    sectionTempId: typeof t.sectionTempId === "string" ? t.sectionTempId : sections[0].tempId,
-    confidence: clamp01(typeof t.confidence === "number" ? t.confidence : 0.5),
-  }));
+  // Guards against a table's sectionTempId referencing a section that isn't
+  // actually in the response (typo, stale id, off-by-one) — previously this
+  // string was accepted as-is if it merely existed, so a mismatched id could
+  // silently vanish from every section's grouping in the review screen
+  // without ever falling back or being flagged. Every mismatch now falls
+  // back visibly (via the note below) instead of silently.
+  const sectionTempIds = new Set(sections.map((s) => s.tempId));
+  let unmatchedSectionCount = 0;
+
+  const tables: DetectedTable[] = rawTables.map((t: Record<string, unknown>, i: number) => {
+    const claimedSectionTempId = typeof t.sectionTempId === "string" ? t.sectionTempId : "";
+    const sectionTempId = sectionTempIds.has(claimedSectionTempId) ? claimedSectionTempId : sections[0].tempId;
+    if (sectionTempId !== claimedSectionTempId) unmatchedSectionCount++;
+    return {
+      tempId: typeof t.tempId === "string" ? t.tempId : `table-${i}`,
+      number: typeof t.number === "number" ? t.number : null,
+      shape: t.shape === "ROUND" || t.shape === "RECT" ? t.shape : "SQUARE",
+      // Clamped to the apply route's own max (see tableSchema in
+      // floor-plan/apply/route.ts) so a wildly overcounted bar counter can't
+      // reach the review screen showing a number that fails to apply later.
+      seats: typeof t.seats === "number" && t.seats > 0 ? Math.min(40, Math.round(t.seats)) : 2,
+      x: clamp01(typeof t.x === "number" ? t.x : 0.5),
+      y: clamp01(typeof t.y === "number" ? t.y : 0.5),
+      rotation: typeof t.rotation === "number" ? ((Math.round(t.rotation) % 360) + 360) % 360 : 0,
+      mergedWithTempId: typeof t.mergedWithTempId === "string" ? t.mergedWithTempId : null,
+      sectionTempId,
+      confidence: clamp01(typeof t.confidence === "number" ? t.confidence : 0.5),
+    };
+  });
 
   const notes = Array.isArray(r.notes) ? r.notes.filter((n): n is string => typeof n === "string") : [];
+  if (unmatchedSectionCount > 0) {
+    notes.push(
+      `${unmatchedSectionCount} table(s) couldn't be matched to a specific area and were grouped into "${sections[0].name}" — you may want to move them after applying.`
+    );
+  }
+  // A large batch collapsed into one section is very likely the "gave up
+  // splitting" failure mode the system prompt now explicitly warns
+  // against — surfacing it here means it shows up in the review screen
+  // instead of only being visible by inspecting the database afterward.
+  if (sections.length === 1 && tables.length >= 15) {
+    notes.push(
+      `All ${tables.length} tables were grouped into one area ("${sections[0].name}") — if this venue actually has more than one room/section, try re-uploading a clearer photo or a photo of one area at a time.`
+    );
+  }
   const overallConfidence =
     typeof r.overallConfidence === "number"
       ? clamp01(r.overallConfidence)

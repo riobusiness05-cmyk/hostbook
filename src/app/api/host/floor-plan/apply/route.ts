@@ -82,6 +82,13 @@ export async function POST(req: NextRequest) {
       ...tables.map((t) => t.number ?? 0)
     );
     let nextAutoNumber = highestKnownNumber + 1;
+    // A real photo can have two tables the AI reads as the same number —
+    // an obscured/reused label, or just a misread — which used to crash the
+    // whole import on the DB's unique constraint with no way to tell why.
+    // Tracks every number as it's actually assigned (existing rows +
+    // this batch) so a second collision falls back to auto-numbering
+    // instead of failing the transaction.
+    const usedNumbers = new Set(existingTables.map((t) => t.tableNumber));
 
     const created = await prisma.$transaction(async (tx) => {
       // Sections are @@unique([restaurantId, name]) — upsert so re-running
@@ -99,7 +106,9 @@ export async function POST(req: NextRequest) {
       const tableIdByTemp = new Map<string, string>();
       for (const t of tables) {
         const { width, height } = dimensionsFor(t.shape, t.seats);
-        const tableNumber = t.number ?? nextAutoNumber++;
+        let tableNumber = t.number ?? nextAutoNumber++;
+        if (usedNumbers.has(tableNumber)) tableNumber = nextAutoNumber++;
+        usedNumbers.add(tableNumber);
         const x = Math.round(t.x * CANVAS_W + PAD - width / 2);
         const y = Math.round(t.y * CANVAS_H + PAD - height / 2);
         const row = await tx.diningTable.create({
