@@ -56,33 +56,40 @@ const TEMPLATES: { key: string; label: string; blurb: string; sections: Template
   },
 ];
 
+// One table's worth of manual input — richer than TemplateSection's bare
+// seatsPool since a host typing tables in one at a time (unlike a
+// template) can and should give each one its own real number/shape.
+type ManualTableInput = { number: number | null; seats: number; shape: DetectedTable["shape"] };
+type SectionInput = { name: string; isOutdoor: boolean; tables: ManualTableInput[] };
+
 // Lays out each section's tables in its own vertical band of the shared 0..1
 // canvas applyFloorPlan expects (the same normalized space the AI-import
 // flow produces from a real photo) — grid-arranged within the band so
 // nothing overlaps, with generous padding since these are starting
 // positions the host is about to drag around anyway, not a finished layout.
-function buildTemplatePayload(sections: TemplateSection[]): { sections: DetectedSection[]; tables: DetectedTable[] } {
+// Shared by the template path (seat counts only, shape inferred, no real
+// numbers) and the manual-entry path (host-typed number/shape per table).
+function buildSectionsPayload(sections: SectionInput[]): { sections: DetectedSection[]; tables: DetectedTable[] } {
   const bandWidth = 1 / sections.length;
   const outSections: DetectedSection[] = [];
   const outTables: DetectedTable[] = [];
   sections.forEach((sec, sIdx) => {
     const tempId = `sec-${sIdx}`;
     outSections.push({ tempId, name: sec.name, isOutdoor: sec.isOutdoor });
-    const n = sec.seatsPool.length;
+    const n = sec.tables.length;
     const cols = Math.max(1, Math.ceil(Math.sqrt(n * 1.3)));
     const rows = Math.ceil(n / cols);
-    for (let i = 0; i < n; i++) {
+    sec.tables.forEach((t, i) => {
       const col = i % cols;
       const row = Math.floor(i / cols);
       const xInBand = cols === 1 ? 0.5 : (col + 0.5) / cols;
       const x = sIdx * bandWidth + xInBand * bandWidth * 0.82 + bandWidth * 0.09;
       const y = 0.12 + ((row + 0.5) / rows) * 0.76;
-      const seats = sec.seatsPool[i];
       outTables.push({
         tempId: `t-${sIdx}-${i}`,
-        number: null,
-        shape: seats <= 2 ? "ROUND" : seats <= 4 ? "SQUARE" : "RECT",
-        seats,
+        number: t.number,
+        shape: t.shape,
+        seats: t.seats,
         x,
         y,
         rotation: 0,
@@ -90,9 +97,23 @@ function buildTemplatePayload(sections: TemplateSection[]): { sections: Detected
         sectionTempId: tempId,
         confidence: 1,
       });
-    }
+    });
   });
   return { sections: outSections, tables: outTables };
+}
+
+function buildTemplatePayload(sections: TemplateSection[]): { sections: DetectedSection[]; tables: DetectedTable[] } {
+  return buildSectionsPayload(
+    sections.map((sec) => ({
+      name: sec.name,
+      isOutdoor: sec.isOutdoor,
+      tables: sec.seatsPool.map((seats) => ({
+        number: null,
+        seats,
+        shape: seats <= 2 ? "ROUND" : seats <= 4 ? "SQUARE" : "RECT",
+      })),
+    }))
+  );
 }
 
 export function FloorPlanBuilder({ onDone, onSkip }: { onDone: () => void; onSkip: () => void }) {
@@ -101,10 +122,15 @@ export function FloorPlanBuilder({ onDone, onSkip }: { onDone: () => void; onSki
   const [error, setError] = useState<string | null>(null);
   const [tableCount, setTableCount] = useState<number | null>(null);
   const [floor, setFloor] = useState<FloorState | null>(null);
-  const [manualRows, setManualRows] = useState<{ seats: number; shape: DetectedTable["shape"] }[]>([
-    { seats: 2, shape: "ROUND" },
-  ]);
-  const [manualArea, setManualArea] = useState("Main Room");
+  // One block per real area of the venue (Main Room, Patio, Bar, ...) —
+  // each with its own name and its own list of tables, so a host can
+  // describe their actual venue's layout instead of being limited to one
+  // flat table list. "number" is optional per table; left blank, the
+  // table gets auto-numbered same as before.
+  const [manualSections, setManualSections] = useState<
+    { id: string; name: string; isOutdoor: boolean; rows: { id: string; number: string; seats: number; shape: DetectedTable["shape"] }[] }[]
+  >([{ id: "ms-0", name: "Main Room", isOutdoor: false, rows: [{ id: "mr-0", number: "", seats: 2, shape: "ROUND" }] }]);
+  const manualTableTotal = manualSections.reduce((n, s) => n + s.rows.length, 0);
 
   const afterApply = async (count: number) => {
     setTableCount(count);
@@ -130,14 +156,22 @@ export function FloorPlanBuilder({ onDone, onSkip }: { onDone: () => void; onSki
   };
 
   const submitManual = async () => {
-    if (manualRows.length === 0) return;
+    const nonEmptySections = manualSections.filter((s) => s.rows.length > 0);
+    if (nonEmptySections.length === 0) return;
     setBusy(true);
     setError(null);
     try {
-      const payload = buildTemplatePayload([{ name: manualArea || "Main Room", isOutdoor: false, seatsPool: manualRows.map((r) => r.seats) }]);
-      // Grid-position generation already picked a shape from seat count;
-      // honour whatever shape the host actually chose per row instead.
-      payload.tables.forEach((t, i) => (t.shape = manualRows[i].shape));
+      const payload = buildSectionsPayload(
+        nonEmptySections.map((s) => ({
+          name: s.name.trim() || "Main Room",
+          isOutdoor: s.isOutdoor,
+          tables: s.rows.map((r) => ({
+            number: r.number.trim() ? Number(r.number) : null,
+            seats: r.seats,
+            shape: r.shape,
+          })),
+        }))
+      );
       const result = await api.applyFloorPlan({ room: "Main Room", sections: payload.sections, tables: payload.tables });
       await afterApply(result.tableCount);
     } catch (e) {
@@ -146,6 +180,30 @@ export function FloorPlanBuilder({ onDone, onSkip }: { onDone: () => void; onSki
       setBusy(false);
     }
   };
+
+  const addManualSection = () =>
+    setManualSections((prev) => [
+      ...prev,
+      { id: `ms-${Date.now()}`, name: "", isOutdoor: false, rows: [{ id: `mr-${Date.now()}`, number: "", seats: 2, shape: "ROUND" }] },
+    ]);
+  const removeManualSection = (sectionId: string) =>
+    setManualSections((prev) => prev.filter((s) => s.id !== sectionId));
+  const addManualRow = (sectionId: string) =>
+    setManualSections((prev) =>
+      prev.map((s) => (s.id === sectionId ? { ...s, rows: [...s.rows, { id: `mr-${Date.now()}`, number: "", seats: 2, shape: "ROUND" }] } : s))
+    );
+  const removeManualRow = (sectionId: string, rowId: string) =>
+    setManualSections((prev) => prev.map((s) => (s.id === sectionId ? { ...s, rows: s.rows.filter((r) => r.id !== rowId) } : s)));
+  const updateManualSection = (sectionId: string, patch: Partial<{ name: string; isOutdoor: boolean }>) =>
+    setManualSections((prev) => prev.map((s) => (s.id === sectionId ? { ...s, ...patch } : s)));
+  const updateManualRow = (
+    sectionId: string,
+    rowId: string,
+    patch: Partial<{ number: string; seats: number; shape: DetectedTable["shape"] }>
+  ) =>
+    setManualSections((prev) =>
+      prev.map((s) => (s.id === sectionId ? { ...s, rows: s.rows.map((r) => (r.id === rowId ? { ...r, ...patch } : r)) } : s))
+    );
 
   if (mode === "arrange" && floor) {
     return (
@@ -243,55 +301,95 @@ export function FloorPlanBuilder({ onDone, onSkip }: { onDone: () => void; onSki
           <button onClick={() => setMode("choose")} className="text-xs text-brand-300 hover:underline">
             ← Back
           </button>
-          <label className="block text-xs text-hf-inkMuted">
-            Area name
-            <input
-              className={inputCls}
-              value={manualArea}
-              onChange={(e) => setManualArea(e.target.value)}
-              placeholder="Main Room"
-            />
-          </label>
-          <div className="space-y-1.5">
-            {manualRows.map((row, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <select
-                  className={cx(inputCls, "mt-0 w-24")}
-                  value={row.shape}
-                  onChange={(e) =>
-                    setManualRows((rs) => rs.map((r, ri) => (ri === i ? { ...r, shape: e.target.value as DetectedTable["shape"] } : r)))
-                  }
-                >
-                  <option value="ROUND">Round</option>
-                  <option value="SQUARE">Square</option>
-                  <option value="RECT">Rect</option>
-                </select>
-                <input
-                  type="number"
-                  min={1}
-                  max={40}
-                  className={cx(inputCls, "mt-0 w-20")}
-                  value={row.seats}
-                  onChange={(e) =>
-                    setManualRows((rs) => rs.map((r, ri) => (ri === i ? { ...r, seats: Math.max(1, Number(e.target.value)) } : r)))
-                  }
-                />
-                <span className="text-xs text-hf-inkMuted">seats</span>
+          <p className="text-xs text-hf-inkMuted">
+            One block per area of your venue — Main Room, Patio, Bar, however you actually think about it. Table
+            number is optional; leave it blank and it&apos;ll be numbered automatically.
+          </p>
+
+          <div className="space-y-3">
+            {manualSections.map((sec) => (
+              <div key={sec.id} className="rounded-xl border border-hf-line bg-hf-surfaceHi/60 p-3">
+                <div className="mb-2.5 flex items-center gap-2">
+                  <input
+                    className={cx(inputCls, "mt-0 flex-1 font-semibold")}
+                    value={sec.name}
+                    onChange={(e) => updateManualSection(sec.id, { name: e.target.value })}
+                    placeholder="Area name, e.g. Main Room"
+                  />
+                  <label className="flex shrink-0 items-center gap-1.5 text-xs text-hf-inkMuted">
+                    <input
+                      type="checkbox"
+                      checked={sec.isOutdoor}
+                      onChange={(e) => updateManualSection(sec.id, { isOutdoor: e.target.checked })}
+                    />
+                    Outdoor
+                  </label>
+                  {manualSections.length > 1 && (
+                    <button
+                      className="shrink-0 text-xs text-red-400 hover:underline"
+                      onClick={() => removeManualSection(sec.id)}
+                    >
+                      Remove area
+                    </button>
+                  )}
+                </div>
+
+                <div className="space-y-1.5">
+                  {sec.rows.map((row) => (
+                    <div key={row.id} className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        placeholder="#"
+                        title="Table number (optional — auto-numbered if left blank)"
+                        className={cx(inputCls, "mt-0 w-16")}
+                        value={row.number}
+                        onChange={(e) => updateManualRow(sec.id, row.id, { number: e.target.value })}
+                      />
+                      <select
+                        className={cx(inputCls, "mt-0 w-24")}
+                        value={row.shape}
+                        onChange={(e) => updateManualRow(sec.id, row.id, { shape: e.target.value as DetectedTable["shape"] })}
+                      >
+                        <option value="ROUND">Round</option>
+                        <option value="SQUARE">Square</option>
+                        <option value="RECT">Rect</option>
+                      </select>
+                      <input
+                        type="number"
+                        min={1}
+                        max={40}
+                        className={cx(inputCls, "mt-0 w-20")}
+                        value={row.seats}
+                        onChange={(e) => updateManualRow(sec.id, row.id, { seats: Math.max(1, Number(e.target.value)) })}
+                      />
+                      <span className="text-xs text-hf-inkMuted">seats</span>
+                      <button
+                        className="ml-auto text-xs text-red-400 hover:underline disabled:opacity-30"
+                        disabled={sec.rows.length === 1}
+                        onClick={() => removeManualRow(sec.id, row.id)}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
                 <button
-                  className="ml-auto text-xs text-red-400 hover:underline disabled:opacity-30"
-                  disabled={manualRows.length === 1}
-                  onClick={() => setManualRows((rs) => rs.filter((_, ri) => ri !== i))}
+                  className="mt-2 text-xs font-medium text-brand-300 hover:underline"
+                  onClick={() => addManualRow(sec.id)}
                 >
-                  Remove
+                  + Add a table to {sec.name.trim() || "this area"}
                 </button>
               </div>
             ))}
           </div>
-          <Button variant="ghost" className="w-full" onClick={() => setManualRows((rs) => [...rs, { seats: 2, shape: "ROUND" }])}>
-            + Add another table
+
+          <Button variant="ghost" className="w-full" onClick={addManualSection}>
+            + Add another area
           </Button>
-          <Button variant="primary" className="w-full" disabled={busy} onClick={submitManual}>
-            {busy ? "Creating…" : `Create ${manualRows.length} table${manualRows.length === 1 ? "" : "s"}`}
+          <Button variant="primary" className="w-full" disabled={busy || manualTableTotal === 0} onClick={submitManual}>
+            {busy
+              ? "Creating…"
+              : `Create ${manualTableTotal} table${manualTableTotal === 1 ? "" : "s"} across ${manualSections.length} area${manualSections.length === 1 ? "" : "s"}`}
           </Button>
         </>
       )}
