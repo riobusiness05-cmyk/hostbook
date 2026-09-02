@@ -66,6 +66,21 @@ export function FloorPlanImport({ onApplied }: { onApplied: (summary: { tableCou
     setAnalysis((a) => (a ? { ...a, sections: a.sections.map((s) => (s.tempId === tempId ? { ...s, name } : s)) } : a));
   };
 
+  // Manual correction for whenever the AI's own area-splitting isn't quite
+  // right — no amount of prompt tuning gets this perfect every time, so the
+  // host needs a fast way to fix it here rather than discovering a
+  // mis-grouped table only after it's already live on the floor plan.
+  const addSection = () => {
+    setAnalysis((a) => {
+      if (!a) return a;
+      const tempId = `section-manual-${a.sections.length}-${Date.now()}`;
+      return { ...a, sections: [...a.sections, { tempId, name: "New area", isOutdoor: false }] };
+    });
+  };
+  const removeSection = (tempId: string) => {
+    setAnalysis((a) => (a ? { ...a, sections: a.sections.filter((s) => s.tempId !== tempId) } : a));
+  };
+
   const apply = async () => {
     if (!analysis) return;
     setBusy(true);
@@ -169,7 +184,9 @@ export function FloorPlanImport({ onApplied }: { onApplied: (summary: { tableCou
           </label>
 
           <div className="space-y-2">
-            {analysis.sections.map((sec) => (
+            {analysis.sections.map((sec) => {
+              const secTables = analysis.tables.filter((t) => t.sectionTempId === sec.tempId);
+              return (
               <div key={sec.tempId} className="rounded-lg border border-black/10 p-2 dark:border-white/10">
                 <div className="mb-2 flex items-center gap-2">
                   <input
@@ -177,6 +194,9 @@ export function FloorPlanImport({ onApplied }: { onApplied: (summary: { tableCou
                     value={sec.name}
                     onChange={(e) => updateSectionName(sec.tempId, e.target.value)}
                   />
+                  <span className="shrink-0 text-xs text-neutral-400">
+                    {secTables.length} table{secTables.length === 1 ? "" : "s"}
+                  </span>
                   <label className="flex shrink-0 items-center gap-1 text-xs text-neutral-500">
                     <input
                       type="checkbox"
@@ -191,11 +211,19 @@ export function FloorPlanImport({ onApplied }: { onApplied: (summary: { tableCou
                     />
                     Outdoor
                   </label>
+                  {secTables.length === 0 && analysis.sections.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeSection(sec.tempId)}
+                      className="shrink-0 text-xs text-red-500 hover:underline"
+                    >
+                      Remove
+                    </button>
+                  )}
                 </div>
 
                 <div className="space-y-1.5">
-                  {analysis.tables
-                    .filter((t) => t.sectionTempId === sec.tempId)
+                  {secTables
                     .map((t) => {
                       const needsConfirm = t.confidence < LOW_CONFIDENCE;
                       return (
@@ -232,6 +260,20 @@ export function FloorPlanImport({ onApplied }: { onApplied: (summary: { tableCou
                             className="w-16 rounded-md border border-black/10 bg-white px-2 py-1 dark:border-white/15 dark:bg-white/5 dark:text-white"
                           />
                           <span className="text-xs text-neutral-400">seats</span>
+                          {analysis.sections.length > 1 && (
+                            <select
+                              value={t.sectionTempId}
+                              onChange={(e) => updateTable(t.tempId, { sectionTempId: e.target.value })}
+                              title="Move to a different area"
+                              className="rounded-md border border-black/10 bg-white px-2 py-1 text-xs dark:border-white/15 dark:bg-white/5 dark:text-white"
+                            >
+                              {analysis.sections.map((s) => (
+                                <option key={s.tempId} value={s.tempId}>
+                                  {s.name}
+                                </option>
+                              ))}
+                            </select>
+                          )}
                           {t.mergedWithTempId && (
                             <span className="rounded-md bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-bold text-violet-600 dark:text-violet-400">
                               merged
@@ -261,8 +303,16 @@ export function FloorPlanImport({ onApplied }: { onApplied: (summary: { tableCou
                     })}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
+          <button
+            type="button"
+            onClick={addSection}
+            className="text-xs font-medium text-sky-600 hover:underline dark:text-sky-400"
+          >
+            + Add another area
+          </button>
 
           <div className="flex gap-2">
             <Button
