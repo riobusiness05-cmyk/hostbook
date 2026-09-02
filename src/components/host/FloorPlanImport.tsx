@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import * as api from "@/lib/host/client";
 import type { DetectedTable, FloorPlanAnalysis } from "@/lib/host/client";
 import { Button } from "./ui";
@@ -17,6 +17,17 @@ function fileToBase64(file: File): Promise<string> {
 
 const LOW_CONFIDENCE = 0.6;
 
+// A real photo can take up to a minute to analyze — "Analyzing…" alone for
+// that long reads as stuck. Rotating through a few honest, specific
+// messages (nothing overpromised) keeps it feeling alive instead of frozen.
+const ANALYZING_MESSAGES = [
+  "Reading your floor plan…",
+  "Finding tables and counting seats…",
+  "Working out the room layout…",
+  "Still going — a detailed photo takes a bit longer…",
+  "Almost done…",
+];
+
 // AI floor-plan-from-image: upload a photo -> Claude vision detects tables ->
 // host reviews/edits (low-confidence tables must be explicitly confirmed,
 // never silently trusted) -> apply creates real, immediately-editable
@@ -29,12 +40,30 @@ export function FloorPlanImport({ onApplied }: { onApplied: (summary: { tableCou
   const [room, setRoom] = useState("Main Room");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // High-confidence tables collapse to a one-line summary by default — a
+  // 40-table floor plan showing 4 editable fields per row regardless of
+  // whether the AI got it right is exactly the "too much to look at"
+  // problem simplicity should solve. Low-confidence ones stay expanded
+  // (via needsConfirm below) since those genuinely need a look.
+  const [manuallyExpanded, setManuallyExpanded] = useState<Set<string>>(new Set());
+  const [analyzingMessage, setAnalyzingMessage] = useState(ANALYZING_MESSAGES[0]);
 
   const lowConfidenceTables = useMemo(
     () => (analysis ? analysis.tables.filter((t) => t.confidence < LOW_CONFIDENCE) : []),
     [analysis]
   );
   const allLowConfirmed = lowConfidenceTables.every((t) => confirmedLow.has(t.tempId));
+  const confirmAllLow = () => setConfirmedLow(new Set(lowConfidenceTables.map((t) => t.tempId)));
+
+  useEffect(() => {
+    if (!busy || analysis) return; // only rotate during the initial "Analyzing…" wait, not while applying
+    let i = 0;
+    const id = setInterval(() => {
+      i = (i + 1) % ANALYZING_MESSAGES.length;
+      setAnalyzingMessage(ANALYZING_MESSAGES[i]);
+    }, 4000);
+    return () => clearInterval(id);
+  }, [busy, analysis]);
 
   const pickFile = (f: File) => {
     setFile(f);
@@ -47,11 +76,13 @@ export function FloorPlanImport({ onApplied }: { onApplied: (summary: { tableCou
     if (!file) return;
     setBusy(true);
     setError(null);
+    setAnalyzingMessage(ANALYZING_MESSAGES[0]);
     try {
       const base64 = await fileToBase64(file);
       const result = await api.analyzeFloorPlanImage(base64, file.type || "image/jpeg");
       setAnalysis(result);
       setConfirmedLow(new Set());
+      setManuallyExpanded(new Set());
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -119,8 +150,11 @@ export function FloorPlanImport({ onApplied }: { onApplied: (summary: { tableCou
             <img src={imageUrl} alt="Uploaded floor plan" className="mx-auto max-h-64 rounded-lg border border-black/10 dark:border-white/10" />
           )}
           <Button variant="primary" disabled={!file || busy} onClick={analyze}>
-            {busy ? "Analyzing…" : "Analyze floor plan"}
+            {busy ? analyzingMessage : "Analyze floor plan"}
           </Button>
+          {busy && (
+            <p className="text-xs text-neutral-400">A detailed photo can take up to a minute — this is normal.</p>
+          )}
         </div>
       )}
 
@@ -223,84 +257,132 @@ export function FloorPlanImport({ onApplied }: { onApplied: (summary: { tableCou
                 </div>
 
                 <div className="space-y-1.5">
-                  {secTables
-                    .map((t) => {
-                      const needsConfirm = t.confidence < LOW_CONFIDENCE;
+                  {secTables.map((t) => {
+                    const needsConfirm = t.confidence < LOW_CONFIDENCE;
+                    const expanded = needsConfirm || manuallyExpanded.has(t.tempId);
+
+                    if (!expanded) {
+                      // The common case: the AI was confident, so there's
+                      // nothing here that needs a decision — a one-line
+                      // summary plus an escape hatch beats four editable
+                      // fields per table when there might be 40 of them.
+                      const shapeLabel = t.shape === "ROUND" ? "Round" : t.shape === "SQUARE" ? "Square" : "Rectangular";
                       return (
                         <div
                           key={t.tempId}
-                          className={cx(
-                            "flex flex-wrap items-center gap-2 rounded-lg border p-2 text-sm",
-                            needsConfirm
-                              ? "border-amber-500/40 bg-amber-500/[0.06]"
-                              : "border-black/5 bg-black/[0.015] dark:border-white/10 dark:bg-white/[0.02]"
-                          )}
+                          className="flex items-center gap-2 rounded-lg border border-black/5 bg-black/[0.015] p-2 text-sm dark:border-white/10 dark:bg-white/[0.02]"
                         >
-                          <input
-                            type="number"
-                            value={t.number ?? ""}
-                            placeholder="#"
-                            onChange={(e) => updateTable(t.tempId, { number: e.target.value ? Number(e.target.value) : null })}
-                            className="w-16 rounded-md border border-black/10 bg-white px-2 py-1 dark:border-white/15 dark:bg-white/5 dark:text-white"
-                          />
-                          <select
-                            value={t.shape}
-                            onChange={(e) => updateTable(t.tempId, { shape: e.target.value as DetectedTable["shape"] })}
-                            className="rounded-md border border-black/10 bg-white px-2 py-1 dark:border-white/15 dark:bg-white/5 dark:text-white"
-                          >
-                            <option value="ROUND">Round</option>
-                            <option value="SQUARE">Square</option>
-                            <option value="RECT">Rectangular</option>
-                          </select>
-                          <input
-                            type="number"
-                            min={1}
-                            value={t.seats}
-                            onChange={(e) => updateTable(t.tempId, { seats: Math.max(1, Number(e.target.value)) })}
-                            className="w-16 rounded-md border border-black/10 bg-white px-2 py-1 dark:border-white/15 dark:bg-white/5 dark:text-white"
-                          />
-                          <span className="text-xs text-neutral-400">seats</span>
-                          {analysis.sections.length > 1 && (
-                            <select
-                              value={t.sectionTempId}
-                              onChange={(e) => updateTable(t.tempId, { sectionTempId: e.target.value })}
-                              title="Move to a different area"
-                              className="rounded-md border border-black/10 bg-white px-2 py-1 text-xs dark:border-white/15 dark:bg-white/5 dark:text-white"
-                            >
-                              {analysis.sections.map((s) => (
-                                <option key={s.tempId} value={s.tempId}>
-                                  {s.name}
-                                </option>
-                              ))}
-                            </select>
-                          )}
+                          <span className="font-medium text-neutral-700 dark:text-neutral-200">Table {t.number ?? "?"}</span>
+                          <span className="text-neutral-400">·</span>
+                          <span className="text-neutral-500 dark:text-neutral-400">
+                            {shapeLabel} · {t.seats} seat{t.seats === 1 ? "" : "s"}
+                          </span>
                           {t.mergedWithTempId && (
                             <span className="rounded-md bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-bold text-violet-600 dark:text-violet-400">
                               merged
                             </span>
                           )}
-                          <div className="ml-auto flex items-center gap-2">
-                            {needsConfirm && (
-                              <label className="flex items-center gap-1 text-xs font-semibold text-amber-700 dark:text-amber-400">
-                                <input
-                                  type="checkbox"
-                                  checked={confirmedLow.has(t.tempId)}
-                                  onChange={(e) =>
-                                    setConfirmedLow((prev) => {
-                                      const next = new Set(prev);
-                                      if (e.target.checked) next.add(t.tempId);
-                                      else next.delete(t.tempId);
-                                      return next;
-                                    })
-                                  }
-                                />
-                                Confirm ({Math.round(t.confidence * 100)}%)
-                              </label>
-                            )}
-                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setManuallyExpanded((prev) => new Set(prev).add(t.tempId))}
+                            className="ml-auto text-xs font-medium text-sky-600 hover:underline dark:text-sky-400"
+                          >
+                            Edit
+                          </button>
                         </div>
                       );
-                    })}
+                    }
+
+                    return (
+                      <div
+                        key={t.tempId}
+                        className={cx(
+                          "flex flex-wrap items-center gap-2 rounded-lg border p-2 text-sm",
+                          needsConfirm
+                            ? "border-amber-500/40 bg-amber-500/[0.06]"
+                            : "border-black/5 bg-black/[0.015] dark:border-white/10 dark:bg-white/[0.02]"
+                        )}
+                      >
+                        <input
+                          type="number"
+                          value={t.number ?? ""}
+                          placeholder="#"
+                          onChange={(e) => updateTable(t.tempId, { number: e.target.value ? Number(e.target.value) : null })}
+                          className="w-16 rounded-md border border-black/10 bg-white px-2 py-1 dark:border-white/15 dark:bg-white/5 dark:text-white"
+                        />
+                        <select
+                          value={t.shape}
+                          onChange={(e) => updateTable(t.tempId, { shape: e.target.value as DetectedTable["shape"] })}
+                          className="rounded-md border border-black/10 bg-white px-2 py-1 dark:border-white/15 dark:bg-white/5 dark:text-white"
+                        >
+                          <option value="ROUND">Round</option>
+                          <option value="SQUARE">Square</option>
+                          <option value="RECT">Rectangular</option>
+                        </select>
+                        <input
+                          type="number"
+                          min={1}
+                          value={t.seats}
+                          onChange={(e) => updateTable(t.tempId, { seats: Math.max(1, Number(e.target.value)) })}
+                          className="w-16 rounded-md border border-black/10 bg-white px-2 py-1 dark:border-white/15 dark:bg-white/5 dark:text-white"
+                        />
+                        <span className="text-xs text-neutral-400">seats</span>
+                        {analysis.sections.length > 1 && (
+                          <select
+                            value={t.sectionTempId}
+                            onChange={(e) => updateTable(t.tempId, { sectionTempId: e.target.value })}
+                            title="Move to a different area"
+                            className="rounded-md border border-black/10 bg-white px-2 py-1 text-xs dark:border-white/15 dark:bg-white/5 dark:text-white"
+                          >
+                            {analysis.sections.map((s) => (
+                              <option key={s.tempId} value={s.tempId}>
+                                {s.name}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                        {t.mergedWithTempId && (
+                          <span className="rounded-md bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-bold text-violet-600 dark:text-violet-400">
+                            merged
+                          </span>
+                        )}
+                        <div className="ml-auto flex items-center gap-2">
+                          {needsConfirm && (
+                            <label className="flex items-center gap-1 text-xs font-semibold text-amber-700 dark:text-amber-400">
+                              <input
+                                type="checkbox"
+                                checked={confirmedLow.has(t.tempId)}
+                                onChange={(e) =>
+                                  setConfirmedLow((prev) => {
+                                    const next = new Set(prev);
+                                    if (e.target.checked) next.add(t.tempId);
+                                    else next.delete(t.tempId);
+                                    return next;
+                                  })
+                                }
+                              />
+                              Confirm ({Math.round(t.confidence * 100)}%)
+                            </label>
+                          )}
+                          {!needsConfirm && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setManuallyExpanded((prev) => {
+                                  const next = new Set(prev);
+                                  next.delete(t.tempId);
+                                  return next;
+                                })
+                              }
+                              className="text-xs text-neutral-400 hover:underline"
+                            >
+                              Done
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
               );
@@ -332,7 +414,11 @@ export function FloorPlanImport({ onApplied }: { onApplied: (summary: { tableCou
           </div>
           {!allLowConfirmed && lowConfidenceTables.length > 0 && (
             <p className="text-center text-xs text-amber-600 dark:text-amber-400">
-              Confirm the {lowConfidenceTables.length} low-confidence table{lowConfidenceTables.length === 1 ? "" : "s"} above first.
+              Confirm the {lowConfidenceTables.length} low-confidence table{lowConfidenceTables.length === 1 ? "" : "s"} above first, or{" "}
+              <button type="button" onClick={confirmAllLow} className="font-semibold underline">
+                confirm all {lowConfidenceTables.length}
+              </button>{" "}
+              if the picture above looks right.
             </p>
           )}
         </div>

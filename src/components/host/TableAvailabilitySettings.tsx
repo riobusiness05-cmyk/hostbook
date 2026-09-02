@@ -51,8 +51,15 @@ export function TableAvailabilitySettings({ initialTables }: { initialTables: Ta
           <FloorPlanImport
             onApplied={({ tableCount }) => {
               setImporting(false);
-              setImportedMsg(`Added ${tableCount} tables — reloading…`);
-              setTimeout(() => window.location.reload(), 1200);
+              // Straight to the live floor plan, not a settings-page
+              // reload — after adding tables the whole point is to see
+              // them, and "Edit layout" is right there if a drag-to-
+              // arrange pass is wanted (positions are already a rough
+              // match to the photo, not dropped in one pile).
+              setImportedMsg(`Added ${tableCount} tables — taking you to your floor plan…`);
+              setTimeout(() => {
+                window.location.href = "/host";
+              }, 900);
             }}
           />
         )}
