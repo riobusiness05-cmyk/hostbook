@@ -14,25 +14,25 @@ export default async function ProtectedAdminLayout({ children }: { children: Rea
   const restaurant = await getActiveRestaurant();
 
   return (
-    <div className="min-h-screen bg-neutral-50">
+    <div className="dark min-h-screen bg-neutral-950 text-neutral-100">
       <div className="flex">
-        <aside className="sticky top-0 h-screen w-56 shrink-0 border-r border-black/10 bg-white p-5">
-          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-400">Host Flow AI</p>
-          <p className="mb-6 text-sm font-semibold text-neutral-900">{restaurant.name}</p>
-          <nav className="flex flex-col gap-1 text-sm">
-            <Link href="/admin" className="rounded-lg px-3 py-2 hover:bg-neutral-100">
+        <aside className="sticky top-0 h-screen w-56 shrink-0 border-r border-white/10 bg-white/[0.02] p-5">
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">Host Flow AI</p>
+          <p className="mb-6 text-sm font-semibold text-white">{restaurant.name}</p>
+          <nav className="flex flex-col gap-1 text-sm text-neutral-300">
+            <Link href="/admin" className="rounded-lg px-3 py-2 hover:bg-white/5">
               Overview
             </Link>
-            <Link href="/admin/reservations" className="rounded-lg px-3 py-2 hover:bg-neutral-100">
+            <Link href="/admin/reservations" className="rounded-lg px-3 py-2 hover:bg-white/5">
               Reservations
             </Link>
-            <Link href="/admin/settings" className="rounded-lg px-3 py-2 hover:bg-neutral-100">
+            <Link href="/admin/settings" className="rounded-lg px-3 py-2 hover:bg-white/5">
               Settings
             </Link>
-            <Link href="/" className="rounded-lg px-3 py-2 hover:bg-neutral-100" target="_blank">
+            <Link href="/" className="rounded-lg px-3 py-2 hover:bg-white/5" target="_blank">
               View live site ↗
             </Link>
-            <Link href="/hostflow/admin" className="rounded-lg px-3 py-2 hover:bg-neutral-100">
+            <Link href="/hostflow/admin" className="rounded-lg px-3 py-2 hover:bg-white/5">
               Host Flow admin ↗
             </Link>
           </nav>

@@ -43,7 +43,7 @@ export default async function AdminOverviewPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">Overview</h1>
+      <h1 className="text-2xl font-semibold text-white">Overview</h1>
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <StatCard label="Reservations today" value={todaysReservations.length} />
@@ -52,9 +52,9 @@ export default async function AdminOverviewPage() {
         <StatCard label="Next 7 days" value={upcomingCount} />
       </div>
 
-      <div className="rounded-2xl border border-black/10 bg-white p-5">
+      <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Today&apos;s reservations</h2>
+          <h2 className="text-lg font-semibold text-white">Today&apos;s reservations</h2>
           <Link href="/admin/reservations" className="text-sm text-neutral-500 hover:underline">
             View all →
           </Link>
@@ -64,7 +64,7 @@ export default async function AdminOverviewPage() {
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-black/10 text-left text-neutral-500">
+              <tr className="border-b border-white/10 text-left text-neutral-500">
                 <th className="py-2 pr-3">Time</th>
                 <th className="py-2 pr-3">Guest</th>
                 <th className="py-2 pr-3">Party</th>
@@ -74,11 +74,11 @@ export default async function AdminOverviewPage() {
             </thead>
             <tbody>
               {todaysReservations.map((r) => (
-                <tr key={r.id} className="border-b border-black/5">
-                  <td className="py-2 pr-3">{toLocalTimeStr(r.reservationTime)}</td>
-                  <td className="py-2 pr-3">{r.customerName}</td>
-                  <td className="py-2 pr-3">{r.partySize}</td>
-                  <td className="py-2 pr-3">{r.table?.name ?? "—"}</td>
+                <tr key={r.id} className="border-b border-white/5">
+                  <td className="py-2 pr-3 text-neutral-200">{toLocalTimeStr(r.reservationTime)}</td>
+                  <td className="py-2 pr-3 text-neutral-200">{r.customerName}</td>
+                  <td className="py-2 pr-3 text-neutral-200">{r.partySize}</td>
+                  <td className="py-2 pr-3 text-neutral-200">{r.table?.name ?? "—"}</td>
                   <td className="py-2 pr-3 text-neutral-500">{r.source.replace("_", " ")}</td>
                 </tr>
               ))}
@@ -88,7 +88,7 @@ export default async function AdminOverviewPage() {
       </div>
 
       {chatSessionCount === 0 && (
-        <div className="rounded-2xl border border-dashed border-black/15 bg-white p-5 text-sm text-neutral-500">
+        <div className="rounded-2xl border border-dashed border-white/15 bg-white/[0.02] p-5 text-sm text-neutral-500">
           No chat conversations yet today. Once ANTHROPIC_API_KEY is set and the widget is live on your site, the
           AI host will start handling bookings and questions here automatically.
         </div>
@@ -99,8 +99,8 @@ export default async function AdminOverviewPage() {
 
 function StatCard({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-2xl border border-black/10 bg-white p-4">
-      <p className="text-2xl font-semibold text-neutral-900">{value}</p>
+    <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+      <p className="text-2xl font-semibold text-white">{value}</p>
       <p className="text-xs text-neutral-500">{label}</p>
     </div>
   );

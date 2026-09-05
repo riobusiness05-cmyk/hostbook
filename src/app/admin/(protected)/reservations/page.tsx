@@ -29,7 +29,7 @@ export default async function AdminReservationsPage({
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-semibold">Reservations</h1>
+      <h1 className="text-2xl font-semibold text-white">Reservations</h1>
       <ReservationsTable
         initialReservations={reservations.map((r) => ({
           id: r.id,

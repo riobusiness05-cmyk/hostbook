@@ -21,7 +21,7 @@ export default async function AdminSettingsPage() {
 
   return (
     <div className="space-y-6 pb-12">
-      <h1 className="text-2xl font-semibold">Settings</h1>
+      <h1 className="text-2xl font-semibold text-white">Settings</h1>
 
       <ProfileSettings
         initial={{
