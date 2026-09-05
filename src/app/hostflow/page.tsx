@@ -58,8 +58,54 @@ export default async function HostFlowLanding() {
   const plans = await listActivePlans();
   const professional = plans[0] ?? null;
 
+  // Structured data for search engines — a SoftwareApplication + Organization
+  // pair so Google can identify this as the product/company (distinct from
+  // the unrelated Swiss vacation-rental company that already owns the bare
+  // "Hostflow" name), plus a FAQPage entry mirroring the on-page FAQ content
+  // verbatim, since Google requires the marked-up text to actually be visible
+  // on the page — not just describing it, it's the same FAQS array below.
+  const structuredData = [
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      name: "Host Flow",
+      applicationCategory: "BusinessApplication",
+      operatingSystem: "Web",
+      description: DESCRIPTION,
+      url: "https://hostflow.space/hostflow",
+      offers: {
+        "@type": "Offer",
+        price: professional ? (professional.monthlyPriceCents / 100).toFixed(2) : "30.00",
+        priceCurrency: "USD",
+        priceValidUntil: `${new Date().getFullYear() + 1}-12-31`,
+        url: "https://hostflow.space/hostflow/signup",
+      },
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      name: "Host Flow",
+      url: "https://hostflow.space",
+      logo: "https://hostflow.space/icon.png",
+      description: "A floor-management platform for high-volume restaurants and bars.",
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      mainEntity: FAQS.map((f) => ({
+        "@type": "Question",
+        name: f.q,
+        acceptedAnswer: { "@type": "Answer", text: f.a },
+      })),
+    },
+  ];
+
   return (
     <div className="relative overflow-hidden">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+      />
       <div className="hf-blueprint pointer-events-none absolute inset-0 [mask-image:radial-gradient(ellipse_70%_60%_at_50%_0%,black,transparent)]" />
       <div className="pointer-events-none absolute -top-32 left-1/2 h-[560px] w-[900px] -translate-x-1/2 rounded-full bg-brand-500/[0.10] blur-[160px]" />
 
