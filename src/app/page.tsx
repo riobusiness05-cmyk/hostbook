@@ -1,4 +1,10 @@
 import { redirect } from "next/navigation";
+import type { Metadata } from "next";
+
+// Otherwise inherits the root layout's default metadata — the active
+// single-tenant restaurant's own name/tagline — which has nothing to do
+// with Host Flow and briefly shows in the pre-redirect HTML shell.
+export const metadata: Metadata = { title: "Host Flow" };
 
 // This deployment hosts both the Host Flow SaaS product and (at /booking)
 // the legacy single-tenant guest booking template for whichever restaurant

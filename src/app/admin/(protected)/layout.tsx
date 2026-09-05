@@ -1,9 +1,19 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import type { Metadata } from "next";
 import { ADMIN_COOKIE_NAME, verifySessionToken } from "@/lib/auth";
 import { getActiveRestaurant } from "@/lib/restaurant";
 import LogoutButton from "@/components/admin/LogoutButton";
+
+// Overrides the root layout's default metadata, which pulls the active
+// restaurant's own guest-facing name/tagline (e.g. "The Colonial — Our
+// happy place.") — fine for that restaurant's public site, wrong for this
+// admin tool, which isn't that restaurant's own page.
+export async function generateMetadata(): Promise<Metadata> {
+  const restaurant = await getActiveRestaurant();
+  return { title: `${restaurant.name} — Admin` };
+}
 
 export default async function ProtectedAdminLayout({ children }: { children: React.ReactNode }) {
   const token = cookies().get(ADMIN_COOKIE_NAME)?.value;

@@ -9,10 +9,16 @@ import {
   getRecentBookings,
   getRecentFailedPayments,
 } from "@/lib/platformAdmin";
+import type { Metadata } from "next";
 import { prisma } from "@/lib/prisma";
 import { AdminDashboard, type RestaurantRow } from "@/components/platform-admin/AdminDashboard";
 
 export const dynamic = "force-dynamic";
+
+// Overrides the root layout's default metadata (the active single-tenant
+// restaurant's own name/tagline) — this is Host Flow's own platform tool,
+// unrelated to any one restaurant.
+export const metadata: Metadata = { title: "Platform admin — Host Flow" };
 
 export default async function PlatformAdminPage() {
   const [restaurants, metrics, growthSeries, bookingSeries, mrrSeries, recentRestaurants, mostActive, recentBookings, recentFailedPayments] =
