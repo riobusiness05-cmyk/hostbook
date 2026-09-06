@@ -15,7 +15,11 @@ export async function POST() {
 
   try {
     const { clientSecret } = await createGuestCardSetupIntent(restaurant);
-    return NextResponse.json({ clientSecret, publishableKey: process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY });
+    return NextResponse.json({
+      clientSecret,
+      publishableKey: process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY,
+      connectedAccountId: restaurant.stripeConnectAccountId,
+    });
   } catch (err) {
     console.error("[setup-intent]", err);
     return NextResponse.json({ error: (err as Error).message || "Couldn't start card verification." }, { status: 500 });

@@ -33,12 +33,17 @@ export const NoShowCardField = forwardRef<
       .then((r) => r.json())
       .then((data) => {
         if (cancelled) return;
-        if (!data.clientSecret || !data.publishableKey) {
+        if (!data.clientSecret || !data.publishableKey || !data.connectedAccountId) {
           setError(data.error || "Couldn't set up card verification.");
           return;
         }
         setClientSecret(data.clientSecret);
-        setStripePromise(loadStripe(data.publishableKey));
+        // The SetupIntent lives under the restaurant's own connected Stripe
+        // account (Connect direct-charge pattern), not the platform account
+        // the publishable key belongs to by default — Stripe.js needs to be
+        // told which connected account to look under, or confirmCardSetup
+        // fails to find it.
+        setStripePromise(loadStripe(data.publishableKey, { stripeAccount: data.connectedAccountId }));
       })
       .catch(() => {
         if (!cancelled) setError("Couldn't reach the server.");

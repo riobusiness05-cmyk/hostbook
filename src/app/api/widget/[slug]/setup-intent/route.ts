@@ -26,7 +26,11 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
 
   try {
     const { clientSecret } = await createGuestCardSetupIntent(restaurant);
-    return NextResponse.json({ clientSecret, publishableKey: process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY });
+    return NextResponse.json({
+      clientSecret,
+      publishableKey: process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY,
+      connectedAccountId: restaurant.stripeConnectAccountId,
+    });
   } catch (err) {
     console.error("[widget setup-intent]", params.slug, err);
     return NextResponse.json({ error: (err as Error).message || "Couldn't start card verification." }, { status: 500 });
