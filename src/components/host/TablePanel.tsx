@@ -78,6 +78,28 @@ export function TablePanel({
   const s = table.session;
   const r = table.reservation;
   const ur = table.upcomingReservation;
+  // Seating ahead of a reservation's exact arrival window (e.g. a booking
+  // for later tonight, seated early because the table's free now) is a
+  // normal, common action — the seat form needs whichever reservation is
+  // actually on this table, immediate or not, or it opens blank.
+  const activeReservation = r ?? ur;
+  // A combo reservation's real capacity is every table it holds, not just
+  // whichever one this panel happens to be open on — otherwise the seat
+  // form caps a 10-top's party size input at one table's own 4 seats.
+  const activeReservationSeatsMax = activeReservation
+    ? (state.tables.find((t) => t.id === activeReservation.tableId)?.seatsMax ?? 0) +
+      activeReservation.comboTableNumbers.reduce(
+        (sum, num) => sum + (state.tables.find((t) => t.tableNumber === num)?.seatsMax ?? 0),
+        0
+      )
+    : table.seatsMax;
+  // Every other table this reservation holds, for display — the primary
+  // plus its combo tables, minus whichever one this panel is open on, so
+  // "combined with" never redundantly names the table you're already on.
+  const otherComboTableNumbers = activeReservation
+    ? [state.tables.find((t) => t.id === activeReservation.tableId)?.tableNumber, ...activeReservation.comboTableNumbers]
+        .filter((n): n is number => n != null && n !== table.tableNumber)
+    : [];
   const mergedChildren = state.tables.filter((t) => t.mergedIntoId === table.id);
   const mergedIntoTable = table.mergedIntoId ? state.tables.find((t) => t.id === table.mergedIntoId) ?? null : null;
 
@@ -169,6 +191,10 @@ export function TablePanel({
           </DetailBlock>
         )}
 
+        {activeReservation && (
+          <ShiftNotes reservation={activeReservation} timezone={state.timezone} refresh={refresh} />
+        )}
+
         {table.notes && (
           <DetailBlock title="Notes">
             <p className="text-sm text-neutral-600 dark:text-neutral-300">{table.notes}</p>
@@ -179,17 +205,24 @@ export function TablePanel({
         {mode === "seat" && (
           <SeatForm
             table={table}
-            reservation={r}
+            reservation={activeReservation}
+            seatsMax={activeReservationSeatsMax}
+            otherComboTableNumbers={otherComboTableNumbers}
             busy={busy}
             onCancel={() => setMode("idle")}
             onSubmit={(input) =>
               run(() =>
-                api.tableAction(table.id, {
+                // A combo reservation only merges its extra tables into
+                // whichever table id is targeted here — that only works
+                // correctly targeting the reservation's actual primary
+                // table (see seatParty), regardless of which of its tables
+                // this panel happens to be open on right now.
+                api.tableAction(activeReservation?.tableId ?? table.id, {
                   action: "seat",
                   guestName: input.guestName,
                   partySize: input.partySize,
-                  source: r ? "RESERVATION" : "WALKIN",
-                  reservationId: r && r.tableId === table.id ? r.id : undefined,
+                  source: activeReservation ? "RESERVATION" : "WALKIN",
+                  reservationId: activeReservation?.id,
                   occasion: input.occasion || undefined,
                 })
               )
@@ -274,7 +307,7 @@ export function TablePanel({
             {!s && !r && table.status !== "BLOCKED" && (
               <>
                 <Button variant="primary" onClick={() => setMode("seat")} disabled={busy}>
-                  Seat guests
+                  {ur ? `Seat ${ur.customerName}` : "Seat guests"}
                 </Button>
                 <Button onClick={() => setMode("reserve")} disabled={busy}>
                   Reserve table
@@ -294,7 +327,11 @@ export function TablePanel({
                 <Button
                   className="text-amber-600 dark:text-amber-400"
                   onClick={() => {
-                    if (window.confirm(`Mark ${r.customerName} a no-show? If they have a card on file, this charges the no-show fee automatically.`)) {
+                    const feeCents = state.settings.noShowFeeCents ? state.settings.noShowFeeCents * r.partySize : null;
+                    const feeNote = feeCents
+                      ? `This charges ${money(feeCents / 100)} (party of ${r.partySize}) to their card automatically.`
+                      : "If they have a card on file, this charges the no-show fee automatically.";
+                    if (window.confirm(`Mark ${r.customerName} a no-show? ${feeNote}`)) {
                       markNoShow(r.id);
                     }
                   }}
@@ -381,6 +418,76 @@ export function TablePanel({
   );
 }
 
+/** Staff-to-staff notes on a booking, so one shift can hand context to the
+ *  next (allergy flags, a regular's usual table, "call before they arrive").
+ *  Never shown to the guest — distinct from the booking's own notes field. */
+function ShiftNotes({
+  reservation,
+  timezone,
+  refresh,
+}: {
+  reservation: NonNullable<TableDTO["reservation"]>;
+  timezone: string;
+  refresh: () => Promise<unknown> | unknown;
+}) {
+  const [draft, setDraft] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const add = async () => {
+    const body = draft.trim();
+    if (!body) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.addReservationComment(reservation.id, body);
+      setDraft("");
+      await refresh();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <DetailBlock title={`Shift notes${reservation.comments.length > 0 ? ` · ${reservation.comments.length}` : ""}`}>
+      {reservation.comments.length === 0 ? (
+        <p className="text-sm text-neutral-500 dark:text-neutral-400">
+          No notes yet — anything added here is visible to every shift.
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {reservation.comments.map((c) => (
+            <div key={c.id} className="rounded-lg bg-black/[0.03] px-2.5 py-2 dark:bg-white/[0.04]">
+              <p className="text-sm text-neutral-800 dark:text-neutral-100">{c.body}</p>
+              <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+                {c.authorName} · {localDateStr(c.createdAt, timezone)} {timeOfDay(c.createdAt, timezone)}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="mt-2 flex gap-2">
+        <input
+          className={inputCls}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && draft.trim() && !busy) add();
+          }}
+          placeholder="Add a note for the next shift…"
+          disabled={busy}
+        />
+        <Button variant="primary" onClick={add} disabled={busy || !draft.trim()}>
+          {busy ? "Adding…" : "Add"}
+        </Button>
+      </div>
+      {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
+    </DetailBlock>
+  );
+}
+
 function DetailBlock({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="mb-4">
@@ -402,32 +509,41 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 function SeatForm({
   table,
   reservation,
+  seatsMax,
+  otherComboTableNumbers,
   busy,
   onSubmit,
   onCancel,
 }: {
   table: TableDTO;
   reservation: TableDTO["reservation"];
+  seatsMax: number;
+  otherComboTableNumbers: number[];
   busy: boolean;
   onSubmit: (v: { guestName: string; partySize: number; occasion: string }) => void;
   onCancel: () => void;
 }) {
   const [guestName, setGuestName] = useState(reservation?.customerName ?? "");
-  const [partySize, setPartySize] = useState(reservation?.partySize ?? Math.min(2, table.seatsMax));
+  const [partySize, setPartySize] = useState(reservation?.partySize ?? Math.min(2, seatsMax));
   const [occasion, setOccasion] = useState(reservation?.occasion ?? "");
 
   return (
     <div className="mb-4 rounded-xl border border-black/10 p-3 dark:border-white/10">
       <p className="mb-3 text-sm font-semibold text-neutral-800 dark:text-neutral-100">Seat guests at Table {table.tableNumber}</p>
+      {otherComboTableNumbers.length > 0 && (
+        <p className="mb-3 rounded-lg bg-brand-500/10 px-2.5 py-1.5 text-xs text-brand-700 dark:text-brand-300">
+          Combined with Table {otherComboTableNumbers.join(", ")} — seating here seats the whole party across all of them.
+        </p>
+      )}
       <div className="space-y-2.5">
         <Field label="Guest name">
           <input className={inputCls} value={guestName} onChange={(e) => setGuestName(e.target.value)} placeholder="Name on the party" />
         </Field>
-        <Field label={`Party size (max ${table.seatsMax})`}>
+        <Field label={`Party size (max ${seatsMax})`}>
           <input
             type="number"
             min={1}
-            max={table.seatsMax}
+            max={seatsMax}
             className={inputCls}
             value={partySize}
             onChange={(e) => setPartySize(Number(e.target.value))}
