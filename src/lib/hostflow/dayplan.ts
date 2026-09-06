@@ -82,16 +82,32 @@ export async function getDayPlan(restaurantId: string, dateStr: string): Promise
     }
   }
 
+  // Tables combined for tonight's big party are a service-time arrangement,
+  // not the floor's layout — a future date shows the room as it normally
+  // stands. Each primary's capacity had its children folded into it at merge
+  // time, so that has to be unwound here too, or tomorrow shows a 4-top as a
+  // 28-top. (Tonight's own view is getFloorState, which is unaffected; this
+  // path only ever serves a date other than today — see HostApp's isToday.)
+  const mergedIntoOwnCapacity = new Map<string, number>();
+  for (const t of tables) {
+    if (t.mergedIntoId) {
+      mergedIntoOwnCapacity.set(t.mergedIntoId, (mergedIntoOwnCapacity.get(t.mergedIntoId) ?? 0) + t.capacityMax);
+    }
+  }
+
   const tableDTOs: TableDTO[] = tables.map((t) => {
     const count = bookingsByTable.get(t.id) ?? 0;
-    const status = t.status === "BLOCKED" ? "BLOCKED" : count > 0 ? "RESERVED" : "AVAILABLE";
+    // A merged-in table is BLOCKED only because it's currently combined —
+    // that's not an out-of-service flag, so it shouldn't read as one here.
+    const status =
+      t.status === "BLOCKED" && !t.mergedIntoId ? "BLOCKED" : count > 0 ? "RESERVED" : "AVAILABLE";
     return {
       id: t.id,
       tableNumber: t.tableNumber,
       name: t.name,
       status: status as TableDTO["status"],
       seatsMin: t.capacityMin,
-      seatsMax: t.capacityMax,
+      seatsMax: Math.max(t.capacityMin, t.capacityMax - (mergedIntoOwnCapacity.get(t.id) ?? 0)),
       shape: t.shape,
       x: t.x,
       y: t.y,
@@ -105,7 +121,7 @@ export async function getDayPlan(restaurantId: string, dateStr: string): Promise
       session: null,
       reservation: null,
       upcomingReservation: null,
-      mergedIntoId: t.mergedIntoId,
+      mergedIntoId: null,
       bookingCount: count,
     };
   });
