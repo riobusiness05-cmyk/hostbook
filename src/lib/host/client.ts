@@ -125,6 +125,15 @@ export async function setReservationStatus(id: string, status: string): Promise<
   return jsonOrThrow<{ ok: true; noShowCharge: NoShowChargeOutcome }>(res);
 }
 
+export async function addReservationComment(id: string, body: string) {
+  const res = await fetch(`/api/host/reservations/${id}/comments`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ body }),
+  });
+  return jsonOrThrow<{ ok: true; comment: { id: string; authorName: string; body: string; createdAt: string } }>(res);
+}
+
 export async function markNotifications(id?: string): Promise<void> {
   const res = await fetch("/api/host/notifications", {
     method: "PATCH",

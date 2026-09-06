@@ -93,6 +93,8 @@ model Account {
   passwordResetToken      String?   @unique
   passwordResetExpiresAt  DateTime?
 
+  comments     ReservationComment[]
+
   @@index([restaurantId])
 }
 
@@ -253,9 +255,29 @@ model Reservation {
   // too big for any single table — see findAvailableTable's combo fallback
   // in availability.ts. Empty for an ordinary single-table booking.
   comboTables      ReservationTable[]
+  // Shift-handoff notes — internal staff-to-staff comments (e.g. morning
+  // staff flagging something for the night shift), distinct from `notes`
+  // (a single guest-facing intake field set at booking time).
+  comments         ReservationComment[]
 
   @@index([restaurantId, reservationTime])
   @@index([restaurantId, status])
+}
+
+// An internal note left by one staff member on a reservation for other
+// shifts to see — a running thread, not a single overwritable field, since
+// a handoff is usually more than one thing across more than one shift.
+model ReservationComment {
+  id            String      @id @default(cuid())
+  reservationId String
+  reservation   Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  accountId     String?
+  account       Account?    @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  authorName    String      // captured at write time so a comment still reads sensibly if the account is later removed
+  body          String
+  createdAt     DateTime    @default(now())
+
+  @@index([reservationId, createdAt])
 }
 
 // Join row for a multi-table reservation's *extra* tables (the primary table

@@ -45,6 +45,8 @@ export type ReservationDTO = {
   // empty for an ordinary single-table booking. See findAvailableTable's
   // combo fallback in availability.ts.
   comboTableNumbers: number[];
+  // Shift-handoff notes — staff-to-staff, not shown to the guest. Oldest first.
+  comments: { id: string; authorName: string; body: string; createdAt: string }[];
 };
 
 export type TableDTO = {
@@ -290,7 +292,7 @@ export async function getFloorState(restaurantId: string): Promise<FloorState> {
           lte: new Date(nowDate.getTime() + 30 * 24 * 60 * 60000),
         },
       },
-      include: { comboTables: true },
+      include: { comboTables: true, comments: { orderBy: { createdAt: "asc" } } },
       orderBy: { reservationTime: "asc" },
     }),
     prisma.walkin.findMany({
@@ -372,6 +374,12 @@ export async function getFloorState(restaurantId: string): Promise<FloorState> {
       comboTableNumbers: r.comboTables
         .map((ct) => tableNumberById.get(ct.tableId))
         .filter((n): n is number => n != null),
+      comments: r.comments.map((c) => ({
+        id: c.id,
+        authorName: c.authorName,
+        body: c.body,
+        createdAt: c.createdAt.toISOString(),
+      })),
     };
   };
 
