@@ -161,6 +161,9 @@ function AddWalkinForm({ onDone }: { onDone: () => void }) {
       </div>
       <input className={inputCls} placeholder="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} />
       {error && <p className="text-xs text-red-500">{error}</p>}
+      {!busy && !error && !name.trim() && (
+        <p className="text-xs text-amber-600 dark:text-amber-400">Enter a guest name to add them to the waitlist.</p>
+      )}
       <Button variant="primary" className="w-full" disabled={busy || !name.trim()} onClick={submit}>
         Add to waitlist
       </Button>

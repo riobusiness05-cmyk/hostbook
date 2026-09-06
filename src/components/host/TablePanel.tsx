@@ -293,7 +293,11 @@ export function TablePanel({
                 </Button>
                 <Button
                   className="text-amber-600 dark:text-amber-400"
-                  onClick={() => markNoShow(r.id)}
+                  onClick={() => {
+                    if (window.confirm(`Mark ${r.customerName} a no-show? If they have a card on file, this charges the no-show fee automatically.`)) {
+                      markNoShow(r.id);
+                    }
+                  }}
                   disabled={busy}
                 >
                   No show
@@ -433,6 +437,9 @@ function SeatForm({
           <input className={inputCls} value={occasion} onChange={(e) => setOccasion(e.target.value)} placeholder="Birthday, anniversary…" />
         </Field>
       </div>
+      {!busy && !guestName.trim() && (
+        <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">Enter a guest name to seat this party.</p>
+      )}
       <div className="mt-3 flex gap-2">
         <Button
           variant="primary"
@@ -534,6 +541,11 @@ function ReserveForm({
           <input className={inputCls} value={occasion} onChange={(e) => setOccasion(e.target.value)} placeholder="Birthday, anniversary…" />
         </Field>
       </div>
+      {!busy && (!customerName.trim() || !time) && (
+        <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+          {!customerName.trim() && !time ? "Enter a name and a time to reserve this table." : !customerName.trim() ? "Enter a name to reserve this table." : "Pick a time to reserve this table."}
+        </p>
+      )}
       <div className="mt-3 flex gap-2">
         <Button
           variant="primary"

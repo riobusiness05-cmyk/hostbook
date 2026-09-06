@@ -190,6 +190,11 @@ export function NewReservationForm({
       )}
 
       {error && <p className="text-xs text-red-500">{error}</p>}
+      {!saving && !error && (!time || !name.trim()) && (
+        <p className="text-xs text-amber-600 dark:text-amber-400">
+          {!name.trim() && !time ? "Enter a name and pick a time to create this booking." : !name.trim() ? "Enter a name to create this booking." : "Pick a time to create this booking."}
+        </p>
+      )}
 
       <div className="flex gap-2">
         <Button variant="primary" className="flex-1" disabled={!time || !name.trim() || saving} onClick={book}>

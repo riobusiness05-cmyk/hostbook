@@ -241,7 +241,11 @@ export function ReservationsPanel({
                       variant="ghost"
                       className="text-amber-600 dark:text-amber-400"
                       disabled={busyId === r.id}
-                      onClick={() => act(r.id, "NO_SHOW")}
+                      onClick={() => {
+                        if (window.confirm(`Mark ${r.customerName} a no-show? If they have a card on file, this charges the no-show fee automatically.`)) {
+                          act(r.id, "NO_SHOW");
+                        }
+                      }}
                     >
                       No show
                     </Button>
