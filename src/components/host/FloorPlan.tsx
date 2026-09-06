@@ -41,6 +41,17 @@ function sectionBounds(tables: TableDTO[], extraPad?: { left?: number; right?: n
 // (split), this map stops covering that table and it renders at its real,
 // untouched position again.
 const MERGE_GAP = 14;
+// Tables per row before a merged group wraps. Ordinary combos (2–4 tables)
+// stay a single pushed-together line; only genuinely large banquets fold.
+const MERGE_ROW_MAX = 4;
+
+// Bounds a table can be dragged within. Deliberately far larger than the
+// ~1100x800 an imported plan is laid out in, so an existing wide floor is
+// never suddenly trapped — this only stops a table being pushed away into
+// nowhere, which is what dragged the viewBox out with it.
+const PLAN_MAX_X = 2000;
+const PLAN_MAX_Y = 1400;
+const clampToPlan = (v: number, max: number) => Math.min(Math.max(v, 0), max);
 
 /**
  * Where each merged-in table should be *drawn* this render, and at what
@@ -70,21 +81,36 @@ function layoutMergedPositions(
     const primary = byId.get(primaryId)!;
     const p = effective(primary);
     const rad = (p.rotation * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
     const primaryCx = p.x + primary.width / 2;
     const primaryCy = p.y + primary.height / 2;
     // Distance along the group's axis from the primary's centre to the
     // centre of the next child, walking outwards one table at a time.
     let axis = primary.width / 2 + MERGE_GAP;
+    let row = 0;
+    let placedInRow = 1; // the primary occupies the first slot of row 0
     for (const child of [...children].sort((a, b) => a.tableNumber - b.tableNumber)) {
-      const offset = axis + child.width / 2;
+      if (placedInRow >= MERGE_ROW_MAX) {
+        // Big groups fold into a second (third…) row rather than running off
+        // across the floor in one endless line — a 28-cover banquet reads as
+        // a block of pushed-together tables, and stays on the plan.
+        row += 1;
+        placedInRow = 0;
+        axis = primary.width / 2 + MERGE_GAP - (child.width + MERGE_GAP);
+      }
+      const along = axis + child.width / 2;
+      // Perpendicular offset for this row, in the group's own rotated frame.
+      const across = row * (primary.height + MERGE_GAP);
       // Same rotation applied about each table's own centre, with the
       // centre itself swung around the primary — a rigid-body turn.
       positions.set(child.id, {
-        x: primaryCx + offset * Math.cos(rad) - child.width / 2,
-        y: primaryCy + offset * Math.sin(rad) - child.height / 2,
+        x: primaryCx + along * cos - across * sin - child.width / 2,
+        y: primaryCy + along * sin + across * cos - child.height / 2,
         rotation: p.rotation,
       });
       axis += child.width + MERGE_GAP;
+      placedInRow += 1;
     }
   }
   return positions;
@@ -236,9 +262,17 @@ export function FloorPlan({
       e.preventDefault();
       const p = toSvgPoint(e.clientX, e.clientY);
       if (d.mode === "move") {
+        // Kept inside the plan. Without this a table (and, dragged by its
+        // primary, a whole merged group) could be pushed off into negative
+        // space, which the auto-fitting viewBox then had to zoom out to
+        // include — shrinking the entire floor plan around it.
         overridesRef.current = {
           ...overridesRef.current,
-          [d.id]: { x: d.origX + (p.x - d.startX), y: d.origY + (p.y - d.startY), rotation: d.rotation },
+          [d.id]: {
+            x: clampToPlan(d.origX + (p.x - d.startX), PLAN_MAX_X),
+            y: clampToPlan(d.origY + (p.y - d.startY), PLAN_MAX_Y),
+            rotation: d.rotation,
+          },
         };
       } else {
         const angle = (Math.atan2(p.y - d.cy, p.x - d.cx) * 180) / Math.PI + 90;
@@ -360,6 +394,16 @@ export function FloorPlan({
   // Draw merged-in tables right next to their primary. Computed from the
   // whole room (not just the zoomed-in section) so a merge stays intact
   // however it's viewed; only ever affects render position, never the DTO.
+  // Settled (committed) layout — no drag overrides. Memoised, so it costs
+  // nothing per pointer event, and gives the viewBox a stable frame.
+  const settledTables = useMemo(() => {
+    const positions = layoutMergedPositions(roomTables, (t) => ({ x: t.x, y: t.y, rotation: t.rotation }));
+    return tables.map((t) => {
+      const pos = positions.get(t.id);
+      return pos ? { ...t, x: pos.x, y: pos.y, rotation: pos.rotation } : t;
+    });
+  }, [roomTables, tables]);
+
   // Both of these are intentionally recomputed every render (not memoized) —
   // they need to react to overridesRef changing mid-drag, which a ref
   // mutation can't trigger a memo dependency on; the `tick` state above is
@@ -437,15 +481,21 @@ export function FloorPlan({
   // into on a phone. Uses the merge-adjusted positions so a combined group
   // never renders clipped — also includes each zone's own bounds, since a
   // cosmetically widened zone (EXTRA_ZONE_PAD) can extend past its tables.
+  // Deliberately measured from *settled* positions, never the live drag ones.
+  // Fitting the frame to a table while it's still moving rescales the whole
+  // plan under the user's finger — the table slides away from the cursor, so
+  // they drag further, which grows the frame again. It also made this
+  // min/max sweep over every table run on every pointer event. It now
+  // recomputes once, after the drag commits.
   const viewBox = useMemo(() => {
-    if (positionedTables.length === 0) return "0 0 1000 700";
+    if (settledTables.length === 0) return "0 0 1000 700";
     const pad = 30;
     const xs = [
-      ...positionedTables.flatMap((t) => [t.x, t.x + t.width]),
+      ...settledTables.flatMap((t) => [t.x, t.x + t.width]),
       ...sections.flatMap((sec) => [sec.bounds.x, sec.bounds.x + sec.bounds.w]),
     ];
     const ys = [
-      ...positionedTables.flatMap((t) => [t.y, t.y + t.height]),
+      ...settledTables.flatMap((t) => [t.y, t.y + t.height]),
       ...sections.flatMap((sec) => [sec.bounds.y, sec.bounds.y + sec.bounds.h]),
     ];
     const minX = Math.min(...xs) - pad;
@@ -453,7 +503,7 @@ export function FloorPlan({
     const w = Math.max(...xs) - minX + pad;
     const h = Math.max(...ys) - minY + pad;
     return `${minX} ${minY} ${w} ${h}`;
-  }, [positionedTables, sections]);
+  }, [settledTables, sections]);
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden rounded-2xl border border-black/5 bg-gradient-to-br from-neutral-50 to-neutral-100 dark:border-white/10 dark:from-neutral-900 dark:to-neutral-950">
