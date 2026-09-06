@@ -182,6 +182,31 @@ export async function repositionTable(
 // floor plan that's drifted into a messy or overlapping state over time.
 // Tables with no default (predate this column) are left untouched.
 export async function resetFloorPlan(restaurantId: string) {
+  // Split every combined group first. Without this, "Reset layout" looked
+  // like it did nothing to a merged group: a merged-in table is *drawn*
+  // relative to its primary and its own stored x/y is ignored, so putting
+  // those coordinates back changed nothing on screen. Combining tables is a
+  // service-time arrangement, not part of the saved layout, so restoring
+  // the layout has to undo it — same as the nightly reset does.
+  const primaries = await prisma.diningTable.findMany({
+    where: { restaurantId, mergedTables: { some: {} } },
+    include: { mergedTables: true },
+  });
+  let split = 0;
+  for (const primary of primaries) {
+    const restoredCapacity = primary.mergedTables.reduce((n, c) => n + c.capacityMax, 0);
+    await prisma.$transaction([
+      ...primary.mergedTables.map((c) =>
+        prisma.diningTable.update({ where: { id: c.id }, data: { mergedIntoId: null, status: "AVAILABLE" } })
+      ),
+      prisma.diningTable.update({
+        where: { id: primary.id },
+        data: { capacityMax: Math.max(primary.capacityMin, primary.capacityMax - restoredCapacity) },
+      }),
+    ]);
+    split += primary.mergedTables.length;
+  }
+
   const tables = await prisma.diningTable.findMany({
     where: { restaurantId, defaultX: { not: null }, defaultY: { not: null } },
   });
@@ -194,7 +219,7 @@ export async function resetFloorPlan(restaurantId: string) {
     )
   );
   emitFloorChange(restaurantId, "table");
-  return { count: tables.length };
+  return { count: tables.length, tablesSplit: split };
 }
 
 // ── Seating ────────────────────────────────────────────────────────────────
