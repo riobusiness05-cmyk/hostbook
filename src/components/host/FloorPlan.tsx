@@ -42,7 +42,20 @@ function sectionBounds(tables: TableDTO[], extraPad?: { left?: number; right?: n
 // untouched position again.
 const MERGE_GAP = 14;
 
-function layoutMergedPositions(tables: TableDTO[]): Map<string, { x: number; y: number }> {
+/**
+ * Where each merged-in table should be *drawn* this render, and at what
+ * angle: laid out along its primary's own rotated axis so the cluster moves
+ * and turns as one rigid table — push the group around, spin it to sit
+ * along a wall, and the whole thing follows together.
+ *
+ * `effective` supplies the primary's live position mid-drag (the stored DTO
+ * value lags until the drag commits), so children track the primary while
+ * it's still moving instead of snapping into place afterwards.
+ */
+function layoutMergedPositions(
+  tables: TableDTO[],
+  effective: (t: TableDTO) => { x: number; y: number; rotation: number }
+): Map<string, { x: number; y: number; rotation: number }> {
   const byId = new Map(tables.map((t) => [t.id, t]));
   const childrenByPrimary = new Map<string, TableDTO[]>();
   for (const t of tables) {
@@ -52,13 +65,26 @@ function layoutMergedPositions(tables: TableDTO[]): Map<string, { x: number; y: 
       childrenByPrimary.set(t.mergedIntoId, list);
     }
   }
-  const positions = new Map<string, { x: number; y: number }>();
+  const positions = new Map<string, { x: number; y: number; rotation: number }>();
   for (const [primaryId, children] of childrenByPrimary) {
     const primary = byId.get(primaryId)!;
-    let cursorX = primary.x + primary.width + MERGE_GAP;
+    const p = effective(primary);
+    const rad = (p.rotation * Math.PI) / 180;
+    const primaryCx = p.x + primary.width / 2;
+    const primaryCy = p.y + primary.height / 2;
+    // Distance along the group's axis from the primary's centre to the
+    // centre of the next child, walking outwards one table at a time.
+    let axis = primary.width / 2 + MERGE_GAP;
     for (const child of [...children].sort((a, b) => a.tableNumber - b.tableNumber)) {
-      positions.set(child.id, { x: cursorX, y: primary.y + (primary.height - child.height) / 2 });
-      cursorX += child.width + MERGE_GAP;
+      const offset = axis + child.width / 2;
+      // Same rotation applied about each table's own centre, with the
+      // centre itself swung around the primary — a rigid-body turn.
+      positions.set(child.id, {
+        x: primaryCx + offset * Math.cos(rad) - child.width / 2,
+        y: primaryCy + offset * Math.sin(rad) - child.height / 2,
+        rotation: p.rotation,
+      });
+      axis += child.width + MERGE_GAP;
     }
   }
   return positions;
@@ -334,21 +360,35 @@ export function FloorPlan({
   // Draw merged-in tables right next to their primary. Computed from the
   // whole room (not just the zoomed-in section) so a merge stays intact
   // however it's viewed; only ever affects render position, never the DTO.
-  const mergedPositions = useMemo(() => layoutMergedPositions(roomTables), [roomTables]);
-  // Intentionally recomputed every render (not memoized) — it needs to react
-  // to overridesRef changing mid-drag, which a ref mutation can't trigger a
-  // memo dependency on; the `tick` state above is what forces the re-render.
-  const positionedTables = tables.map((t) => {
+  // Both of these are intentionally recomputed every render (not memoized) —
+  // they need to react to overridesRef changing mid-drag, which a ref
+  // mutation can't trigger a memo dependency on; the `tick` state above is
+  // what forces the re-render.
+  const mergedPositions = layoutMergedPositions(roomTables, (t) => {
     const ov = overridesRef.current[t.id];
-    if (ov) return { ...t, x: ov.x, y: ov.y, rotation: ov.rotation };
+    return ov ?? { x: t.x, y: t.y, rotation: t.rotation };
+  });
+  const positionedTables = tables.map((t) => {
+    // A merged-in child is always placed by the group layout — its own
+    // stored position (and any stale override) is deliberately ignored
+    // while it's part of a cluster, so the group can't come apart.
     const pos = mergedPositions.get(t.id);
-    return pos ? { ...t, x: pos.x, y: pos.y } : t;
+    if (pos) return { ...t, x: pos.x, y: pos.y, rotation: pos.rotation };
+    const ov = overridesRef.current[t.id];
+    return ov ? { ...t, x: ov.x, y: ov.y, rotation: ov.rotation } : t;
   });
   const tableNumberById = useMemo(() => new Map(allTables.map((t) => [t.id, t.tableNumber])), [allTables]);
   // Drags must originate from the table's real stored position, never the
   // merge-shifted render position, or dragging a merged-in child would
   // permanently bake its temporary "next to primary" spot into the DB.
   const rawById = useMemo(() => new Map(allTables.map((t) => [t.id, t])), [allTables]);
+
+  // The table a drag/rotate should actually act on: a merged-in child hands
+  // off to its primary, so the cluster is manipulated as a single unit.
+  const groupAnchorFor = (t: TableDTO): TableDTO => {
+    const raw = rawById.get(t.id) ?? t;
+    return raw.mergedIntoId ? rawById.get(raw.mergedIntoId) ?? raw : raw;
+  };
 
   // Dashed link outline drawn behind each merged cluster so the group reads
   // as one combined table at a glance.
@@ -365,11 +405,27 @@ export function FloorPlan({
     for (const [primaryId, children] of byPrimary) {
       const primary = positionedTables.find((t) => t.id === primaryId);
       if (!primary) continue;
+      // Corners of each table *after* its own rotation, so the outline still
+      // wraps the cluster once the group is turned — a square is unaffected
+      // by a quarter turn, but a rotated rect (a bar counter) is not.
       const all = [primary, ...children];
-      const minX = Math.min(...all.map((t) => t.x));
-      const minY = Math.min(...all.map((t) => t.y));
-      const maxX = Math.max(...all.map((t) => t.x + t.width));
-      const maxY = Math.max(...all.map((t) => t.y + t.height));
+      const corners = all.flatMap((t) => {
+        const rad = ((t.rotation ?? 0) * Math.PI) / 180;
+        const cx = t.x + t.width / 2;
+        const cy = t.y + t.height / 2;
+        const cos = Math.cos(rad);
+        const sin = Math.sin(rad);
+        return [
+          [-t.width / 2, -t.height / 2],
+          [t.width / 2, -t.height / 2],
+          [t.width / 2, t.height / 2],
+          [-t.width / 2, t.height / 2],
+        ].map(([dx, dy]) => ({ x: cx + dx * cos - dy * sin, y: cy + dx * sin + dy * cos }));
+      });
+      const minX = Math.min(...corners.map((c) => c.x));
+      const minY = Math.min(...corners.map((c) => c.y));
+      const maxX = Math.max(...corners.map((c) => c.x));
+      const maxY = Math.max(...corners.map((c) => c.y));
       groups.push({ primaryId, x: minX - 10, y: minY - 10, w: maxX - minX + 20, h: maxY - minY + 20 });
     }
     return groups;
@@ -551,8 +607,11 @@ export function FloorPlan({
               onSelect={() => onSelect(t.id)}
               mergedIntoNumber={t.mergedIntoId ? tableNumberById.get(t.mergedIntoId) : undefined}
               editMode={editMode}
-              onDragStart={(e) => beginMove(e, rawById.get(t.id) ?? t)}
-              onRotateStart={(e) => beginRotate(e, rawById.get(t.id) ?? t)}
+              // Grabbing any table in a merged cluster drives the primary,
+              // so the whole combined table moves and turns as one piece
+              // rather than a child appearing stuck.
+              onDragStart={(e) => beginMove(e, groupAnchorFor(t))}
+              onRotateStart={(e) => beginRotate(e, groupAnchorFor(t))}
               timezone={timezone}
             />
           ))}
