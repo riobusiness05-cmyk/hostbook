@@ -529,7 +529,10 @@ export async function updateReservationStatus(
         getSettings(restaurantId),
       ]);
       if (restaurant.stripeConnectAccountId && settings.noShowFeeCents) {
-        const result = await chargeNoShowFee(restaurant, r, settings.noShowFeeCents, "eur");
+        // The fee is set per person (e.g. "€10/guest"), not a flat amount —
+        // a no-show party of 4 owes 4x the configured rate.
+        const feeCents = settings.noShowFeeCents * r.partySize;
+        const result = await chargeNoShowFee(restaurant, r, feeCents, "eur");
         noShowCharge = result.outcome === "charged" ? { outcome: "charged" } : { outcome: "failed", reason: result.reason };
         await prisma.reservation.update({
           where: { id: reservationId },

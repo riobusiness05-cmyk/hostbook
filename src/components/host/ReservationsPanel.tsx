@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FloorState, ReservationDTO } from "@/lib/hostflow/floor";
 import { Button, Card, Chip, SectionTitle } from "./ui";
-import { cx, localDateStr, minutesLabel, minutesOfDayInTz, timeOfDay } from "@/lib/host/format";
+import { cx, localDateStr, minutesLabel, minutesOfDayInTz, money, timeOfDay } from "@/lib/host/format";
 import { NewReservationForm } from "./NewReservationForm";
 import * as api from "@/lib/host/client";
 
@@ -242,7 +242,11 @@ export function ReservationsPanel({
                       className="text-amber-600 dark:text-amber-400"
                       disabled={busyId === r.id}
                       onClick={() => {
-                        if (window.confirm(`Mark ${r.customerName} a no-show? If they have a card on file, this charges the no-show fee automatically.`)) {
+                        const feeCents = state.settings.noShowFeeCents ? state.settings.noShowFeeCents * r.partySize : null;
+                        const feeNote = feeCents
+                          ? `This charges ${money(feeCents / 100)} (party of ${r.partySize}) to their card automatically.`
+                          : "If they have a card on file, this charges the no-show fee automatically.";
+                        if (window.confirm(`Mark ${r.customerName} a no-show? ${feeNote}`)) {
                           act(r.id, "NO_SHOW");
                         }
                       }}
