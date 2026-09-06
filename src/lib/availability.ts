@@ -152,6 +152,51 @@ function distanceBetween(a: { x: number; y: number; width: number; height: numbe
  * Returns null if even every free table in the section can't cover the
  * party (that's a "call the restaurant" case, not a booking bug).
  */
+// How many of the anchor's nearest neighbours to consider, and the most
+// tables to push together. Bounded so the search stays trivial, and because
+// a combo spanning more than a few tables stops being one usable table.
+const COMBO_POOL = 8;
+const COMBO_MAX_EXTRAS = 4;
+
+/**
+ * The smallest set of tables from `pool` seating at least `seatsNeeded`,
+ * breaking ties on least wasted seats and then on closeness to the anchor
+ * (`pool` arrives nearest-first). Returns null if even all of them together
+ * fall short. Exhaustive up to COMBO_MAX_EXTRAS, which is why it answers
+ * "exactly enough" rather than "enough, eventually".
+ */
+function chooseFewestTables(pool: TableWithSection[], seatsNeeded: number): TableWithSection[] | null {
+  if (seatsNeeded <= 0) return [];
+
+  type Candidate = { picked: TableWithSection[]; waste: number; order: number };
+
+  // Smallest number of tables wins outright — try one, then two, and so on,
+  // stopping at the first size that can seat the party.
+  for (let size = 1; size <= Math.min(COMBO_MAX_EXTRAS, pool.length); size++) {
+    const found: Candidate[] = [];
+    const walk = (start: number, picked: TableWithSection[], seats: number, order: number) => {
+      if (seats >= seatsNeeded) {
+        found.push({ picked: [...picked], waste: seats - seatsNeeded, order });
+        return;
+      }
+      if (picked.length >= size) return;
+      for (let i = start; i < pool.length; i++) {
+        picked.push(pool[i]);
+        walk(i + 1, picked, seats + pool[i].capacityMax, order + i);
+        picked.pop();
+      }
+    };
+    walk(0, [], 0, 0);
+    if (found.length > 0) {
+      // Same table count, so least wasted seats decides, then closeness
+      // (pool is nearest-first, so a lower index sum sits tighter together).
+      found.sort((a, b) => a.waste - b.waste || a.order - b.order);
+      return found[0].picked;
+    }
+  }
+  return null;
+}
+
 function findTableCombo(
   freeTables: TableWithSection[],
   partySize: number
@@ -173,16 +218,32 @@ function findTableCombo(
       const others = tables
         .filter((t) => t.id !== anchor.id)
         .sort((a, b) => distanceBetween(anchor, a) - distanceBetween(anchor, b) || a.tableNumber - b.tableNumber);
-      const extras: TableWithSection[] = [];
-      let total = anchor.capacityMax;
-      let spread = 0;
-      for (const t of others) {
-        if (total >= partySize) break;
-        extras.push(t);
-        total += t.capacityMax;
-        spread += distanceBetween(anchor, t);
-      }
+
+      // Search the nearest handful for the *fewest* tables that seat the
+      // party, then the least wasted seats among those. Filling nearest-first
+      // regardless of size used to put a party of 8 on 4+2+2 when 4+4 was
+      // sitting right there — three tables tied up, and two of them holding
+      // a party they were never needed for.
+      const pool = others.slice(0, COMBO_POOL);
+      const chosen = chooseFewestTables(pool, partySize - anchor.capacityMax);
+      const extras =
+        chosen ??
+        // Nothing within the pool covers it (a very large party): fall back to
+        // filling from the nearest tables until there are enough seats.
+        (() => {
+          const acc: TableWithSection[] = [];
+          let running = anchor.capacityMax;
+          for (const t of others) {
+            if (running >= partySize) break;
+            acc.push(t);
+            running += t.capacityMax;
+          }
+          return acc;
+        })();
+
+      const total = extras.reduce((n, t) => n + t.capacityMax, anchor.capacityMax);
       if (total < partySize) continue;
+      const spread = extras.reduce((n, t) => n + distanceBetween(anchor, t), 0);
       const tableCount = 1 + extras.length;
       const waste = total - partySize;
       if (
