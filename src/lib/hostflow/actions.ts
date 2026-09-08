@@ -181,13 +181,14 @@ export async function repositionTable(
 // default position (set when it was seeded or imported) — the fix for a
 // floor plan that's drifted into a messy or overlapping state over time.
 // Tables with no default (predate this column) are left untouched.
-export async function resetFloorPlan(restaurantId: string) {
-  // Split every combined group first. Without this, "Reset layout" looked
-  // like it did nothing to a merged group: a merged-in table is *drawn*
-  // relative to its primary and its own stored x/y is ignored, so putting
-  // those coordinates back changed nothing on screen. Combining tables is a
-  // service-time arrangement, not part of the saved layout, so restoring
-  // the layout has to undo it — same as the nightly reset does.
+/**
+ * Puts every table back to how the floor normally stands: ad-hoc combines
+ * made during service are undone, and any pair that is *normally* one table
+ * (two halves of a splittable 4-top — see DiningTable.defaultMergedIntoId)
+ * is rejoined. Both resets share this, so "Reset layout" and the nightly
+ * job can't disagree about what "normal" means.
+ */
+async function restoreDefaultMerges(restaurantId: string): Promise<{ split: number; rejoined: number }> {
   const primaries = await prisma.diningTable.findMany({
     where: { restaurantId, mergedTables: { some: {} } },
     include: { mergedTables: true },
@@ -207,6 +208,44 @@ export async function resetFloorPlan(restaurantId: string) {
     split += primary.mergedTables.length;
   }
 
+  // Now rejoin the halves that are only ever apart on purpose.
+  const halves = await prisma.diningTable.findMany({
+    where: { restaurantId, defaultMergedIntoId: { not: null } },
+    include: { defaultMergedInto: true },
+  });
+  let rejoined = 0;
+  for (const half of halves) {
+    const primary = half.defaultMergedInto;
+    if (!primary || primary.restaurantId !== restaurantId) continue;
+    // Re-read: an earlier pass in this same loop may have already changed it.
+    const [freshHalf, freshPrimary] = await Promise.all([
+      prisma.diningTable.findUnique({ where: { id: half.id } }),
+      prisma.diningTable.findUnique({ where: { id: primary.id } }),
+    ]);
+    if (!freshHalf || !freshPrimary || freshHalf.mergedIntoId) continue;
+    await prisma.$transaction([
+      prisma.diningTable.update({
+        where: { id: freshHalf.id },
+        data: { mergedIntoId: freshPrimary.id, status: "BLOCKED" },
+      }),
+      prisma.diningTable.update({
+        where: { id: freshPrimary.id },
+        data: { capacityMax: freshPrimary.capacityMax + freshHalf.capacityMax },
+      }),
+    ]);
+    rejoined += 1;
+  }
+  return { split, rejoined };
+}
+
+export async function resetFloorPlan(restaurantId: string) {
+  // Restoring the layout also restores how tables are combined. Without
+  // this, "Reset layout" looked like it did nothing to a combined group: a
+  // merged-in table is *drawn* relative to its primary and its own stored
+  // x/y is ignored, so putting those coordinates back changed nothing on
+  // screen.
+  const { split, rejoined } = await restoreDefaultMerges(restaurantId);
+
   const tables = await prisma.diningTable.findMany({
     where: { restaurantId, defaultX: { not: null }, defaultY: { not: null } },
   });
@@ -219,7 +258,7 @@ export async function resetFloorPlan(restaurantId: string) {
     )
   );
   emitFloorChange(restaurantId, "table");
-  return { count: tables.length, tablesSplit: split };
+  return { count: tables.length, tablesSplit: split, tablesRejoined: rejoined };
 }
 
 // ── Seating ────────────────────────────────────────────────────────────────
@@ -427,24 +466,10 @@ export async function splitTable(restaurantId: string, tableId: string) {
 // and table/session status. Safe to run more than once — a clean floor is a
 // no-op the second time.
 export async function resetDailyFloorState(restaurantId: string) {
-  const primaries = await prisma.diningTable.findMany({
-    where: { restaurantId, mergedTables: { some: {} } },
-    include: { mergedTables: true },
-  });
-  let split = 0;
-  for (const primary of primaries) {
-    const restoredCapacity = primary.mergedTables.reduce((n, c) => n + c.capacityMax, 0);
-    await prisma.$transaction([
-      ...primary.mergedTables.map((c) =>
-        prisma.diningTable.update({ where: { id: c.id }, data: { mergedIntoId: null, status: "AVAILABLE" } })
-      ),
-      prisma.diningTable.update({
-        where: { id: primary.id },
-        data: { capacityMax: Math.max(primary.capacityMin, primary.capacityMax - restoredCapacity) },
-      }),
-    ]);
-    split += primary.mergedTables.length;
-  }
+  // Undoes last night's combines and rejoins any table that is normally one
+  // (a splittable 4-top staff pulled apart for two deuces) — see
+  // restoreDefaultMerges.
+  const { split } = await restoreDefaultMerges(restaurantId);
 
   const stillSeated = await prisma.tableSession.findMany({ where: { restaurantId, status: "SEATED" } });
   for (const s of stillSeated) {

@@ -188,6 +188,16 @@ model DiningTable {
   mergedInto   DiningTable?  @relation("TableMerge", fields: [mergedIntoId], references: [id], onDelete: SetNull)
   mergedTables DiningTable[] @relation("TableMerge")
 
+  // A table that is normally *part of* another one: two halves of a single
+  // physical table that staff sometimes pull apart to seat two parties
+  // (e.g. a 4-top "6" that splits into 2-tops "6" and "60"). Stored as the
+  // half pointing at its primary, so the pair reads as one 4-top by default
+  // and a reset rejoins them rather than leaving them split — the opposite
+  // of an ad-hoc service-time merge, which a reset undoes.
+  defaultMergedIntoId String?
+  defaultMergedInto   DiningTable?  @relation("TableMergeDefault", fields: [defaultMergedIntoId], references: [id], onDelete: SetNull)
+  defaultMergedTables DiningTable[] @relation("TableMergeDefault")
+
   reservations   Reservation[]
   tableSessions  TableSession[]
   statusHistory  TableStatusHistory[]
