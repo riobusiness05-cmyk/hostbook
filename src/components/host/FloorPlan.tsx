@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FloorState, TableDTO } from "@/lib/hostflow/floor";
-import { STATUS_META, TABLE_STATUSES, statusColor } from "@/lib/hostflow/constants";
+import { STATUS_META, TABLE_STATUSES, statusGlow, statusInk } from "@/lib/hostflow/constants";
 import { cx, minutesLabel, timeOfDay } from "@/lib/host/format";
 import * as api from "@/lib/host/client";
 
@@ -506,7 +506,7 @@ export function FloorPlan({
   }, [settledTables, sections]);
 
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden rounded-2xl border border-black/5 bg-gradient-to-br from-neutral-50 to-neutral-100 dark:border-white/10 dark:from-neutral-900 dark:to-neutral-950">
+    <div className="relative flex h-full w-full flex-col overflow-hidden rounded-2xl border border-hf-line/70 bg-hf-bg shadow-[inset_0_1px_0_rgba(243,239,230,0.04)]">
       {/* Toolbar: section chips (zoom into one area, or "All") + room switcher */}
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-black/5 p-2 dark:border-white/10">
         <div className="flex flex-1 flex-wrap gap-1">
@@ -587,13 +587,37 @@ export function FloorPlan({
       )}
 
       <div className="relative min-h-0 flex-1">
+        {/* The room's own light: a warm pool falling from above, and film
+            grain over the whole surface. Both are pointer-transparent and sit
+            under the tables, so this is atmosphere only — it never competes
+            with a status colour or intercepts a drag. */}
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background:
+              "radial-gradient(115% 85% at 50% -10%, rgba(225,127,60,0.09) 0%, rgba(225,127,60,0.03) 38%, transparent 72%)",
+          }}
+        />
+        <div className="hf-grain" />
         <svg
           ref={svgRef}
           viewBox={viewBox}
-          className="h-full w-full"
+          className="relative h-full w-full"
           role="img"
           aria-label={`Floor plan — ${activeSection?.name ?? currentRoom}`}
         >
+          <defs>
+            {/* One vertical gradient per status: lit along the top edge,
+                falling into shadow at the base, so a table reads as a surface
+                catching light rather than a flat swatch of colour. */}
+            {TABLE_STATUSES.map((st) => (
+              <linearGradient key={st} id={`hf-t-${st}`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={STATUS_META[st].glow} stopOpacity={0.95} />
+                <stop offset="45%" stopColor={STATUS_META[st].color} stopOpacity={1} />
+                <stop offset="100%" stopColor={STATUS_META[st].color} stopOpacity={0.82} />
+              </linearGradient>
+            ))}
+          </defs>
           {/* Area zones — a soft tinted background + label per section. The
               seed lays each area out in its own band (terrace left · restaurant
               top · bar bottom · back terrace right) with clear gaps, so these
@@ -605,25 +629,29 @@ export function FloorPlan({
               onClick={roomSections.length > 1 && !activeSection ? () => setSectionFilter(sec.id) : undefined}
               className={roomSections.length > 1 && !activeSection ? "cursor-pointer" : undefined}
             >
+              {/* A zone is the floor under the tables, so it stays a barely-
+                  there wash with a hairline — enough to read the room's shape
+                  without competing with the tables standing on it. */}
               <rect
                 x={sec.bounds.x}
                 y={sec.bounds.y}
                 width={sec.bounds.w}
                 height={sec.bounds.h}
-                rx={20}
-                fill={`${sec.color}12`}
-                stroke={`${sec.color}66`}
-                strokeWidth={1.5}
+                rx={26}
+                fill={`${sec.color}0a`}
+                stroke={`${sec.color}2e`}
+                strokeWidth={1}
               />
-              <circle cx={sec.bounds.x + 16} cy={sec.bounds.y + 17} r={5} fill={sec.color} />
+              <circle cx={sec.bounds.x + 18} cy={sec.bounds.y + 20} r={3.5} fill={sec.color} opacity={0.9} />
               <text
-                x={sec.bounds.x + 28}
-                y={sec.bounds.y + 22}
-                fontSize={15}
-                fontWeight={800}
+                x={sec.bounds.x + 30}
+                y={sec.bounds.y + 24}
+                fontSize={12}
+                fontWeight={600}
                 fill={sec.color}
                 className="uppercase"
-                style={{ letterSpacing: "0.09em" }}
+                style={{ letterSpacing: "0.22em", fontFamily: "var(--font-hf-sans)" }}
+                opacity={0.75}
               >
                 {sec.name}
               </text>
@@ -694,13 +722,15 @@ function TableGlyph({
 }) {
   const cxp = table.x + table.width / 2;
   const cyp = table.y + table.height / 2;
-  const fill = statusColor(table.status);
+  const glow = statusGlow(table.status);
   const round = table.shape === "ROUND";
   const s = table.session;
   const r = table.reservation;
   const ur = table.upcomingReservation;
   const pulse = table.status === "LATE" || s?.isOverrun;
-  const textFill = "#ffffff";
+  // Tinted to its own status rather than flat white — warm ink on a warm
+  // table, cool on a cool one, so nothing glares on a dim host stand.
+  const textFill = statusInk(table.status);
 
   // Rotation is expressed only as the SVG `rotate(angle cx cy)` attribute
   // below. It already carries its own centre, so there must be no CSS
@@ -758,28 +788,54 @@ function TableGlyph({
         )
       )}
 
+      {/* The table itself, built in three passes so it reads as a lit
+          surface standing on the floor rather than a flat swatch:
+          a shadow it casts, the gradient top, and a hairline of its own
+          light along the upper edge. */}
       {round ? (
-        <circle
-          cx={cxp}
-          cy={cyp}
-          r={table.width / 2}
-          fill={fill}
-          stroke={selected ? "#0ea5e9" : "rgba(0,0,0,0.15)"}
-          strokeWidth={selected ? 4 : 1.5}
-          style={{ transition: "fill 0.5s ease, stroke 0.2s ease" }}
-        />
+        <>
+          <circle cx={cxp} cy={cyp + 3} r={table.width / 2} fill="rgba(0,0,0,0.45)" opacity={0.5} />
+          <circle
+            cx={cxp}
+            cy={cyp}
+            r={table.width / 2}
+            fill={`url(#hf-t-${table.status})`}
+            stroke={selected ? "#e8bb60" : "rgba(0,0,0,0.35)"}
+            strokeWidth={selected ? 3 : 1}
+            style={{ transition: "fill 0.5s ease, stroke 0.2s ease" }}
+          />
+          <path
+            d={`M ${cxp - table.width / 2 + 6} ${cyp - 4} A ${table.width / 2 - 6} ${table.width / 2 - 6} 0 0 1 ${cxp + table.width / 2 - 6} ${cyp - 4}`}
+            fill="none"
+            stroke={glow}
+            strokeWidth={1.25}
+            opacity={0.4}
+          />
+        </>
       ) : (
-        <rect
-          x={table.x}
-          y={table.y}
-          width={table.width}
-          height={table.height}
-          rx={12}
-          fill={fill}
-          stroke={selected ? "#0ea5e9" : "rgba(0,0,0,0.15)"}
-          strokeWidth={selected ? 4 : 1.5}
-          style={{ transition: "fill 0.5s ease, stroke 0.2s ease" }}
-        />
+        <>
+          <rect x={table.x} y={table.y + 3} width={table.width} height={table.height} rx={13} fill="rgba(0,0,0,0.45)" opacity={0.5} />
+          <rect
+            x={table.x}
+            y={table.y}
+            width={table.width}
+            height={table.height}
+            rx={13}
+            fill={`url(#hf-t-${table.status})`}
+            stroke={selected ? "#e8bb60" : "rgba(0,0,0,0.35)"}
+            strokeWidth={selected ? 3 : 1}
+            style={{ transition: "fill 0.5s ease, stroke 0.2s ease" }}
+          />
+          <line
+            x1={table.x + 9}
+            y1={table.y + 1.5}
+            x2={table.x + table.width - 9}
+            y2={table.y + 1.5}
+            stroke={glow}
+            strokeWidth={1.25}
+            opacity={0.45}
+          />
+        </>
       )}
 
       {/* Waiting-to-move-outside marker: a party (usually at the bar) waiting
@@ -805,10 +861,14 @@ function TableGlyph({
         x={cxp}
         y={s || r ? cyp - 13 : cyp - (ur ? 8 : -1)}
         textAnchor="middle"
-        fontSize={s || r ? 10 : 17}
-        fontWeight={800}
+        fontSize={s || r ? 11 : 22}
+        fontWeight={s || r ? 600 : 500}
         fill={textFill}
-        opacity={s || r ? 0.75 : 1}
+        opacity={s || r ? 0.7 : 0.95}
+        // The number a host calls out all night, set in the brand's display
+        // serif — the one piece of the floor plan that should feel like a
+        // maître d's book rather than a dashboard figure.
+        style={{ fontFamily: "var(--font-hf-display)", letterSpacing: s || r ? "0.06em" : "0" }}
       >
         {table.tableNumber}
       </text>
@@ -816,19 +876,19 @@ function TableGlyph({
       {/* Contextual line */}
       {s ? (
         <>
-          <text x={cxp} y={cyp + 5} textAnchor="middle" fontSize={15} fontWeight={800} fill={textFill}>
+          <text x={cxp} y={cyp + 5} textAnchor="middle" fontSize={14} fontWeight={700} fill={textFill} style={{ fontFamily: "var(--font-hf-sans)", letterSpacing: "-0.01em" }}>
             {truncate(s.guestName, 12)}
           </text>
-          <text x={cxp} y={cyp + 19} textAnchor="middle" fontSize={9} fill={textFill} opacity={0.85}>
+          <text x={cxp} y={cyp + 19} textAnchor="middle" fontSize={8.5} fill={textFill} opacity={0.8} style={{ fontFamily: "var(--font-hf-mono)", letterSpacing: "0.02em" }}>
             {s.partySize}p · {s.isOverrun ? "over" : minutesLabel(s.minutesRemaining)}
           </text>
         </>
       ) : r ? (
         <>
-          <text x={cxp} y={cyp + 5} textAnchor="middle" fontSize={15} fontWeight={800} fill={textFill}>
+          <text x={cxp} y={cyp + 5} textAnchor="middle" fontSize={14} fontWeight={700} fill={textFill} style={{ fontFamily: "var(--font-hf-sans)", letterSpacing: "-0.01em" }}>
             {truncate(r.customerName, 12)}
           </text>
-          <text x={cxp} y={cyp + 19} textAnchor="middle" fontSize={9} fill={textFill} opacity={0.85}>
+          <text x={cxp} y={cyp + 19} textAnchor="middle" fontSize={8.5} fill={textFill} opacity={0.8} style={{ fontFamily: "var(--font-hf-mono)", letterSpacing: "0.02em" }}>
             {timeOfDay(r.reservationTime, timezone)}
             {r.isLate ? " · late" : ""}
           </text>
@@ -855,7 +915,7 @@ function TableGlyph({
           {table.bookingCount} booking{table.bookingCount === 1 ? "" : "s"}
         </text>
       ) : (
-        <text x={cxp} y={cyp + 14} textAnchor="middle" fontSize={10} fill={textFill} opacity={0.85}>
+        <text x={cxp} y={cyp + 14} textAnchor="middle" fontSize={9.5} fill={textFill} opacity={0.72} style={{ fontFamily: "var(--font-hf-mono)", letterSpacing: "0.03em" }}>
           {table.seatsMax} seats
         </text>
       )}
@@ -870,10 +930,22 @@ function truncate(s: string, n: number) {
 
 function Legend() {
   return (
-    <div className="pointer-events-none absolute bottom-2 left-2 right-2 flex flex-wrap gap-x-3 gap-y-1 rounded-xl bg-white/70 px-3 py-1.5 text-[10px] font-medium text-neutral-600 backdrop-blur dark:bg-black/40 dark:text-neutral-300">
+    <div className="pointer-events-none absolute bottom-2 left-2 right-2 flex flex-wrap gap-x-4 gap-y-1.5 rounded-xl border border-hf-line/60 bg-hf-bg/80 px-3.5 py-2 backdrop-blur-md">
       {TABLE_STATUSES.map((st) => (
-        <span key={st} className="inline-flex items-center gap-1">
-          <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: STATUS_META[st].color }} />
+        <span
+          key={st}
+          className="inline-flex items-center gap-1.5 text-[10px] uppercase text-hf-inkMuted"
+          style={{ letterSpacing: "0.13em", fontFamily: "var(--font-hf-sans)" }}
+        >
+          {/* Each swatch is lit the same way its tables are, so the key reads
+              as a sample of the floor rather than an unrelated colour dot. */}
+          <span
+            className="h-2.5 w-2.5 rounded-[3px]"
+            style={{
+              background: `linear-gradient(to bottom, ${STATUS_META[st].glow}, ${STATUS_META[st].color})`,
+              boxShadow: "0 1px 2px rgba(0,0,0,0.5)",
+            }}
+          />
           {STATUS_META[st].label}
         </span>
       ))}
