@@ -402,12 +402,22 @@ export function TablePanel({
                 onClick={() => run(() => api.tableAction(table.id, { action: "split" }))}
                 disabled={busy}
               >
-                Split tables ({mergedChildren.map((t) => `T${t.tableNumber}`).join(", ")})
+                Split apart ({mergedChildren.map((t) => `T${t.tableNumber}`).join(", ")})
               </Button>
             ) : (
-              state.settings.tableMergingEnabled && (
-                <Button onClick={() => setMode("merge")} disabled={busy}>Merge</Button>
-              )
+              <>
+                {state.settings.tableMergingEnabled && (
+                  <Button onClick={() => setMode("merge")} disabled={busy}>Merge</Button>
+                )}
+                {/* Any table big enough for two parties can be pulled apart.
+                    The second half is created the first time it's needed and
+                    numbered the way staff already say it — 6 becomes 6 and 60. */}
+                {!s && table.seatsMax >= 2 && (
+                  <Button onClick={() => run(() => api.tableAction(table.id, { action: "split" }))} disabled={busy}>
+                    Split table
+                  </Button>
+                )}
+              </>
             )}
             {table.status === "DIRTY" ? (
               <Button onClick={() => run(() => api.tableAction(table.id, { action: "markClean" }))} disabled={busy}>

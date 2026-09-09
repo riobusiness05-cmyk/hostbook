@@ -434,6 +434,26 @@ export async function mergeTables(restaurantId: string, primaryId: string, other
   emitFloorChange(restaurantId, "table");
 }
 
+/**
+ * The number a table's second half takes when it's pulled apart: the table's
+ * own number followed by a zero, which is how floor staff already say it —
+ * 6 splits into 6 and 60. If that number is taken (13 would want 130, but a
+ * bar table already owns it), a digit is repeated instead: 13 -> 133.
+ */
+async function halfTableNumberFor(restaurantId: string, tableNumber: number): Promise<number> {
+  const taken = new Set(
+    (await prisma.diningTable.findMany({ where: { restaurantId }, select: { tableNumber: true } })).map(
+      (t) => t.tableNumber
+    )
+  );
+  const preferred = tableNumber * 10;
+  if (!taken.has(preferred)) return preferred;
+  const repeated = Number(`${tableNumber}${String(tableNumber).slice(-1)}`);
+  if (!taken.has(repeated)) return repeated;
+  for (let n = preferred + 1; n < preferred + 100; n++) if (!taken.has(n)) return n;
+  throw new HostFlowError("Couldn't find a free table number for the second half");
+}
+
 export async function splitTable(restaurantId: string, tableId: string) {
   // Split the given primary table back apart: restore any tables merged into
   // it and recompute the primary's capacity from its merged children.
@@ -442,7 +462,65 @@ export async function splitTable(restaurantId: string, tableId: string) {
     include: { mergedTables: true },
   });
   if (!table || table.restaurantId !== restaurantId) throw new HostFlowError("Table not found", 404);
-  if (table.mergedTables.length === 0) throw new HostFlowError("Table has nothing merged into it");
+
+  // Nothing merged in, but the table is big enough to seat two parties: this
+  // is a host pulling one physical table apart rather than undoing a combine.
+  // The half is created the first time it's needed and kept afterwards, so
+  // its number stays stable for staff and for any booking made against it.
+  if (table.mergedTables.length === 0) {
+    if (table.capacityMax < 2) throw new HostFlowError("This table is too small to split");
+    if (table.mergedIntoId) {
+      throw new HostFlowError("This table is combined into another one — split that one instead");
+    }
+    const seated = await prisma.tableSession.count({ where: { tableId, status: "SEATED" } });
+    if (seated > 0) throw new HostFlowError("Finish the party on this table before splitting it");
+
+    const existingHalf = await prisma.diningTable.findFirst({
+      where: { restaurantId, defaultMergedIntoId: tableId },
+    });
+    const halfSeats = Math.floor(table.capacityMax / 2);
+    const keepSeats = table.capacityMax - halfSeats;
+
+    if (existingHalf) {
+      await prisma.$transaction([
+        prisma.diningTable.update({
+          where: { id: existingHalf.id },
+          data: { isActive: true, mergedIntoId: null, status: "AVAILABLE", capacityMax: halfSeats },
+        }),
+        prisma.diningTable.update({ where: { id: tableId }, data: { capacityMax: keepSeats } }),
+      ]);
+    } else {
+      const halfNumber = await halfTableNumberFor(restaurantId, table.tableNumber);
+      await prisma.$transaction([
+        prisma.diningTable.create({
+          data: {
+            restaurantId,
+            name: `Table ${halfNumber}`,
+            tableNumber: halfNumber,
+            capacityMin: 1,
+            capacityMax: halfSeats,
+            shape: table.shape,
+            width: table.width,
+            height: table.height,
+            rotation: table.rotation,
+            // Sits immediately alongside its other half, on the same axis the
+            // pair is turned to, so the two read as one table pulled apart.
+            x: table.x + (table.width + 14) * Math.cos((table.rotation * Math.PI) / 180),
+            y: table.y + (table.width + 14) * Math.sin((table.rotation * Math.PI) / 180),
+            defaultX: table.x + table.width + 14,
+            defaultY: table.y,
+            defaultRotation: table.rotation,
+            sectionId: table.sectionId,
+            isJoinable: true,
+            defaultMergedIntoId: tableId,
+          },
+        }),
+        prisma.diningTable.update({ where: { id: tableId }, data: { capacityMax: keepSeats } }),
+      ]);
+    }
+    emitFloorChange(restaurantId, "table");
+    return;
+  }
 
   const restoredCapacity = table.mergedTables.reduce((n, c) => n + c.capacityMax, 0);
   await prisma.$transaction([
