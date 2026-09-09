@@ -702,12 +702,17 @@ function TableGlyph({
   const pulse = table.status === "LATE" || s?.isOverrun;
   const textFill = "#ffffff";
 
+  // Rotation is expressed only as the SVG `rotate(angle cx cy)` attribute
+  // below. It already carries its own centre, so there must be no CSS
+  // transform-origin alongside it: that applied the offset a second time and
+  // threw every rotated table off its spot by the rotation's own translation
+  // component — a 90° table painted ~680px from where it belonged.
   return (
     <g
       onClick={editMode ? undefined : onSelect}
       onPointerDown={editMode ? onDragStart : undefined}
       className={cx(editMode ? "cursor-grab touch-none" : "cursor-pointer", pulse && !editMode && "hf-pulse")}
-      style={{ transformOrigin: `${cxp}px ${cyp}px`, touchAction: editMode ? "none" : undefined }}
+      style={{ touchAction: editMode ? "none" : undefined }}
       transform={table.rotation ? `rotate(${table.rotation} ${cxp} ${cyp})` : undefined}
       role="button"
       aria-label={`Table ${table.tableNumber}, ${STATUS_META[table.status]?.label ?? table.status}`}
@@ -788,6 +793,10 @@ function TableGlyph({
         </g>
       )}
 
+      {/* Labels are counter-rotated so they stay upright however the table
+          is turned. A table rotated to sit along a wall is common; its
+          number having to be read sideways during service is not. */}
+      <g transform={table.rotation ? `rotate(${-table.rotation} ${cxp} ${cyp})` : undefined}>
       {/* Table number — secondary once there's a name to find someone by
           (seated or booked): a host scanning for "table with Dan on it"
           cares about the name first, the number second. Stays the dominant
@@ -850,6 +859,7 @@ function TableGlyph({
           {table.seatsMax} seats
         </text>
       )}
+      </g>
     </g>
   );
 }
