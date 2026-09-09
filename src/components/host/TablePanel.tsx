@@ -376,7 +376,27 @@ export function TablePanel({
                 Reserve for another time
               </Button>
             )}
-            {mergedChildren.length > 0 ? (
+            {table.rejoinHalf ? (
+              <Button
+                className="col-span-2"
+                onClick={() =>
+                  run(() => api.tableAction(table.id, { action: "merge", otherTableId: table.rejoinHalf!.id }))
+                }
+                disabled={busy}
+              >
+                Rejoin {table.tableNumber} + {table.rejoinHalf.tableNumber}
+              </Button>
+            ) : table.splitHalfNumber != null ? (
+              // Two halves of one physical table: splitting it doesn't undo a
+              // combine, it turns one table into two separately-bookable ones.
+              <Button
+                className="col-span-2"
+                onClick={() => run(() => api.tableAction(table.id, { action: "split" }))}
+                disabled={busy}
+              >
+                Split into {table.tableNumber} + {table.splitHalfNumber}
+              </Button>
+            ) : mergedChildren.length > 0 ? (
               <Button
                 className="col-span-2"
                 onClick={() => run(() => api.tableAction(table.id, { action: "split" }))}

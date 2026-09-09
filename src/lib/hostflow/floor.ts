@@ -74,6 +74,14 @@ export type TableDTO = {
   upcomingReservation: ReservationDTO | null;
   /** Set when this table is merged into another (the "primary") table. */
   mergedIntoId: string | null;
+  /** For a table that can be pulled apart into two separately-bookable
+   *  halves (a 4-top "6" becoming "6" and "60"): the number the second half
+   *  takes. Null for an ordinary table, and null while already split — the
+   *  half is a real table on the floor at that point. */
+  splitHalfNumber: number | null;
+  /** The other half, while the two are currently pulled apart — set on the
+   *  primary so its panel can offer to put them back together. */
+  rejoinHalf: { id: string; tableNumber: number } | null;
   /** Day-plan mode only: how many bookings this table has on the viewed date. */
   bookingCount?: number;
 };
@@ -383,7 +391,26 @@ export async function getFloorState(restaurantId: string): Promise<FloorState> {
     };
   };
 
-  const tableDTOs: TableDTO[] = tables.map((t) => {
+  // The second half of a splittable table is not a table in its own right
+  // while it's joined — it's half of the one it belongs to. Keep it off the
+  // floor entirely until staff actually split it, so the room shows "Table
+  // 6, seats 4" rather than a permanently blocked "Table 60" beside it.
+  const joinedHalfNumberByPrimary = new Map<string, number>();
+  const detachedHalfByPrimary = new Map<string, { id: string; tableNumber: number }>();
+  for (const t of tables) {
+    if (!t.defaultMergedIntoId) continue;
+    if (t.mergedIntoId === t.defaultMergedIntoId) {
+      joinedHalfNumberByPrimary.set(t.defaultMergedIntoId, t.tableNumber);
+    } else if (!t.mergedIntoId) {
+      // Pulled apart right now — both halves stand on the floor as tables.
+      detachedHalfByPrimary.set(t.defaultMergedIntoId, { id: t.id, tableNumber: t.tableNumber });
+    }
+  }
+  const visibleTables = tables.filter(
+    (t) => !(t.defaultMergedIntoId && t.mergedIntoId === t.defaultMergedIntoId)
+  );
+
+  const tableDTOs: TableDTO[] = visibleTables.map((t) => {
     const s = sessionByTable.get(t.id);
     const r = reservationByTable.get(t.id);
     const ur = upcomingReservationByTable.get(t.id);
@@ -445,6 +472,8 @@ export async function getFloorState(restaurantId: string): Promise<FloorState> {
       reservation,
       upcomingReservation,
       mergedIntoId: t.mergedIntoId,
+      splitHalfNumber: joinedHalfNumberByPrimary.get(t.id) ?? null,
+      rejoinHalf: detachedHalfByPrimary.get(t.id) ?? null,
     };
   });
 

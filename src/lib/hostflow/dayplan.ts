@@ -88,14 +88,33 @@ export async function getDayPlan(restaurantId: string, dateStr: string): Promise
   // time, so that has to be unwound here too, or tomorrow shows a 4-top as a
   // 28-top. (Tonight's own view is getFloorState, which is unaffected; this
   // path only ever serves a date other than today — see HostApp's isToday.)
-  const mergedIntoOwnCapacity = new Map<string, number>();
+  //
+  // The two halves of a splittable table are the exception: they're one
+  // physical table, so a future date shows it whole (and never shows the
+  // half as a table of its own), whichever way it happens to be sitting
+  // tonight.
+  const adHocMergedCapacity = new Map<string, number>();
+  const detachedHalfCapacity = new Map<string, number>();
   for (const t of tables) {
+    if (t.defaultMergedIntoId) {
+      // A half currently pulled apart: its seats belong back with its
+      // primary for a normal-looking future date.
+      if (!t.mergedIntoId) {
+        detachedHalfCapacity.set(
+          t.defaultMergedIntoId,
+          (detachedHalfCapacity.get(t.defaultMergedIntoId) ?? 0) + t.capacityMax
+        );
+      }
+      continue; // never counted as an ad-hoc merge, never shown
+    }
     if (t.mergedIntoId) {
-      mergedIntoOwnCapacity.set(t.mergedIntoId, (mergedIntoOwnCapacity.get(t.mergedIntoId) ?? 0) + t.capacityMax);
+      adHocMergedCapacity.set(t.mergedIntoId, (adHocMergedCapacity.get(t.mergedIntoId) ?? 0) + t.capacityMax);
     }
   }
 
-  const tableDTOs: TableDTO[] = tables.map((t) => {
+  const tableDTOs: TableDTO[] = tables
+    .filter((t) => !t.defaultMergedIntoId)
+    .map((t) => {
     const count = bookingsByTable.get(t.id) ?? 0;
     // A merged-in table is BLOCKED only because it's currently combined —
     // that's not an out-of-service flag, so it shouldn't read as one here.
@@ -107,7 +126,10 @@ export async function getDayPlan(restaurantId: string, dateStr: string): Promise
       name: t.name,
       status: status as TableDTO["status"],
       seatsMin: t.capacityMin,
-      seatsMax: Math.max(t.capacityMin, t.capacityMax - (mergedIntoOwnCapacity.get(t.id) ?? 0)),
+      seatsMax: Math.max(
+        t.capacityMin,
+        t.capacityMax - (adHocMergedCapacity.get(t.id) ?? 0) + (detachedHalfCapacity.get(t.id) ?? 0)
+      ),
       shape: t.shape,
       x: t.x,
       y: t.y,
@@ -122,6 +144,10 @@ export async function getDayPlan(restaurantId: string, dateStr: string): Promise
       reservation: null,
       upcomingReservation: null,
       mergedIntoId: null,
+      // No split/join action from a future date's plan — it's a view of how
+      // the room normally stands, not tonight's live floor.
+      splitHalfNumber: null,
+      rejoinHalf: null,
       bookingCount: count,
     };
   });
