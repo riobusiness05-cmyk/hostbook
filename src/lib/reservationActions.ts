@@ -16,6 +16,7 @@ import { emitFloorChange } from "@/lib/hostflow/events";
 import { sendEmail, reservationConfirmationHtml, ownerBookingNotificationHtml } from "@/lib/email";
 import { getSettings } from "@/lib/hostflow/floor";
 import { verifyGuestCardSetup } from "@/lib/stripeConnect";
+import { senderIdentityFor } from "@/lib/hostflow/guestEmails";
 import type { Restaurant } from "@prisma/client";
 import type { CreateReservationInput } from "@/types";
 
@@ -211,11 +212,18 @@ export async function createReservationForRestaurant(
     if (input.customerEmail) {
       const manageUrl = `${appUrl}/manage/${reservation.id}?t=${manageToken}`;
       try {
+        // In the restaurant's own name and branding — to the guest this is
+        // The Colonial confirming their table, not a booking platform.
+        const emailSettings = await getSettings(restaurant.id);
         const result = await sendEmail({
           to: input.customerEmail,
           subject: `You're booked at ${restaurant.name}`,
+          ...senderIdentityFor(restaurant, emailSettings),
           html: reservationConfirmationHtml({
             restaurantName: restaurant.name,
+            brandColor: restaurant.brandColor,
+            logoUrl: restaurant.logoUrl,
+            address: restaurant.address,
             customerName: input.customerName,
             date: input.date,
             time: input.time,

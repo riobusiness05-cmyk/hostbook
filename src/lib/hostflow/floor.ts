@@ -220,6 +220,8 @@ export type SettingsDTO = {
   thankYouEmailSubject: string | null;
   thankYouEmailBody: string | null;
   googleReviewUrl: string | null;
+  emailFromName: string | null;
+  emailReplyTo: string | null;
 };
 
 const minutesBetween = (a: Date, b: Date) => Math.round((a.getTime() - b.getTime()) / 60000);
@@ -277,6 +279,8 @@ export async function getSettings(restaurantId: string): Promise<SettingsDTO> {
     thankYouEmailSubject: s.thankYouEmailSubject,
     thankYouEmailBody: s.thankYouEmailBody,
     googleReviewUrl: s.googleReviewUrl,
+    emailFromName: s.emailFromName,
+    emailReplyTo: s.emailReplyTo,
   };
 }
 

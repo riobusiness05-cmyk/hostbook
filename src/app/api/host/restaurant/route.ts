@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { hostContext } from "@/lib/hostflow/apiContext";
+import { senderAddressFor } from "@/lib/hostflow/guestEmails";
 
 // Restaurant-level fields (as opposed to RestaurantSettings, which is the
 // operational-policy table) — currently just `timezone`, which every date/
@@ -14,9 +15,10 @@ export async function GET(req: NextRequest) {
   if ("error" in ctx) return ctx.error;
   const restaurant = await prisma.restaurant.findUniqueOrThrow({
     where: { id: ctx.restaurantId },
-    select: { name: true, timezone: true, onboardingCompletedAt: true, brandColor: true, logoUrl: true, email: true },
+    select: { slug: true, name: true, timezone: true, onboardingCompletedAt: true, brandColor: true, logoUrl: true, email: true },
   });
-  return NextResponse.json({ restaurant });
+  const { slug, ...rest } = restaurant;
+  return NextResponse.json({ restaurant: { ...rest, senderAddress: senderAddressFor({ slug }) } });
 }
 
 const patchSchema = z.object({

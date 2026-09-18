@@ -24,7 +24,7 @@ export const PREMIUM_FEATURES = [
   "Everything in Professional",
   "Branded thank-you emails to every guest",
   "Google review link after each visit",
-  "Your own logo and colours on guest emails",
+  "Written in your own words, sent in your name",
   "Priority support",
 ];
 

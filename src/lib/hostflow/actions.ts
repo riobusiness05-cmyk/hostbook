@@ -3,7 +3,7 @@ import { emitFloorChange } from "./events";
 import { getSettings } from "./floor";
 import { TableStatus } from "./constants";
 import { chargeNoShowFee } from "@/lib/stripeConnect";
-import { sendThankYouForReservation } from "./guestEmails";
+import { thankYouCandidateFor, type ThankYouCandidate } from "./guestEmails";
 
 // Every function here is a small, auditable state transition. They all:
 //   1. mutate the DB,
@@ -95,9 +95,9 @@ export async function markClean(restaurantId: string, tableId: string) {
   emitFloorChange(restaurantId, "table");
 }
 
-export async function releaseTable(restaurantId: string, tableId: string) {
+export async function releaseTable(restaurantId: string, tableId: string): Promise<{ thankYou: ThankYouCandidate | null }> {
   // Remember who was sitting here before the session closes — a booked
-  // party leaving is the cue for their thank-you email (below).
+  // party leaving is the cue to offer staff a thank-you email (below).
   const leaving = await prisma.tableSession.findFirst({
     where: { tableId, status: "SEATED", reservationId: { not: null } },
     select: { reservationId: true },
@@ -111,12 +111,13 @@ export async function releaseTable(restaurantId: string, tableId: string) {
   });
   await recordStatus(restaurantId, tableId, "AVAILABLE");
 
-  // Best-effort and awaited (not fire-and-forget: on Vercel the function can
-  // be frozen the moment it responds, which would kill an in-flight send).
-  // Never lets a mail problem stop the table being freed.
+  // Nothing is sent here: staff are asked first (see TablePanel), so the
+  // release only reports whether there's someone worth asking about. Never
+  // lets a lookup problem stop the table being freed.
+  let thankYou: ThankYouCandidate | null = null;
   if (leaving?.reservationId) {
     try {
-      await sendThankYouForReservation(restaurantId, leaving.reservationId);
+      thankYou = await thankYouCandidateFor(restaurantId, leaving.reservationId);
     } catch (err) {
       console.error("[thank-you email]", leaving.reservationId, err);
     }
@@ -148,6 +149,7 @@ export async function releaseTable(restaurantId: string, tableId: string) {
     }
   }
   emitFloorChange(restaurantId, "table");
+  return { thankYou };
 }
 
 // Flag / unflag a seated party as waiting for an outdoor table to eat.

@@ -459,6 +459,12 @@ model RestaurantSettings {
   thankYouEmailSubject  String?  // null = "Thanks for visiting {restaurant}"
   thankYouEmailBody     String?  // null = the built-in default message; supports {name} and {restaurant}
   googleReviewUrl       String?  // the restaurant's "write a review" link; the button is hidden while null
+  // Who guest emails appear to come from. The address itself is always
+  // <slug>@<our verified sending domain>; these only override the display
+  // name (default: the restaurant's name) and where replies land (default:
+  // Restaurant.email).
+  emailFromName         String?
+  emailReplyTo          String?
 
   updatedAt             DateTime   @updatedAt
 }

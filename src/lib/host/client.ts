@@ -26,13 +26,32 @@ export async function fetchDayPlan(date: string, signal?: AbortSignal): Promise<
   return jsonOrThrow<DayPlan>(res);
 }
 
-export async function tableAction(tableId: string, action: TableAction): Promise<void> {
+export type ThankYouCandidate = { reservationId: string; customerName: string; customerEmail: string };
+
+export type TableActionResult = {
+  ok: true;
+  // Set by "release" when a booked guest with an email just left and the
+  // venue has thank-you emails on — the UI then asks staff whether to send.
+  thankYou?: ThankYouCandidate | null;
+};
+
+export async function tableAction(tableId: string, action: TableAction): Promise<TableActionResult> {
   const res = await fetch(`/api/host/tables/${tableId}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(action),
   });
-  await jsonOrThrow(res);
+  return jsonOrThrow<TableActionResult>(res);
+}
+
+export type ThankYouOutcome = { sent: true; to: string } | { sent: false; reason: string };
+
+/** Sends the thank-you email for a booking whose party has left. */
+export async function sendThankYou(reservationId: string): Promise<ThankYouOutcome> {
+  const res = await fetch(`/api/host/reservations/${reservationId}/thank-you`, { method: "POST" });
+  // 409 carries a plain reason ("already sent", "no email") — not an error to throw on.
+  if (res.status === 409) return (await res.json()) as ThankYouOutcome;
+  return jsonOrThrow<ThankYouOutcome>(res);
 }
 
 export async function addWalkin(input: {
@@ -287,6 +306,9 @@ export type RestaurantRow = {
   brandColor: string;
   logoUrl: string | null;
   email: string | null;
+  // The address guest emails are sent from — fixed per venue, shown in
+  // Settings → Emails so hosts know what their guests will see.
+  senderAddress: string;
 };
 
 export async function fetchRestaurant(): Promise<RestaurantRow> {

@@ -26,12 +26,40 @@ export function TablePanel({
   const [mode, setMode] = useState<Mode>("idle");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // After "Finish & release": the booked guest who just left, if a thank-you
+  // email could go to them — staff are asked, nothing is sent on its own.
+  const [thankYou, setThankYou] = useState<api.ThankYouCandidate | null>(null);
+  const [thankYouNote, setThankYouNote] = useState<string | null>(null);
 
   // Reset transient UI whenever a different table is opened.
   useEffect(() => {
     setMode("idle");
     setError(null);
+    setThankYou(null);
+    setThankYouNote(null);
   }, [table.id]);
+
+  const release = () =>
+    run(async () => {
+      const result = await api.tableAction(table.id, { action: "release" });
+      setThankYouNote(null);
+      setThankYou(result.thankYou ?? null);
+    });
+
+  const sendThankYouNow = async () => {
+    if (!thankYou) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const outcome = await api.sendThankYou(thankYou.reservationId);
+      setThankYouNote(outcome.sent ? `Thank-you email sent to ${outcome.to}.` : `Not sent — ${outcome.reason}`);
+      setThankYou(null);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   // Any open form (seat/move/merge/reserve) is mid-composition — a live
   // floor refresh landing while the host is filling one in would reset the
@@ -319,6 +347,25 @@ export function TablePanel({
       )}
       {mode === "idle" && !mergedIntoTable && (
         <div className="border-t border-black/5 p-3 dark:border-white/10">
+          {thankYou && (
+            <div className="mb-3 rounded-lg border border-emerald-500/30 bg-emerald-500/[0.07] p-2.5 text-xs">
+              <p className="font-semibold text-neutral-900 dark:text-white">
+                Send {thankYou.customerName.trim().split(/\s+/)[0]} a thank-you email?
+              </p>
+              <p className="mt-0.5 text-neutral-600 dark:text-neutral-300">
+                Goes to {thankYou.customerEmail}, in your branding, with your Google review link.
+              </p>
+              <div className="mt-2 flex gap-1.5">
+                <Button size="sm" variant="primary" disabled={busy} onClick={sendThankYouNow}>
+                  Send email
+                </Button>
+                <Button size="sm" variant="ghost" disabled={busy} onClick={() => setThankYou(null)}>
+                  Not now
+                </Button>
+              </div>
+            </div>
+          )}
+          {thankYouNote && <p className="mb-2 text-xs text-emerald-600 dark:text-emerald-400">{thankYouNote}</p>}
           <div className="grid grid-cols-2 gap-2">
             {!s && !r && table.status !== "BLOCKED" && (
               <>
@@ -356,7 +403,7 @@ export function TablePanel({
             {s && (
               <>
                 <Button onClick={() => setMode("move")} disabled={busy}>Move guests</Button>
-                <Button variant="danger" onClick={() => run(() => api.tableAction(table.id, { action: "release" }))} disabled={busy}>
+                <Button variant="danger" onClick={release} disabled={busy}>
                   Finish & release
                 </Button>
                 <Button

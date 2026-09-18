@@ -104,6 +104,8 @@ export const settingsSchema = z.object({
   thankYouEmailSubject: z.string().trim().max(150).nullable().optional(),
   thankYouEmailBody: z.string().trim().max(2000).nullable().optional(),
   googleReviewUrl: z.string().trim().url().max(500).nullable().optional(),
+  emailFromName: z.string().trim().min(1).max(80).nullable().optional(),
+  emailReplyTo: z.string().trim().email().max(200).nullable().optional(),
 });
 
 export const assistantSchema = z.object({

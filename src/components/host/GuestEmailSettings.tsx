@@ -40,6 +40,10 @@ export function GuestEmailSettings({
   const [reviewUrl, setReviewUrl] = useState(initialSettings.googleReviewUrl ?? "");
   const [brandColor, setBrandColor] = useState("#c9611f");
   const [logoUrl, setLogoUrl] = useState("");
+  // Sender identity — the address is fixed per venue; name and reply-to are theirs to set.
+  const [fromName, setFromName] = useState(initialSettings.emailFromName ?? "");
+  const [replyTo, setReplyTo] = useState(initialSettings.emailReplyTo ?? "");
+  const [venue, setVenue] = useState<{ name: string; email: string | null; senderAddress: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -54,6 +58,7 @@ export function GuestEmailSettings({
       .then((r) => {
         setBrandColor(r.brandColor);
         setLogoUrl(r.logoUrl ?? "");
+        setVenue({ name: r.name, email: r.email, senderAddress: r.senderAddress });
       })
       .catch(() => {});
   }, []);
@@ -69,12 +74,16 @@ export function GuestEmailSettings({
       if (url && !/^https?:\/\//i.test(url)) throw new Error("The review link should start with https://");
       const logo = logoUrl.trim();
       if (logo && !/^https?:\/\//i.test(logo)) throw new Error("The logo link should start with https://");
+      const reply = replyTo.trim();
+      if (reply && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(reply)) throw new Error("The reply-to should be a valid email address");
       await Promise.all([
         api.updateSettings({
           thankYouEmailEnabled: enabled,
           thankYouEmailSubject: subject.trim() || null,
           thankYouEmailBody: body.trim() || null,
           googleReviewUrl: url || null,
+          emailFromName: fromName.trim() || null,
+          emailReplyTo: reply || null,
         }),
         api.updateRestaurant({ brandColor, logoUrl: logo || null }),
       ]);
@@ -123,6 +132,56 @@ export function GuestEmailSettings({
           </div>
         </Card>
       )}
+
+      <Card className="p-5">
+        <SectionTitle>Sender</SectionTitle>
+        <p className="mb-4 text-sm text-neutral-500 dark:text-neutral-400">
+          Every email a guest gets from you — booking confirmations and thank-yous — comes from you, not from Host Flow.
+          Nothing to set up: your address is ready to go.
+        </p>
+        <div className="mb-4 rounded-lg border border-black/10 bg-black/[0.02] px-3 py-2.5 text-sm dark:border-white/10 dark:bg-white/[0.03]">
+          <p className="text-[11px] font-medium uppercase tracking-wider text-neutral-400">Guests see</p>
+          <p className="mt-0.5 font-semibold text-neutral-900 dark:text-white">
+            {fromName.trim() || venue?.name || "Your venue"}{" "}
+            <span className="font-mono text-xs font-normal text-neutral-500 dark:text-neutral-400">
+              &lt;{venue?.senderAddress ?? "…"}&gt;
+            </span>
+          </p>
+          <p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">
+            Replies go to{" "}
+            {replyTo.trim() || venue?.email ? (
+              <span className="font-medium text-neutral-700 dark:text-neutral-200">{replyTo.trim() || venue?.email}</span>
+            ) : (
+              <span className="text-amber-600 dark:text-amber-400">nowhere yet — add a reply-to below</span>
+            )}
+          </p>
+        </div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field label="From name" hint="How you appear in the guest's inbox. Leave blank to use your venue name.">
+            <input
+              className={inputCls}
+              placeholder={venue?.name ?? "Your venue"}
+              value={fromName}
+              onChange={(e) => {
+                setFromName(e.target.value);
+                dirty();
+              }}
+            />
+          </Field>
+          <Field label="Reply-to email" hint="When a guest hits reply, it lands here.">
+            <input
+              className={inputCls}
+              type="email"
+              placeholder={venue?.email ?? "you@yourvenue.com"}
+              value={replyTo}
+              onChange={(e) => {
+                setReplyTo(e.target.value);
+                dirty();
+              }}
+            />
+          </Field>
+        </div>
+      </Card>
 
       <Card className="p-5">
         <SectionTitle>Thank-you email</SectionTitle>

@@ -34,6 +34,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const tableId = params.id;
 
   try {
+    // Extra data a specific action hands back to the UI — today only
+    // "release" (whether to offer a thank-you email for the party that left).
+    let extra: Record<string, unknown> = {};
     switch (a.action) {
       case "seat":
         await seatParty(ctx.restaurantId, {
@@ -63,7 +66,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         await markClean(ctx.restaurantId, tableId);
         break;
       case "release":
-        await releaseTable(ctx.restaurantId, tableId);
+        extra = await releaseTable(ctx.restaurantId, tableId);
         break;
       case "block":
         await blockTable(ctx.restaurantId, tableId, a.note);
@@ -96,7 +99,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         break;
       }
     }
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, ...extra });
   } catch (err) {
     return handleActionError(err);
   }

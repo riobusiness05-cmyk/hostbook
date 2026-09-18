@@ -16,21 +16,20 @@ export async function sendEmail(params: {
   to: string;
   subject: string;
   html: string;
-  // Guest-facing mail from a restaurant goes out under the restaurant's own
-  // name ("The Colonial via Host Flow") with replies landing in their inbox,
-  // not ours — the sending address itself stays on our verified domain.
-  fromName?: string;
+  // Guest-facing mail from a restaurant goes out in the restaurant's own
+  // name and at its own address on our verified sending domain (see
+  // senderIdentityFor in hostflow/guestEmails.ts), with replies landing in
+  // the restaurant's inbox — not ours. Omitted = Host Flow's own identity.
+  from?: { name: string; address: string };
   replyTo?: string;
 }): Promise<{ ok: boolean; error?: string }> {
   const apiKey = process.env.RESEND_API_KEY;
-  // Fallback matches production's verified Resend domain (hostflow.space) —
-  // a sender on an unverified domain is rejected by Resend outright.
-  const defaultFrom = process.env.RESEND_FROM_EMAIL || "Host Flow <reservations@hostflow.space>";
-  const fromAddress = defaultFrom.match(/<([^>]+)>/)?.[1] ?? defaultFrom;
-  const from = params.fromName ? `${params.fromName.replace(/[<>"]/g, "")} via Host Flow <${fromAddress}>` : defaultFrom;
+  const from = params.from ? `${params.from.name.replace(/[<>"\r\n]/g, "").trim()} <${params.from.address}>` : defaultSender();
 
   if (!apiKey) {
-    console.log(`[email:not-configured] Would send to ${params.to}: "${params.subject}"\n${params.html}`);
+    console.log(
+      `[email:not-configured] Would send to ${params.to} from ${from}${params.replyTo ? ` (reply-to ${params.replyTo})` : ""}: "${params.subject}"\n${params.html}`
+    );
     return { ok: true };
   }
 
@@ -59,6 +58,21 @@ export async function sendEmail(params: {
     console.error(`[email:resend-error] request failed: ${error}`);
     return { ok: false, error };
   }
+}
+
+/** Host Flow's own sender, e.g. "Host Flow <reservations@hostflow.space>".
+ *  The fallback matches production's verified Resend domain — a sender on
+ *  an unverified domain is rejected by Resend outright. */
+function defaultSender(): string {
+  return process.env.RESEND_FROM_EMAIL || "Host Flow <reservations@hostflow.space>";
+}
+
+/** The domain every restaurant's own sender address lives on — whatever
+ *  domain the platform sender uses, since that's the one verified with
+ *  Resend. Restaurants get <slug>@this. */
+export function sendingDomain(): string {
+  const address = defaultSender().match(/<([^>]+)>/)?.[1] ?? defaultSender();
+  return address.split("@")[1] ?? "hostflow.space";
 }
 
 // ── Shared layout ────────────────────────────────────────────────────────
@@ -183,6 +197,9 @@ export function passwordResetEmailHtml(resetUrl: string, ownerName: string): str
 
 export function reservationConfirmationHtml(params: {
   restaurantName: string;
+  brandColor: string;
+  logoUrl: string | null;
+  address: string | null;
   customerName: string;
   date: string;
   time: string;
@@ -190,17 +207,26 @@ export function reservationConfirmationHtml(params: {
   manageUrl: string;
 }): string {
   const { restaurantName, customerName, date, time, partySize, manageUrl } = params;
+  const accent = readableOn(params.brandColor);
   const body =
-    emailHeading(`You're booked at ${escapeHtml(restaurantName)}`) +
-    emailParagraph(`Hi ${escapeHtml(customerName)}, your table is confirmed:`) +
+    emailHeading(`You're booked, ${escapeHtml(customerName.trim().split(/\s+/)[0] || customerName)}`) +
+    emailParagraph(`Your table at ${escapeHtml(restaurantName)} is confirmed:`) +
     emailDetailsTable([
       ["Date", date],
       ["Time", time],
       ["Party size", String(partySize)],
     ]) +
-    emailButton(manageUrl, "View or cancel your booking") +
+    brandButton(manageUrl, "View or change your booking", accent) +
+    emailParagraph(`Need to cancel or move it? The link above does both. We look forward to seeing you.`) +
     emailFallbackLink(manageUrl);
-  return emailLayout({ previewText: `You're booked at ${restaurantName} — ${date} at ${time}.`, bodyHtml: body });
+  return restaurantEmailLayout({
+    restaurantName,
+    brandColor: params.brandColor,
+    logoUrl: params.logoUrl,
+    address: params.address,
+    previewText: `You're booked at ${restaurantName} — ${date} at ${time}.`,
+    bodyHtml: body,
+  });
 }
 
 /** Sent to an account when it signs in from an IP it hasn't used before. */
@@ -291,11 +317,10 @@ export function paymentRequiredEmailHtml(params: { restaurantName: string; check
 }
 
 // ── Restaurant-branded guest email ───────────────────────────────────────
-// Unlike everything above (which is Host Flow writing to a restaurant),
-// this is a restaurant writing to its own guest, so it wears the
-// restaurant's colours and logo and Host Flow only appears as a footer
-// credit. Kept dependency-free and inline-styled like the rest.
-
+// Unlike the templates above (Host Flow writing to a restaurant), these are
+// a restaurant writing to its own guest: the restaurant's colour and logo
+// head the email, its name and address sign it off, and Host Flow appears
+// nowhere. Kept dependency-free and inline-styled like the rest.
 
 /** Swaps {name} / {restaurant} in a host-written subject or message. */
 export function fillThankYouTemplate(text: string, vars: { name: string; restaurant: string }): string {
@@ -314,44 +339,31 @@ function readableOn(hex: string): string {
   return `#${dim(r)}${dim(g)}${dim(b)}`;
 }
 
-export function thankYouEmailHtml(params: {
+const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif";
+
+function brandButton(url: string, label: string, accent: string): string {
+  return `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:22px auto 6px auto;">
+    <tr>
+      <td style="border-radius:8px; background:${accent};">
+        <a href="${escapeHtml(url)}" style="display:inline-block; padding:13px 26px; font-family:${FONT}; font-size:15px; font-weight:700; color:#ffffff; text-decoration:none; border-radius:8px;">${escapeHtml(label)}</a>
+      </td>
+    </tr>
+  </table>`;
+}
+
+export function restaurantEmailLayout(params: {
   restaurantName: string;
   brandColor: string;
   logoUrl: string | null;
   address: string | null;
-  customerName: string;
-  subject: string;
-  message: string;
-  reviewUrl: string | null;
+  previewText: string;
+  bodyHtml: string;
 }): string {
-  const { restaurantName, logoUrl, address, customerName, subject, message, reviewUrl } = params;
+  const { restaurantName, logoUrl, address, previewText, bodyHtml } = params;
   const accent = readableOn(params.brandColor);
-  const font = "-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif";
-  const vars = { name: customerName, restaurant: restaurantName };
-  const paragraphs = fillThankYouTemplate(message, vars)
-    .split(/\n{2,}/)
-    .map((p) => p.trim())
-    .filter(Boolean)
-    .map(
-      (p) =>
-        `<p style="margin:0 0 14px 0; font-family:${font}; font-size:15px; line-height:1.65; color:${INK_MUTED};">${escapeHtml(p).replace(/\n/g, "<br/>")}</p>`
-    )
-    .join("");
-
   const header = logoUrl
     ? `<img src="${escapeHtml(logoUrl)}" alt="${escapeHtml(restaurantName)}" style="display:block; max-height:64px; max-width:220px; margin:0 auto;" />`
     : `<span style="font-family:Georgia,'Times New Roman',serif; font-size:24px; font-weight:700; letter-spacing:0.02em; color:#ffffff;">${escapeHtml(restaurantName)}</span>`;
-
-  const reviewBlock = reviewUrl
-    ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:22px auto 6px auto;">
-        <tr>
-          <td style="border-radius:8px; background:${accent};">
-            <a href="${escapeHtml(reviewUrl)}" style="display:inline-block; padding:13px 26px; font-family:${font}; font-size:15px; font-weight:700; color:#ffffff; text-decoration:none; border-radius:8px;">Leave us a Google review</a>
-          </td>
-        </tr>
-      </table>
-      <p style="margin:0; font-family:${font}; font-size:12px; color:#9a9690; text-align:center;">It takes about a minute.</p>`
-    : "";
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -368,7 +380,7 @@ export function thankYouEmailHtml(params: {
 </style>
 </head>
 <body style="margin:0; padding:0; background:${PAGE_BG}; -webkit-text-size-adjust:100%;">
-  <div style="display:none; max-height:0; overflow:hidden; opacity:0;">${escapeHtml(fillThankYouTemplate(subject, vars))}</div>
+  <div style="display:none; max-height:0; overflow:hidden; opacity:0;">${escapeHtml(previewText)}</div>
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${PAGE_BG};">
     <tr>
       <td align="center" style="padding:32px 16px;">
@@ -379,21 +391,55 @@ export function thankYouEmailHtml(params: {
             </td>
           </tr>
           <tr>
-            <td class="hf-card" style="background:${CARD_BG}; padding:32px; font-family:${font};">
-              ${paragraphs}
-              ${reviewBlock}
+            <td class="hf-card" style="background:${CARD_BG}; padding:32px; font-family:${FONT};">
+              ${bodyHtml}
             </td>
           </tr>
           <tr>
-            <td style="background:${CARD_BG}; border-top:1px solid ${BORDER}; padding:16px 32px; font-family:${font}; font-size:12px; line-height:1.6; color:#9a9690; text-align:center;">
+            <td style="background:${CARD_BG}; border-top:1px solid ${BORDER}; padding:16px 32px; font-family:${FONT}; font-size:12px; line-height:1.6; color:#9a9690; text-align:center;">
               <strong style="color:${INK_MUTED};">${escapeHtml(restaurantName)}</strong>${address ? `<br/>${escapeHtml(address)}` : ""}
             </td>
           </tr>
         </table>
-        <p style="margin:18px 0 0 0; font-family:${font}; font-size:11px; color:#b5b0a8; text-align:center;">Sent with Host Flow</p>
       </td>
     </tr>
   </table>
 </body>
 </html>`;
+}
+
+export function thankYouEmailHtml(params: {
+  restaurantName: string;
+  brandColor: string;
+  logoUrl: string | null;
+  address: string | null;
+  customerName: string;
+  subject: string;
+  message: string;
+  reviewUrl: string | null;
+}): string {
+  const { restaurantName, customerName, subject, message, reviewUrl } = params;
+  const accent = readableOn(params.brandColor);
+  const vars = { name: customerName, restaurant: restaurantName };
+  const paragraphs = fillThankYouTemplate(message, vars)
+    .split(/\n{2,}/)
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .map(
+      (p) =>
+        `<p style="margin:0 0 14px 0; font-family:${FONT}; font-size:15px; line-height:1.65; color:${INK_MUTED};">${escapeHtml(p).replace(/\n/g, "<br/>")}</p>`
+    )
+    .join("");
+  const reviewBlock = reviewUrl
+    ? brandButton(reviewUrl, "Leave us a Google review", accent) +
+      `<p style="margin:0; font-family:${FONT}; font-size:12px; color:#9a9690; text-align:center;">It takes about a minute.</p>`
+    : "";
+  return restaurantEmailLayout({
+    restaurantName,
+    brandColor: params.brandColor,
+    logoUrl: params.logoUrl,
+    address: params.address,
+    previewText: fillThankYouTemplate(subject, vars),
+    bodyHtml: paragraphs + reviewBlock,
+  });
 }

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { hostContext } from "@/lib/hostflow/apiContext";
 import { getSettings } from "@/lib/hostflow/floor";
-import { renderThankYouEmail } from "@/lib/hostflow/guestEmails";
+import { renderThankYouEmail, senderIdentityFor } from "@/lib/hostflow/guestEmails";
 import { sendEmail } from "@/lib/email";
 import { hasPremiumFeatures } from "@/lib/billing/subscription";
 
@@ -36,13 +36,7 @@ export async function POST(req: NextRequest) {
     prisma.account.findUniqueOrThrow({ where: { id: ctx.accountId }, select: { email: true, name: true } }),
   ]);
   const { subject, html } = renderThankYouEmail(restaurant, settings, account.name?.split(/\s+/)[0] || "there");
-  const result = await sendEmail({
-    to: account.email,
-    subject: `[Test] ${subject}`,
-    html,
-    fromName: restaurant.name,
-    replyTo: restaurant.email ?? undefined,
-  });
+  const result = await sendEmail({ to: account.email, subject: `[Test] ${subject}`, html, ...senderIdentityFor(restaurant, settings) });
   if (!result.ok) return NextResponse.json({ error: `Couldn't send — ${result.error}` }, { status: 502 });
   return NextResponse.json({ ok: true, to: account.email });
 }
