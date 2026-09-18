@@ -23,7 +23,9 @@ export async function sendEmail(params: {
   replyTo?: string;
 }): Promise<{ ok: boolean; error?: string }> {
   const apiKey = process.env.RESEND_API_KEY;
-  const defaultFrom = process.env.RESEND_FROM_EMAIL || "Host Flow <onboarding@hostflow.app>";
+  // Fallback matches production's verified Resend domain (hostflow.space) —
+  // a sender on an unverified domain is rejected by Resend outright.
+  const defaultFrom = process.env.RESEND_FROM_EMAIL || "Host Flow <reservations@hostflow.space>";
   const fromAddress = defaultFrom.match(/<([^>]+)>/)?.[1] ?? defaultFrom;
   const from = params.fromName ? `${params.fromName.replace(/[<>"]/g, "")} via Host Flow <${fromAddress}>` : defaultFrom;
 
