@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { HostFlowLogo } from "@/components/HostFlowLogo";
 import { listActivePlans } from "@/lib/billing/subscription";
+import { PREMIUM_PLAN_KEY, PROFESSIONAL_FEATURES } from "@/lib/billing/catalogue";
 
 const TITLE = "Host Flow — The operating system for your floor";
 const DESCRIPTION =
@@ -41,6 +42,10 @@ const FAQS = [
     a: "Yes. Cancel from your Billing settings whenever you like — you'll keep access through the end of your current billing period, no questions asked.",
   },
   {
+    q: "What's the difference between Professional and Premium?",
+    a: "Professional runs your floor: reservations, the live floor plan, waitlist, staff accounts and analytics. Premium adds automatic guest emails — when a booked party leaves, they get a thank-you in your branding with a link to your Google review page. You can switch plans anytime from Billing.",
+  },
+  {
     q: "Do you support annual billing?",
     a: "Monthly billing is available today; annual pricing is coming soon and will offer a discount over paying monthly.",
   },
@@ -56,7 +61,6 @@ const FAQS = [
 
 export default async function HostFlowLanding() {
   const plans = await listActivePlans();
-  const professional = plans[0] ?? null;
 
   // Structured data for search engines — a SoftwareApplication + Organization
   // pair so Google can identify this as the product/company (distinct from
@@ -73,13 +77,14 @@ export default async function HostFlowLanding() {
       operatingSystem: "Web",
       description: DESCRIPTION,
       url: "https://hostflow.space/hostflow",
-      offers: {
+      offers: (plans.length > 0 ? plans : [{ name: "Professional", monthlyPriceCents: 3000 }]).map((p) => ({
         "@type": "Offer",
-        price: professional ? (professional.monthlyPriceCents / 100).toFixed(2) : "30.00",
+        name: p.name,
+        price: (p.monthlyPriceCents / 100).toFixed(2),
         priceCurrency: "USD",
         priceValidUntil: `${new Date().getFullYear() + 1}-12-31`,
         url: "https://hostflow.space/hostflow/signup",
-      },
+      })),
     },
     {
       "@context": "https://schema.org",
@@ -206,54 +211,55 @@ export default async function HostFlowLanding() {
         <section id="pricing" className="mx-auto max-w-6xl px-6 pb-24">
           <div className="mb-10 text-center">
             <h2 className="font-display text-3xl tracking-tight sm:text-4xl">Simple, honest pricing.</h2>
-            <p className="mx-auto mt-3 max-w-xl text-hf-inkMuted">One plan, everything included. No setup fees, no per-seat tricks.</p>
+            <p className="mx-auto mt-3 max-w-xl text-hf-inkMuted">Two plans, no setup fees, no per-seat tricks. Start on either with a free trial.</p>
           </div>
 
-          <div className="mx-auto max-w-md">
-            <div className="relative overflow-hidden rounded-3xl border border-brand-400/25 bg-hf-surface p-8">
-              <div className="hf-blueprint pointer-events-none absolute inset-0 opacity-40 [mask-image:linear-gradient(to_bottom,black,transparent)]" />
-              <div className="relative">
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-brand-400/30 bg-brand-500/10 px-2.5 py-1 font-mono text-xs text-brand-300">
-                  7-day free trial
-                </span>
-                <h3 className="mt-4 font-display text-2xl">{professional?.name ?? "Professional"}</h3>
-                <p className="mt-1 flex items-baseline gap-1 font-mono">
-                  <span className="text-4xl font-semibold tracking-tight text-hf-ink">
-                    ${professional ? (professional.monthlyPriceCents / 100).toFixed(0) : "30"}
-                  </span>
-                  <span className="text-hf-inkMuted">/month</span>
-                </p>
-                {professional?.description && <p className="mt-2 text-sm text-hf-inkMuted">{professional.description}</p>}
-
-                <Link
-                  href="/hostflow/signup"
-                  className="mt-6 block w-full rounded-xl bg-brand-400 py-3 text-center text-sm font-semibold text-hf-bg transition-transform hover:scale-[1.02]"
+          <div className="mx-auto grid max-w-4xl grid-cols-1 gap-6 md:grid-cols-2">
+            {(plans.length > 0 ? plans : [null]).map((p, i) => {
+              const featured = p ? p.key === PREMIUM_PLAN_KEY : false;
+              const name = p?.name ?? "Professional";
+              const price = p ? (p.monthlyPriceCents / 100).toFixed(0) : "30";
+              const features = p?.features ?? PROFESSIONAL_FEATURES;
+              return (
+                <div
+                  key={p?.key ?? i}
+                  className={`relative overflow-hidden rounded-3xl border bg-hf-surface p-8 ${
+                    featured ? "border-brand-400/50 shadow-[0_0_60px_-20px_rgba(232,187,96,0.5)]" : "border-brand-400/25"
+                  }`}
                 >
-                  Start Free Trial
-                </Link>
-                <p className="mt-2 text-center text-xs text-hf-inkFaint">No card required to start.</p>
+                  <div className="hf-blueprint pointer-events-none absolute inset-0 opacity-40 [mask-image:linear-gradient(to_bottom,black,transparent)]" />
+                  <div className="relative">
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-brand-400/30 bg-brand-500/10 px-2.5 py-1 font-mono text-xs text-brand-300">
+                      {featured ? "Most reviews per euro" : "7-day free trial"}
+                    </span>
+                    <h3 className="mt-4 font-display text-2xl">{name}</h3>
+                    <p className="mt-1 flex items-baseline gap-1 font-mono">
+                      <span className="text-4xl font-semibold tracking-tight text-hf-ink">${price}</span>
+                      <span className="text-hf-inkMuted">/month</span>
+                    </p>
+                    {p?.description && <p className="mt-2 text-sm text-hf-inkMuted">{p.description}</p>}
 
-                <ul className="mt-6 space-y-2.5 border-t border-hf-line pt-6">
-                  {(professional?.features ?? [
-                    "Unlimited reservations",
-                    "AI table allocation",
-                    "Booking website",
-                    "Live floor plans",
-                    "Waitlist management",
-                    "Staff accounts",
-                    "Analytics",
-                    "Workflows",
-                  ]).map((f) => (
-                    <li key={f} className="flex items-center gap-2.5 text-sm text-hf-ink/90">
-                      <CheckIcon /> {f}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-            <p className="mt-4 text-center text-xs text-hf-inkFaint">
-              More plans (Starter, Enterprise) are on the way — this page updates automatically when they launch.
-            </p>
+                    <Link
+                      href="/hostflow/signup"
+                      className={`mt-6 block w-full rounded-xl py-3 text-center text-sm font-semibold transition-transform hover:scale-[1.02] ${
+                        featured ? "bg-brand-400 text-hf-bg" : "border border-brand-400/40 text-hf-ink hover:bg-brand-500/10"
+                      }`}
+                    >
+                      Start Free Trial
+                    </Link>
+                    <p className="mt-2 text-center text-xs text-hf-inkFaint">No card required to start.</p>
+
+                    <ul className="mt-6 space-y-2.5 border-t border-hf-line pt-6">
+                      {features.map((f) => (
+                        <li key={f} className="flex items-center gap-2.5 text-sm text-hf-ink/90">
+                          <CheckIcon /> {f}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </section>
 

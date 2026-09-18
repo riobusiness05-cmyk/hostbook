@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { ensurePlanCatalogue, isPremium, planForStripePrice } from "./plans";
 import { getClient, isStripeConfigured, mapStripeStatus } from "@/lib/stripe";
 import type { Subscription } from "@prisma/client";
 
@@ -73,7 +74,21 @@ function toPlanDTO(plan: { id: string; key: string; name: string; description: s
 }
 
 async function getDefaultPlan() {
+  await ensurePlanCatalogue();
   return prisma.plan.findFirst({ where: { key: DEFAULT_PLAN_KEY } });
+}
+
+/** Whether a restaurant is on a plan that includes the premium-only
+ *  features (branded guest emails). Complimentary accounts always are. */
+export async function hasPremiumFeatures(restaurantId: string): Promise<boolean> {
+  return isPremium(await getBillingState(restaurantId));
+}
+
+/** `{ planId }` for the plan a Stripe price belongs to, or nothing if the
+ *  price is unknown — so an unrecognised price never clears the plan. */
+async function planIdForPrice(priceId: string | null | undefined): Promise<{ planId?: string }> {
+  const plan = await planForStripePrice(priceId);
+  return plan ? { planId: plan.id } : {};
 }
 
 /** Finds the restaurant's Subscription row, creating a fresh trial if none exists yet. */
@@ -149,6 +164,7 @@ export async function hasAccess(restaurantId: string): Promise<boolean> {
 }
 
 export async function listActivePlans(): Promise<PlanDTO[]> {
+  await ensurePlanCatalogue();
   const plans = await prisma.plan.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" } });
   return plans.map((p) => toPlanDTO(p)!);
 }
@@ -381,6 +397,7 @@ export async function reconcileSubscriptionFromStripe(restaurantId: string): Pro
       stripeCustomerId: customerId,
       stripeSubscriptionId: stripeSub.id,
       stripePriceId: item?.price?.id ?? null,
+      ...(await planIdForPrice(item?.price?.id)),
       currentPeriodStart: item ? new Date(item.current_period_start * 1000) : sub.currentPeriodStart,
       currentPeriodEnd: item ? new Date(item.current_period_end * 1000) : sub.currentPeriodEnd,
       cancelAtPeriodEnd: stripeSub.cancel_at_period_end,

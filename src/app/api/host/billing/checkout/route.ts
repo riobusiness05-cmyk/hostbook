@@ -5,6 +5,7 @@ import { checkoutSchema } from "@/lib/billing/schemas";
 import { getOrCreateSubscriptionRow, reconcileSubscriptionFromStripe, TRIAL_DAYS } from "@/lib/billing/subscription";
 import { createCheckoutSession, getOrCreateStripeCustomer, hasLiveStripeSubscription, isStripeConfigured } from "@/lib/stripe";
 import { HostFlowError } from "@/lib/hostflow/actions";
+import { stripePriceIdFor } from "@/lib/billing/plans";
 
 // Starts (or resumes) a Stripe Checkout session for the logged-in venue.
 // Ensures a Stripe customer exists first so the resulting subscription is
@@ -53,14 +54,13 @@ export async function POST(req: NextRequest) {
     // had one (avoids letting someone repeatedly reset a free trial).
     const trialDays = sub.trialStartedAt ? undefined : TRIAL_DAYS;
 
-    // The Plan row's stripeMonthlyPriceId is normally set once via the
-    // Stripe dashboard/API when a plan is created — it falls back to
-    // STRIPE_PROFESSIONAL_MONTHLY_PRICE_ID here so the Professional plan
-    // works the moment that env var is set, without needing a DB migration
-    // to backfill it.
+    // A Plan row's stripeMonthlyPriceId is normally set once via the Stripe
+    // dashboard/API — stripePriceIdFor falls back to the plan's env var
+    // (STRIPE_PROFESSIONAL_MONTHLY_PRICE_ID / STRIPE_PREMIUM_MONTHLY_PRICE_ID)
+    // so a tier works the moment that var is set, no DB backfill needed.
     const planWithPrice = {
       ...plan,
-      stripeMonthlyPriceId: plan.stripeMonthlyPriceId || process.env.STRIPE_PROFESSIONAL_MONTHLY_PRICE_ID || null,
+      stripeMonthlyPriceId: stripePriceIdFor(plan, "MONTH"),
     };
 
     const url = await createCheckoutSession({

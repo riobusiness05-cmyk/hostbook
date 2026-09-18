@@ -36,6 +36,10 @@ export const checkoutSchema = z.object({
 });
 export type CheckoutInput = z.infer<typeof checkoutSchema>;
 
+export const changePlanSchema = z.object({
+  planKey: z.string().min(1).max(60),
+});
+
 // ── Platform admin actions ────────────────────────────────────────────────
 export const extendTrialSchema = z.object({
   restaurantId: z.string().min(1),

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { planForStripePrice } from "@/lib/billing/plans";
 import Stripe from "stripe";
 import { prisma } from "@/lib/prisma";
 import { getClient, mapStripeStatus, createBillingPortalSession } from "@/lib/stripe";
@@ -98,6 +99,7 @@ async function handleSubscriptionUpsert(event: Stripe.Event) {
 
   const item = stripeSub.items.data[0];
   const status = mapStripeStatus(stripeSub.status);
+  const boughtPlan = await planForStripePrice(item?.price?.id);
 
   const updated = await prisma.subscription.update({
     where: { id: existing.id },
@@ -105,6 +107,8 @@ async function handleSubscriptionUpsert(event: Stripe.Event) {
       status,
       stripeSubscriptionId: stripeSub.id,
       stripePriceId: item?.price?.id ?? null,
+      // The price tells us which tier was bought (or switched to).
+      ...(boughtPlan ? { planId: boughtPlan.id } : {}),
       currentPeriodStart: item ? new Date(item.current_period_start * 1000) : existing.currentPeriodStart,
       currentPeriodEnd: item ? new Date(item.current_period_end * 1000) : existing.currentPeriodEnd,
       cancelAtPeriodEnd: stripeSub.cancel_at_period_end,

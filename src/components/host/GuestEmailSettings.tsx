@@ -24,7 +24,16 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
   );
 }
 
-export function GuestEmailSettings({ initialSettings }: { initialSettings: SettingsDTO }) {
+export function GuestEmailSettings({
+  initialSettings,
+  premium,
+  onUpgrade,
+}: {
+  initialSettings: SettingsDTO;
+  /** On a plan that includes guest emails (Premium, or complimentary). */
+  premium: boolean;
+  onUpgrade: () => void;
+}) {
   const [enabled, setEnabled] = useState(initialSettings.thankYouEmailEnabled);
   const [subject, setSubject] = useState(initialSettings.thankYouEmailSubject ?? "");
   const [body, setBody] = useState(initialSettings.thankYouEmailBody ?? "");
@@ -98,6 +107,23 @@ export function GuestEmailSettings({ initialSettings }: { initialSettings: Setti
         <Card className="border-red-500/30 bg-red-500/10 p-4 text-sm text-red-600 dark:text-red-400">{error}</Card>
       )}
 
+      {!premium && (
+        <Card className="border-amber-500/30 bg-gradient-to-br from-amber-500/10 to-transparent p-5">
+          <p className="text-xs font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400">Premium</p>
+          <h3 className="mt-1 text-lg font-bold">Turn every visit into a Google review</h3>
+          <p className="mt-1 max-w-xl text-sm text-neutral-600 dark:text-neutral-300">
+            The moment staff mark a booked table as finished, the guest gets a thank-you in your branding with a
+            one-tap link to your Google review page. You can write the message and see the preview below — switching it
+            on is part of the Premium plan.
+          </p>
+          <div className="mt-3">
+            <Button variant="primary" onClick={onUpgrade}>
+              Upgrade to Premium
+            </Button>
+          </div>
+        </Card>
+      )}
+
       <Card className="p-5">
         <SectionTitle>Thank-you email</SectionTitle>
         <p className="mb-4 text-sm text-neutral-500 dark:text-neutral-400">
@@ -109,12 +135,14 @@ export function GuestEmailSettings({ initialSettings }: { initialSettings: Setti
           <input
             type="checkbox"
             checked={enabled}
+            disabled={!premium}
             onChange={(e) => {
               setEnabled(e.target.checked);
               dirty();
             }}
           />
           Send a thank-you email when a booked party leaves
+          {!premium && <span className="text-xs text-amber-600 dark:text-amber-400">— Premium</span>}
         </label>
 
         <div className="mt-4 grid grid-cols-1 gap-4">
@@ -200,9 +228,11 @@ export function GuestEmailSettings({ initialSettings }: { initialSettings: Setti
         <Button variant="primary" onClick={save} disabled={saving}>
           {saving ? "Saving…" : "Save"}
         </Button>
-        <Button onClick={sendTest} disabled={testing}>
-          {testing ? "Sending…" : "Send me a test email"}
-        </Button>
+        {premium && (
+          <Button onClick={sendTest} disabled={testing}>
+            {testing ? "Sending…" : "Send me a test email"}
+          </Button>
+        )}
         {saved && <span className="text-sm text-emerald-600 dark:text-emerald-400">Saved ✓</span>}
         {testNote && <span className="text-sm text-neutral-500 dark:text-neutral-400">{testNote}</span>}
       </div>

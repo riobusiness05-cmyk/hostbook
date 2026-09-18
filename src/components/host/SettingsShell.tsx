@@ -11,6 +11,7 @@ import { HoursSettings } from "./HoursSettings";
 import { TableAvailabilitySettings } from "./TableAvailabilitySettings";
 import { WebsiteWidgetSettings } from "./WebsiteWidgetSettings";
 import type { BillingState, PlanDTO } from "@/lib/billing/subscription";
+import { isPremium } from "@/lib/billing/catalogue";
 import type { SettingsDTO } from "@/lib/hostflow/floor";
 import type { HourRow, TableRow } from "@/lib/host/client";
 
@@ -110,7 +111,9 @@ export function SettingsShell({
           {tab === "hours" && <HoursSettings initialHours={initialHours} />}
           {tab === "tables" && <TableAvailabilitySettings initialTables={initialTables} />}
           {tab === "website" && <WebsiteWidgetSettings restaurantSlug={restaurantSlug} />}
-          {tab === "emails" && <GuestEmailSettings initialSettings={initialSettings} />}
+          {tab === "emails" && (
+            <GuestEmailSettings initialSettings={initialSettings} premium={isPremium(initialBilling)} onUpgrade={() => setTab("billing")} />
+          )}
         </main>
       </div>
     </div>

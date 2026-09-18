@@ -110,6 +110,34 @@ export function BillingSection({
     }
   };
 
+  // Paying venues switch plans in place (prorated); everyone else starts a
+  // subscription on the plan they picked.
+  const choosePlan = async (planKey: string) => {
+    const paying = !!billing.stripeSubscriptionId && (billing.status === "ACTIVE" || billing.status === "PAST_DUE" || billing.status === "TRIAL");
+    if (!paying) return startCheckout(planKey);
+    const target = plans.find((p) => p.key === planKey);
+    const current = billing.plan;
+    const downgrade = target && current && target.monthlyPriceCents < current.monthlyPriceCents;
+    if (
+      !window.confirm(
+        downgrade
+          ? `Switch to ${target.name}? Premium features (guest thank-you emails) stop immediately; the unused part of this month is credited to your next invoice.`
+          : `Switch to ${target?.name ?? planKey}? You'll be charged the prorated difference for the rest of this billing period.`
+      )
+    ) {
+      return;
+    }
+    setBusy("plan");
+    setError(null);
+    try {
+      setBilling(await api.changePlan(planKey));
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const resume = async () => {
     setBusy("resume");
     setError(null);
@@ -207,17 +235,57 @@ export function BillingSection({
             </div>
           </Card>
 
-          {/* Plan features */}
-          {plan && plan.features.length > 0 && (
+          {/* Plans */}
+          {plans.length > 0 && (
             <Card className="p-5">
-              <SectionTitle>What&apos;s included</SectionTitle>
-              <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                {plan.features.map((f) => (
-                  <li key={f} className="flex items-center gap-2 text-sm text-neutral-700 dark:text-neutral-200">
-                    <span className="text-emerald-500">✓</span> {f}
-                  </li>
-                ))}
-              </ul>
+              <SectionTitle>Plans</SectionTitle>
+              <div className={`grid grid-cols-1 gap-3 ${plans.length > 1 ? "sm:grid-cols-2" : ""}`}>
+                {plans.map((p) => {
+                  const isCurrent = plan?.key === p.key;
+                  const canSwitch = !billing.isComplimentary && !isCurrent && billing.stripeConfigured;
+                  const upgrade = plan ? p.monthlyPriceCents > plan.monthlyPriceCents : true;
+                  return (
+                    <div
+                      key={p.key}
+                      className={
+                        "rounded-xl border p-4 " +
+                        (isCurrent
+                          ? "border-sky-500/50 bg-sky-500/5"
+                          : "border-black/10 dark:border-white/10")
+                      }
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="text-base font-bold">{p.name}</p>
+                          <p className="text-sm text-neutral-500 dark:text-neutral-400">{formatCents(p.monthlyPriceCents)}/month</p>
+                        </div>
+                        {isCurrent && <Chip color="#0ea5e9">Current</Chip>}
+                      </div>
+                      {p.description && <p className="mt-2 text-xs text-neutral-500 dark:text-neutral-400">{p.description}</p>}
+                      <ul className="mt-3 space-y-1.5">
+                        {p.features.map((f) => (
+                          <li key={f} className="flex items-center gap-2 text-sm text-neutral-700 dark:text-neutral-200">
+                            <span className="text-emerald-500">✓</span> {f}
+                          </li>
+                        ))}
+                      </ul>
+                      {canSwitch && (
+                        <Button
+                          variant={upgrade ? "primary" : "secondary"}
+                          className="mt-4 w-full"
+                          disabled={busy === "plan" || busy === "checkout"}
+                          onClick={() => choosePlan(p.key)}
+                        >
+                          {busy === "plan" ? "Switching…" : upgrade ? `Upgrade to ${p.name}` : `Switch to ${p.name}`}
+                        </Button>
+                      )}
+                      {billing.isComplimentary && !isCurrent && (
+                        <p className="mt-4 text-xs text-neutral-400">Included — complimentary accounts have every feature.</p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </Card>
           )}
 

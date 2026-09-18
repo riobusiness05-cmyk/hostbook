@@ -213,6 +213,17 @@ export async function cancelSubscription(): Promise<BillingState> {
   return data.billing;
 }
 
+/** Moves a paying venue onto another plan (prorated by Stripe). */
+export async function changePlan(planKey: string): Promise<BillingState> {
+  const res = await fetch("/api/host/billing/change-plan", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ planKey }),
+  });
+  const data = await jsonOrThrow<{ billing: BillingState }>(res);
+  return data.billing;
+}
+
 export async function resumeSubscription(): Promise<BillingState> {
   const res = await fetch("/api/host/billing/resume", { method: "POST" });
   const data = await jsonOrThrow<{ billing: BillingState }>(res);

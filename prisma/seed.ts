@@ -1,40 +1,15 @@
 import { PrismaClient } from "@prisma/client";
 import crypto from "crypto";
-import { grantComplimentary, startTrial, DEFAULT_PLAN_KEY } from "../src/lib/billing/subscription";
+import { grantComplimentary, startTrial } from "../src/lib/billing/subscription";
+import { ensurePlanCatalogue } from "../src/lib/billing/plans";
 
 const prisma = new PrismaClient();
 
-const PROFESSIONAL_FEATURES = [
-  "Unlimited reservations",
-  "AI table allocation",
-  "Booking website",
-  "Live floor plans",
-  "Waitlist management",
-  "Staff accounts",
-  "Analytics",
-  "Workflows",
-];
 
-/** Upserts the Professional plan catalogue row. Called once — Plan rows are
- *  global, not per-restaurant. */
+/** Upserts every catalogue plan (Professional, Premium). Plan rows are
+ *  global, not per-restaurant — the same code path production uses. */
 async function seedPlans() {
-  await prisma.plan.upsert({
-    where: { key: DEFAULT_PLAN_KEY },
-    create: {
-      key: DEFAULT_PLAN_KEY,
-      name: "Professional",
-      description: "Everything a high-volume restaurant or bar needs to run its floor.",
-      monthlyPriceCents: 3000,
-      sortOrder: 0,
-      features: JSON.stringify(PROFESSIONAL_FEATURES),
-    },
-    update: {
-      name: "Professional",
-      description: "Everything a high-volume restaurant or bar needs to run its floor.",
-      monthlyPriceCents: 3000,
-      features: JSON.stringify(PROFESSIONAL_FEATURES),
-    },
-  });
+  await ensurePlanCatalogue();
 }
 
 /** Seeds a restaurant's Subscription row — complimentary for early partners

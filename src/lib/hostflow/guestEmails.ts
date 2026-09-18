@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { getSettings } from "@/lib/hostflow/floor";
 import { fillThankYouTemplate, sendEmail, thankYouEmailHtml } from "@/lib/email";
 import { DEFAULT_THANK_YOU_BODY, DEFAULT_THANK_YOU_SUBJECT } from "./constants";
+import { hasPremiumFeatures } from "@/lib/billing/subscription";
 import type { Restaurant } from "@prisma/client";
 import type { SettingsDTO } from "@/lib/hostflow/floor";
 
@@ -47,6 +48,9 @@ export type ThankYouOutcome = { sent: true } | { sent: false; reason: string };
 export async function sendThankYouForReservation(restaurantId: string, reservationId: string): Promise<ThankYouOutcome> {
   const settings = await getSettings(restaurantId);
   if (!settings.thankYouEmailEnabled) return { sent: false, reason: "disabled" };
+  // Premium feature: a venue that downgraded keeps its wording saved, but
+  // nothing goes out until they're back on Premium.
+  if (!(await hasPremiumFeatures(restaurantId))) return { sent: false, reason: "plan" };
 
   const reservation = await prisma.reservation.findUnique({ where: { id: reservationId } });
   if (!reservation || reservation.restaurantId !== restaurantId) return { sent: false, reason: "reservation not found" };

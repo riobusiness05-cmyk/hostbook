@@ -4,6 +4,7 @@ import { hostContext } from "@/lib/hostflow/apiContext";
 import { getSettings } from "@/lib/hostflow/floor";
 import { renderThankYouEmail } from "@/lib/hostflow/guestEmails";
 import { sendEmail } from "@/lib/email";
+import { hasPremiumFeatures } from "@/lib/billing/subscription";
 
 // The thank-you email as the guest will see it. GET renders a preview of
 // what's currently SAVED (the settings page embeds it in an iframe); POST
@@ -26,6 +27,9 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const ctx = await hostContext(req);
   if ("error" in ctx) return ctx.error;
+  if (!(await hasPremiumFeatures(ctx.restaurantId))) {
+    return NextResponse.json({ error: "Guest thank-you emails are part of the Premium plan." }, { status: 403 });
+  }
   const [restaurant, settings, account] = await Promise.all([
     prisma.restaurant.findUniqueOrThrow({ where: { id: ctx.restaurantId } }),
     getSettings(ctx.restaurantId),
