@@ -59,6 +59,7 @@ model Restaurant {
   tableSessions       TableSession[]
   walkins             Walkin[]
   notifications       Notification[]
+  emailLogs           EmailLog[]
   tableStatusHistory  TableStatusHistory[]
   settings            RestaurantSettings?
 
@@ -630,4 +631,23 @@ model RateLimitHit {
 
   @@unique([key, windowStart])
   @@index([windowStart])
+}
+
+// Every email the platform tries to send, and what happened to it — so a
+// host can see "was the thank-you sent?" in Settings → Emails instead of
+// guessing, and a missing signup email can be diagnosed from the row's
+// error text rather than from serverless logs that keep no console output.
+model EmailLog {
+  id           String      @id @default(cuid())
+  restaurantId String?
+  restaurant   Restaurant? @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  kind         String      // SIGNUP_VERIFY | PASSWORD_RESET | LOGIN_ALERT | BOOKING_CONFIRMATION | OWNER_NEW_BOOKING | THANK_YOU | THANK_YOU_TEST | PAYMENT_FAILED | PAYMENT_REQUIRED
+  to           String
+  subject      String
+  status       String      // SENT (accepted by Resend) | FAILED (Resend refused it) | SKIPPED (no RESEND_API_KEY, local dev)
+  error        String?
+  providerId   String?     // Resend's message id — searchable in the Resend dashboard
+  createdAt    DateTime    @default(now())
+
+  @@index([restaurantId, createdAt])
 }

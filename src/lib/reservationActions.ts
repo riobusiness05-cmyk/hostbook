@@ -219,6 +219,7 @@ export async function createReservationForRestaurant(
           to: input.customerEmail,
           subject: `You're booked at ${restaurant.name}`,
           ...senderIdentityFor(restaurant, emailSettings),
+          meta: { kind: "BOOKING_CONFIRMATION", restaurantId: restaurant.id },
           html: reservationConfirmationHtml({
             restaurantName: restaurant.name,
             brandColor: restaurant.brandColor,
@@ -257,6 +258,7 @@ export async function createReservationForRestaurant(
           const result = await sendEmail({
             to: ownerEmail,
             subject: `New booking: ${input.customerName} (${input.partySize})`,
+            meta: { kind: "OWNER_NEW_BOOKING", restaurantId: restaurant.id },
             html: ownerBookingNotificationHtml({
               restaurantName: restaurant.name,
               customerName: input.customerName,

@@ -24,6 +24,7 @@ async function notifyOwnerPaymentFailed(restaurantId: string, stripeCustomerId: 
       to: owner.email,
       subject: "Action needed: your Host Flow payment failed",
       html: paymentFailedEmailHtml({ restaurantName: restaurant.name, portalUrl }),
+      meta: { kind: "PAYMENT_FAILED", restaurantId },
     });
     if (!result.ok) console.error("[stripe webhook] payment-failed email failed", result.error);
   } catch (err) {

@@ -14,6 +14,18 @@ const inputCls =
   "mt-1 w-full rounded-lg border border-black/10 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-sky-500 dark:border-white/15 dark:bg-white/5 dark:text-white";
 
 
+const KIND_LABEL: Record<string, string> = {
+  SIGNUP_VERIFY: "Welcome / verify email",
+  PASSWORD_RESET: "Password reset",
+  LOGIN_ALERT: "New sign-in alert",
+  BOOKING_CONFIRMATION: "Booking confirmation",
+  OWNER_NEW_BOOKING: "New booking (to you)",
+  THANK_YOU: "Thank-you",
+  THANK_YOU_TEST: "Thank-you (test)",
+  PAYMENT_FAILED: "Payment failed",
+  PAYMENT_REQUIRED: "Trial ending",
+};
+
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400">
@@ -48,6 +60,8 @@ export function GuestEmailSettings({
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
+  const [testTo, setTestTo] = useState("");
+  const [log, setLog] = useState<api.EmailLogRow[] | null>(null);
   const [testNote, setTestNote] = useState<string | null>(null);
   // Bumped after every save so the preview iframe reloads with what's saved.
   const [previewKey, setPreviewKey] = useState(0);
@@ -61,6 +75,11 @@ export function GuestEmailSettings({
         setVenue({ name: r.name, email: r.email, senderAddress: r.senderAddress });
       })
       .catch(() => {});
+  }, []);
+
+  const loadLog = () => api.fetchEmailLog().then(setLog).catch(() => setLog([]));
+  useEffect(() => {
+    loadLog();
   }, []);
 
   const dirty = () => setSaved(false);
@@ -101,8 +120,9 @@ export function GuestEmailSettings({
     setError(null);
     setTestNote(null);
     try {
-      const { to } = await api.sendThankYouTestEmail();
-      setTestNote(`Test email sent to ${to} — check your inbox (and spam, the first time).`);
+      const { to } = await api.sendThankYouTestEmail(testTo.trim() || undefined);
+      setTestNote(`Handed to Resend for ${to} — check that inbox (and spam, the first time). The log below shows Resend's answer.`);
+      await loadLog();
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -288,13 +308,67 @@ export function GuestEmailSettings({
           {saving ? "Saving…" : "Save"}
         </Button>
         {premium && (
-          <Button onClick={sendTest} disabled={testing}>
-            {testing ? "Sending…" : "Send me a test email"}
-          </Button>
+          <div className="flex items-center gap-2">
+            <input
+              className={inputCls.replace("mt-1 w-full", "w-56")}
+              type="email"
+              placeholder="Send test to… (blank = your login email)"
+              value={testTo}
+              onChange={(e) => setTestTo(e.target.value)}
+            />
+            <Button onClick={sendTest} disabled={testing}>
+              {testing ? "Sending…" : "Send test email"}
+            </Button>
+          </div>
         )}
         {saved && <span className="text-sm text-emerald-600 dark:text-emerald-400">Saved ✓</span>}
         {testNote && <span className="text-sm text-neutral-500 dark:text-neutral-400">{testNote}</span>}
       </div>
+
+      <Card className="p-5">
+        <div className="mb-3 flex items-center justify-between">
+          <SectionTitle>Recent emails</SectionTitle>
+          <Button size="sm" variant="ghost" onClick={loadLog}>
+            Refresh
+          </Button>
+        </div>
+        <p className="mb-3 text-xs text-neutral-500 dark:text-neutral-400">
+          Every email sent for this venue — confirmations, thank-yous, sign-in alerts — and whether Resend accepted it.
+          &ldquo;Sent&rdquo; means Resend took it; if it still isn&apos;t in the inbox, check spam, then the Resend dashboard for delivery.
+        </p>
+        {log === null ? (
+          <p className="text-sm text-neutral-400">Loading…</p>
+        ) : log.length === 0 ? (
+          <p className="text-sm text-neutral-400">No emails yet. Send a test above, or wait for the first booking with an email address.</p>
+        ) : (
+          <ul className="divide-y divide-black/5 dark:divide-white/10">
+            {log.map((e) => (
+              <li key={e.id} className="flex flex-wrap items-start gap-x-3 gap-y-1 py-2 text-xs">
+                <span className="w-24 shrink-0 tabular-nums text-neutral-400">
+                  {new Date(e.createdAt).toLocaleString(undefined, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                </span>
+                <span
+                  className={
+                    "shrink-0 rounded-md px-1.5 py-0.5 font-semibold " +
+                    (e.status === "SENT"
+                      ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                      : e.status === "FAILED"
+                        ? "bg-red-500/15 text-red-600 dark:text-red-400"
+                        : "bg-neutral-500/15 text-neutral-500 dark:text-neutral-400")
+                  }
+                >
+                  {e.status === "SENT" ? "Sent" : e.status === "FAILED" ? "Failed" : "Not sent"}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="font-medium text-neutral-800 dark:text-neutral-100">{KIND_LABEL[e.kind] ?? e.kind}</span>
+                  <span className="text-neutral-500 dark:text-neutral-400"> → {e.to}</span>
+                  {e.error && <span className="block text-red-600 dark:text-red-400">{e.error}</span>}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
 
       <Card className="overflow-hidden p-0">
         <div className="flex items-center justify-between border-b border-black/5 px-5 py-3 dark:border-white/10">

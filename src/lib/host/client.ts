@@ -394,8 +394,29 @@ export async function applyFloorPlan(payload: {
 
 // ── Guest emails ────────────────────────────────────────────────────────
 
-/** Sends the saved thank-you email to the signed-in account's own inbox. */
-export async function sendThankYouTestEmail(): Promise<{ to: string }> {
-  const res = await fetch("/api/host/settings/thank-you-email", { method: "POST" });
+/** Sends the saved thank-you email to `to` (default: the signed-in account's own inbox). */
+export async function sendThankYouTestEmail(to?: string): Promise<{ to: string }> {
+  const res = await fetch("/api/host/settings/thank-you-email", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(to ? { to } : {}),
+  });
   return jsonOrThrow<{ ok: true; to: string }>(res);
+}
+
+export type EmailLogRow = {
+  id: string;
+  kind: string;
+  to: string;
+  subject: string;
+  status: "SENT" | "FAILED" | "SKIPPED" | string;
+  error: string | null;
+  providerId: string | null;
+  createdAt: string;
+};
+
+export async function fetchEmailLog(): Promise<EmailLogRow[]> {
+  const res = await fetch("/api/host/settings/email-log", { cache: "no-store" });
+  const data = await jsonOrThrow<{ emails: EmailLogRow[] }>(res);
+  return data.emails;
 }

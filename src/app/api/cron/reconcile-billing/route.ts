@@ -59,6 +59,7 @@ async function sendTrialEndingSoonEmails() {
         to: owner.email,
         subject: "Your Host Flow trial is ending soon",
         html: paymentRequiredEmailHtml({ restaurantName: sub.restaurant.name, checkoutUrl, daysLeft }),
+        meta: { kind: "PAYMENT_REQUIRED", restaurantId: sub.restaurantId },
       });
       if (!result.ok) console.error("[reconcile-billing] payment-required email failed", result.error);
     } catch (err) {

@@ -1,3 +1,5 @@
+import { prisma } from "@/lib/prisma";
+
 /**
  * Transactional email sender + templates. If RESEND_API_KEY is set, sends via
  * Resend's HTTP API (no SDK dependency needed — it's a single POST). If not,
@@ -12,6 +14,17 @@
  * project's zero-extra-dependency style) is a shared builder function, not a
  * component tree.
  */
+export type EmailKind =
+  | "SIGNUP_VERIFY"
+  | "PASSWORD_RESET"
+  | "LOGIN_ALERT"
+  | "BOOKING_CONFIRMATION"
+  | "OWNER_NEW_BOOKING"
+  | "THANK_YOU"
+  | "THANK_YOU_TEST"
+  | "PAYMENT_FAILED"
+  | "PAYMENT_REQUIRED";
+
 export async function sendEmail(params: {
   to: string;
   subject: string;
@@ -22,14 +35,37 @@ export async function sendEmail(params: {
   // the restaurant's inbox — not ours. Omitted = Host Flow's own identity.
   from?: { name: string; address: string };
   replyTo?: string;
+  // What this email is and which venue it belongs to, for the email log.
+  meta?: { kind: EmailKind; restaurantId?: string | null };
 }): Promise<{ ok: boolean; error?: string }> {
   const apiKey = process.env.RESEND_API_KEY;
   const from = params.from ? `${params.from.name.replace(/[<>"\r\n]/g, "").trim()} <${params.from.address}>` : defaultSender();
+
+  // The log is how a host answers "did that email go?" — it must never be
+  // the reason an email doesn't go, so a logging failure is swallowed.
+  const record = async (status: "SENT" | "FAILED" | "SKIPPED", extra: { error?: string; providerId?: string } = {}) => {
+    try {
+      await prisma.emailLog.create({
+        data: {
+          restaurantId: params.meta?.restaurantId ?? null,
+          kind: params.meta?.kind ?? "OTHER",
+          to: params.to,
+          subject: params.subject,
+          status,
+          error: extra.error ?? null,
+          providerId: extra.providerId ?? null,
+        },
+      });
+    } catch (err) {
+      console.error("[email:log] could not record email", err);
+    }
+  };
 
   if (!apiKey) {
     console.log(
       `[email:not-configured] Would send to ${params.to} from ${from}${params.replyTo ? ` (reply-to ${params.replyTo})` : ""}: "${params.subject}"\n${params.html}`
     );
+    await record("SKIPPED", { error: "RESEND_API_KEY is not set — email only logged, not sent" });
     return { ok: true };
   }
 
@@ -50,12 +86,16 @@ export async function sendEmail(params: {
       const body = await res.text().catch(() => "");
       const error = `${res.status} ${body}`;
       console.error(`[email:resend-error] ${error}`);
+      await record("FAILED", { error: error.slice(0, 1000) });
       return { ok: false, error };
     }
+    const data = (await res.json().catch(() => null)) as { id?: string } | null;
+    await record("SENT", { providerId: data?.id });
     return { ok: true };
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
     console.error(`[email:resend-error] request failed: ${error}`);
+    await record("FAILED", { error: `request failed: ${error}`.slice(0, 1000) });
     return { ok: false, error };
   }
 }

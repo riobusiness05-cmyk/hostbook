@@ -109,7 +109,13 @@ export async function sendThankYouForReservation(restaurantId: string, reservati
   });
   if (claimed.count === 0) return { sent: false, reason: "Already sent." };
 
-  const result = await sendEmail({ to: reservation.customerEmail, subject, html, ...senderIdentityFor(restaurant, settings) });
+  const result = await sendEmail({
+    to: reservation.customerEmail,
+    subject,
+    html,
+    ...senderIdentityFor(restaurant, settings),
+    meta: { kind: "THANK_YOU", restaurantId },
+  });
   if (!result.ok) {
     // Release the claim so staff can try again.
     await prisma.reservation.update({ where: { id: reservationId }, data: { thankYouEmailSentAt: null } });

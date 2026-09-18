@@ -97,6 +97,7 @@ export async function POST(req: NextRequest) {
       to: normalizedEmail,
       subject: "Welcome to Host Flow — confirm your email",
       html: verificationEmailHtml(verifyUrl, restaurantName),
+      meta: { kind: "SIGNUP_VERIFY", restaurantId: restaurant.id },
     });
     if (!result.ok) console.error("[register] welcome email failed:", result.error);
   } catch (err) {

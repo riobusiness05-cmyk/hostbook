@@ -48,6 +48,7 @@ export async function POST(req: NextRequest) {
       const result = await sendEmail({
         to: parsed.data.email.trim().toLowerCase(),
         subject: "New sign-in to your Host Flow account",
+        meta: { kind: "LOGIN_ALERT", restaurantId: session.restaurantId },
         html: loginAlertEmailHtml({
           accountName: session.accountName,
           restaurantName: session.restaurantName,

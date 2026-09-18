@@ -44,6 +44,7 @@ export async function POST(req: NextRequest) {
         to: normalizedEmail,
         subject: "Reset your Host Flow password",
         html: passwordResetEmailHtml(resetUrl, account.name),
+        meta: { kind: "PASSWORD_RESET", restaurantId: account.restaurantId },
       });
       if (!result.ok) console.error("[forgot-password] email failed:", result.error);
     } catch (err) {
