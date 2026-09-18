@@ -23,7 +23,11 @@ export default function ReservationForm({
   const [date, setDate] = useState("");
   const [partySize, setPartySize] = useState(2);
   const [slots, setSlots] = useState<string[]>([]);
+  // Areas (Main Terrace, Restaurant…) still open at each time — a full area
+  // isn't offered, and a chosen one is honoured by the server.
+  const [areasByTime, setAreasByTime] = useState<Record<string, string[]>>({});
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
+  const [area, setArea] = useState<string>("");
   const [checking, setChecking] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [name, setName] = useState("");
@@ -59,6 +63,7 @@ export default function ReservationForm({
         return;
       }
       setSlots(data.slots);
+      setAreasByTime(data.areasByTime ?? {});
       if (data.slots.length === 0) {
         setStatus({ type: "error", message: "No tables open for that date/party size. Try another date." });
       }
@@ -98,6 +103,7 @@ export default function ReservationForm({
           customerEmail: email,
           customerPhone: phone,
           notes,
+          seatingPreference: area || undefined,
           source: "WEB_FORM",
           idempotencyKey: idempotencyKeyRef.current,
           stripeSetupIntentId,
@@ -110,18 +116,31 @@ export default function ReservationForm({
       }
       setStatus({
         type: "success",
-        message: `You're booked for ${partySize} on ${date} at ${selectedTime}. A confirmation will be sent shortly.`,
+        message: `You're booked for ${partySize} on ${date} at ${selectedTime}${area ? ` (${area})` : ""}. A confirmation will be sent shortly.`,
       });
       // A confirmed booking — the next submit (if any) is a genuinely new
       // attempt, so it needs its own key rather than resolving to this one.
       idempotencyKeyRef.current = crypto.randomUUID();
       setSlots([]);
+      setAreasByTime({});
       setSelectedTime(null);
+      setArea("");
     } catch {
       setStatus({ type: "error", message: "Couldn't reach the server." });
     } finally {
       setSubmitting(false);
     }
+  }
+
+  // Only worth asking when the venue actually has more than one area.
+  const venueHasAreas = new Set(Object.values(areasByTime).flat()).size >= 2;
+  const openAreas = selectedTime ? areasByTime[selectedTime] ?? [] : [];
+
+  function pickTime(time: string) {
+    setSelectedTime(time);
+    // Keep the area if it's still open at the new time, otherwise fall back
+    // to no preference rather than silently booking a full area.
+    if (area && !(areasByTime[time] ?? []).includes(area)) setArea("");
   }
 
   return (
@@ -182,7 +201,7 @@ export default function ReservationForm({
               <button
                 key={s}
                 type="button"
-                onClick={() => setSelectedTime(s)}
+                onClick={() => pickTime(s)}
                 className={`rounded-sm border px-3 py-1.5 text-sm transition-colors ${
                   selectedTime === s
                     ? "border-colonial-ember-500 bg-colonial-ember-500 text-colonial-black"
@@ -190,6 +209,28 @@ export default function ReservationForm({
                 }`}
               >
                 {s}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {selectedTime && venueHasAreas && (
+        <div className="mt-5">
+          <p className="mb-3 text-xs uppercase tracking-widest text-colonial-fade">Where would you like to sit?</p>
+          <div className="flex flex-wrap gap-2">
+            {["", ...openAreas].map((a) => (
+              <button
+                key={a || "__any"}
+                type="button"
+                onClick={() => setArea(a)}
+                className={`rounded-sm border px-3 py-1.5 text-sm transition-colors ${
+                  area === a
+                    ? "border-colonial-ember-500 bg-colonial-ember-500 text-colonial-black"
+                    : "border-colonial-cream/20 text-colonial-cream/80 hover:border-colonial-ember-400"
+                }`}
+              >
+                {a || "No preference"}
               </button>
             ))}
           </div>
@@ -242,7 +283,7 @@ export default function ReservationForm({
             disabled={submitting || !name.trim()}
             className="w-full rounded-sm bg-colonial-ember-500 py-3 text-xs font-medium uppercase tracking-[0.25em] text-colonial-black transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-30"
           >
-            {submitting ? "Booking…" : `Confirm Table for ${partySize} at ${selectedTime}`}
+            {submitting ? "Booking…" : `Confirm Table for ${partySize} at ${selectedTime}${area ? ` · ${area}` : ""}`}
           </button>
         </form>
       )}

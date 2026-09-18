@@ -38,7 +38,12 @@ export function WidgetBookingForm({
   const [date, setDate] = useState("");
   const [partySize, setPartySize] = useState(2);
   const [slots, setSlots] = useState<string[]>([]);
+  // Which named areas (Main Terrace, Restaurant…) still have room at each
+  // time — a full area simply isn't offered, and a chosen one is honoured
+  // by the server, not treated as a hint.
+  const [areasByTime, setAreasByTime] = useState<Record<string, string[]>>({});
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
+  const [area, setArea] = useState<string>("");
   const [checking, setChecking] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [name, setName] = useState("");
@@ -67,6 +72,7 @@ export function WidgetBookingForm({
         return;
       }
       setSlots(data.slots);
+      setAreasByTime(data.areasByTime ?? {});
       if (data.slots.length === 0) {
         setStatus({ type: "error", message: "No tables open for that date/party size. Try another date." });
       }
@@ -106,6 +112,7 @@ export function WidgetBookingForm({
           customerEmail: email,
           customerPhone: phone,
           notes,
+          seatingPreference: area || undefined,
           idempotencyKey: idempotencyKeyRef.current,
           stripeSetupIntentId,
         }),
@@ -117,11 +124,13 @@ export function WidgetBookingForm({
       }
       setStatus({
         type: "success",
-        message: `You're booked for ${partySize} on ${date} at ${selectedTime}. A confirmation will be sent shortly.`,
+        message: `You're booked for ${partySize} on ${date} at ${selectedTime}${area ? ` (${area})` : ""}. A confirmation will be sent shortly.`,
       });
       idempotencyKeyRef.current = crypto.randomUUID();
       setSlots([]);
+      setAreasByTime({});
       setSelectedTime(null);
+      setArea("");
       setName("");
       setEmail("");
       setPhone("");
@@ -131,6 +140,17 @@ export function WidgetBookingForm({
     } finally {
       setSubmitting(false);
     }
+  }
+
+  // Only worth asking when the venue actually has more than one area.
+  const venueHasAreas = new Set(Object.values(areasByTime).flat()).size >= 2;
+  const openAreas = selectedTime ? areasByTime[selectedTime] ?? [] : [];
+
+  function pickTime(time: string) {
+    setSelectedTime(time);
+    // Keep the guest's area if it's still open at the new time, otherwise
+    // fall back to no preference rather than silently booking a full area.
+    if (area && !(areasByTime[time] ?? []).includes(area)) setArea("");
   }
 
   const inputCls =
@@ -198,7 +218,7 @@ export function WidgetBookingForm({
                 <button
                   key={s}
                   type="button"
-                  onClick={() => setSelectedTime(s)}
+                  onClick={() => pickTime(s)}
                   className="rounded-md border px-2.5 py-1 text-xs font-medium transition-colors"
                   style={
                     isSelected
@@ -207,6 +227,32 @@ export function WidgetBookingForm({
                   }
                 >
                   {s}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {selectedTime && venueHasAreas && (
+        <div className="mt-4">
+          <p className="mb-2 text-xs font-medium text-neutral-500">Where would you like to sit?</p>
+          <div className="flex flex-wrap gap-1.5">
+            {["", ...openAreas].map((a) => {
+              const isSelected = area === a;
+              return (
+                <button
+                  key={a || "__any"}
+                  type="button"
+                  onClick={() => setArea(a)}
+                  className="rounded-md border px-2.5 py-1 text-xs font-medium transition-colors"
+                  style={
+                    isSelected
+                      ? { backgroundColor: brandColor, borderColor: brandColor, color: "#fff" }
+                      : { borderColor: "#e5e5e5", color: "#404040" }
+                  }
+                >
+                  {a || "No preference"}
                 </button>
               );
             })}
@@ -244,7 +290,7 @@ export function WidgetBookingForm({
             className="w-full rounded-lg py-2.5 text-sm font-semibold text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
             style={{ backgroundColor: brandColor }}
           >
-            {submitting ? "Booking…" : `Confirm table for ${partySize} at ${selectedTime}`}
+            {submitting ? "Booking…" : `Confirm table for ${partySize} at ${selectedTime}${area ? ` · ${area}` : ""}`}
           </button>
         </form>
       )}

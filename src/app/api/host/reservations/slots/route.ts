@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { hostContext } from "@/lib/hostflow/apiContext";
-import { getAvailableSlots } from "@/lib/availability";
+import { getSlotAvailability } from "@/lib/availability";
 import { availabilityQuerySchema } from "@/types";
 
 // Available time slots for a future date, scoped to the logged-in venue.
@@ -22,10 +22,13 @@ export async function GET(req: NextRequest) {
   const restaurant = await prisma.restaurant.findUnique({ where: { id: ctx.restaurantId } });
   if (!restaurant) return NextResponse.json({ error: "Venue not found" }, { status: 404 });
 
-  const slots = await getAvailableSlots({
+  const detailed = await getSlotAvailability({
     restaurant,
     dateStr: parsed.data.date,
     partySize: parsed.data.partySize,
   });
-  return NextResponse.json({ slots });
+  return NextResponse.json({
+    slots: detailed.map((s) => s.time),
+    areasByTime: Object.fromEntries(detailed.map((s) => [s.time, s.areas])),
+  });
 }

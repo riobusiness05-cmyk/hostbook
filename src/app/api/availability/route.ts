@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getActiveRestaurant } from "@/lib/restaurant";
-import { getAvailableSlots } from "@/lib/availability";
+import { getSlotAvailability } from "@/lib/availability";
 import { availabilityQuerySchema } from "@/types";
 
 export async function GET(req: NextRequest) {
@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
   }
 
   const restaurant = await getActiveRestaurant();
-  const slots = await getAvailableSlots({
+  const detailed = await getSlotAvailability({
     restaurant,
     dateStr: parsed.data.date,
     partySize: parsed.data.partySize,
@@ -28,6 +28,9 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     date: parsed.data.date,
     partySize: parsed.data.partySize,
-    slots,
+    slots: detailed.map((s) => s.time),
+    // Which named areas still have room at each time — drives the guest's
+    // "where would you like to sit?" choice.
+    areasByTime: Object.fromEntries(detailed.map((s) => [s.time, s.areas])),
   });
 }

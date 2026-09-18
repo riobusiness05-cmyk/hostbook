@@ -318,16 +318,36 @@ export async function getActiveSessionRanges(
   return ranges;
 }
 
+/** One bookable start time, plus which named areas (sections) still have
+ *  room for the party at that time — so a guest can be offered "Main
+ *  Terrace" only while the terrace can actually take them. Tables with no
+ *  section count towards the slot being open but never towards an area. */
+export type SlotAvailability = { time: string; areas: string[] };
+
 /**
  * Returns the list of "HH:MM" start times (in `intervalMinutes` steps) on
  * `dateStr` where at least one table big enough for `partySize` is free.
+ * Pass `area` (a Section name) to only count tables in that area.
  */
 export async function getAvailableSlots(params: {
   restaurant: Restaurant;
   dateStr: string;
   partySize: number;
   intervalMinutes?: number;
+  area?: string | null;
 }): Promise<string[]> {
+  const detailed = await getSlotAvailability(params);
+  const area = params.area && params.area !== "No preference" ? params.area : null;
+  return detailed.filter((s) => !area || s.areas.includes(area)).map((s) => s.time);
+}
+
+/** Same as getAvailableSlots, but every slot carries the areas open for it. */
+export async function getSlotAvailability(params: {
+  restaurant: Restaurant;
+  dateStr: string;
+  partySize: number;
+  intervalMinutes?: number;
+}): Promise<SlotAvailability[]> {
   const { restaurant, dateStr, partySize } = params;
 
   const settings = await getSettings(restaurant.id);
@@ -367,7 +387,7 @@ async function computeSlots(params: {
   earliestMinute: number;
   maxBookingsPer15Min: number;
   tableMergingEnabled: boolean;
-}): Promise<string[]> {
+}): Promise<SlotAvailability[]> {
   const { restaurant, dateStr, partySize, intervalMinutes, hours, blackouts, earliestMinute, maxBookingsPer15Min, tableMergingEnabled } = params;
 
   // Not pre-filtered by capacity: a party too big for any single table may
@@ -382,6 +402,17 @@ async function computeSlots(params: {
     include: { section: true },
   });
   if (tables.length === 0) return [];
+
+  // The venue's named areas, in the order the host laid them out, so the
+  // guest-facing chooser lists them the same way every time.
+  const sections = [...new Map(tables.filter((t) => t.section).map((t) => [t.section!.id, t.section!])).values()].sort(
+    (a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name)
+  );
+
+  // "Can this party be seated somewhere in `pool`?" — one table big enough,
+  // or (if the venue allows it) a group of tables pushed together.
+  const canSeat = (pool: TableWithSection[]) =>
+    pool.some((t) => t.capacityMax >= partySize) || (tableMergingEnabled && findTableCombo(pool, partySize) !== null);
 
   const dayStart = combineDateAndTime(dateStr, "00:00", restaurant.timezone);
   const dayEnd = combineDateAndTime(dateStr, "23:59", restaurant.timezone);
@@ -420,7 +451,7 @@ async function computeSlots(params: {
     .filter((b) => !b.fullDay && b.startTime && b.endTime)
     .map((b) => ({ start: timeToMinutes(b.startTime!), end: timeToMinutes(b.endTime!) }));
 
-  const slots: string[] = [];
+  const slots: SlotAvailability[] = [];
 
   // Loop stays aligned to the openTime grid (so slots land on :00/:30 etc.);
   // slots earlier than `earliestMinute` (already passed, for a same-day
@@ -449,11 +480,14 @@ async function computeSlots(params: {
       return true;
     });
 
-    const hasFreeTable =
-      freeTables.some((t) => t.capacityMax >= partySize) ||
-      (tableMergingEnabled && findTableCombo(freeTables, partySize) !== null);
+    if (!canSeat(freeTables)) continue;
 
-    if (hasFreeTable) slots.push(minutesToTime(slotStart));
+    // Combos never cross a section (see findTableCombo), so checking each
+    // area's own free tables answers "is there room *in this area*" exactly.
+    const areas = sections
+      .filter((section) => canSeat(freeTables.filter((t) => t.sectionId === section.id)))
+      .map((section) => section.name);
+    slots.push({ time: minutesToTime(slotStart), areas });
   }
 
   return slots;
@@ -514,12 +548,21 @@ export async function findAvailableTable(params: {
     .some((b) => rangesOverlap(slotStart, slotEnd, timeToMinutes(b.startTime!), timeToMinutes(b.endTime!)));
   if (blockedByBlackout) return null;
 
-  const tables = await db.diningTable.findMany({
+  // A booked area is a promise, not a hint: a guest who chose "Main Terrace"
+  // is seated on the terrace or told it's full — never quietly moved
+  // indoors. Only a name that matches one of the venue's own sections pins
+  // the search; any other text is just a note for staff.
+  const prefArea = seatingPreference && seatingPreference !== "No preference" ? seatingPreference : null;
+  const prefSection = prefArea ? await db.section.findFirst({ where: { restaurantId: restaurant.id, name: prefArea } }) : null;
+  const areaFilter = prefSection ? { sectionId: prefSection.id } : {};
+
+  const orderedTables = await db.diningTable.findMany({
     where: {
       restaurantId: restaurant.id,
       isActive: true,
       status: { not: "BLOCKED" }, // out-of-service tables (e.g. broken furniture) are never bookable
       capacityMax: { gte: partySize },
+      ...areaFilter,
     },
     include: { section: true },
     // Prefer the smallest table that fits; tableNumber is a tie-break so two
@@ -527,19 +570,6 @@ export async function findAvailableTable(params: {
     // guarantee row order on a tie without an explicit secondary sort key.
     orderBy: [{ capacityMax: "asc" }, { tableNumber: "asc" }],
   });
-
-  // Honour an area seating preference (e.g. "Back Terrace"): float tables in
-  // the requested section to the front, keeping smallest-fit ordering within
-  // each group. Falls back gracefully if that area has nothing free.
-  const prefArea = seatingPreference && seatingPreference !== "No preference" ? seatingPreference : null;
-  const orderedTables = prefArea
-    ? [...tables].sort((a, b) => {
-        const aMatch = a.section?.name === prefArea ? 0 : 1;
-        const bMatch = b.section?.name === prefArea ? 0 : 1;
-        if (aMatch !== bMatch) return aMatch - bMatch;
-        return a.capacityMax - b.capacityMax;
-      })
-    : tables;
 
   const dayStart = combineDateAndTime(dateStr, "00:00", restaurant.timezone);
   const dayEnd = combineDateAndTime(dateStr, "23:59", restaurant.timezone);
@@ -597,7 +627,7 @@ export async function findAvailableTable(params: {
   if (!settings.tableMergingEnabled) return null;
 
   const allTables = await db.diningTable.findMany({
-    where: { restaurantId: restaurant.id, isActive: true, status: { not: "BLOCKED" } },
+    where: { restaurantId: restaurant.id, isActive: true, status: { not: "BLOCKED" }, ...areaFilter },
     include: { section: true },
   });
   const freeTables = allTables.filter((table) => {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRestaurantBySlug } from "@/lib/restaurant";
-import { getAvailableSlots } from "@/lib/availability";
+import { getSlotAvailability } from "@/lib/availability";
 import { availabilityQuerySchema } from "@/types";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 
@@ -42,11 +42,19 @@ export async function GET(req: NextRequest, { params }: { params: { slug: string
     return NextResponse.json({ error: "Invalid query", details: parsed.error.flatten() }, { status: 400 });
   }
 
-  const slots = await getAvailableSlots({
+  const detailed = await getSlotAvailability({
     restaurant,
     dateStr: parsed.data.date,
     partySize: parsed.data.partySize,
   });
 
-  return NextResponse.json({ date: parsed.data.date, partySize: parsed.data.partySize, slots });
+  // `slots` stays a plain list of times for existing consumers; `areasByTime`
+  // is what lets the form offer "where would you like to sit?" with only the
+  // areas that still have room at the chosen time.
+  return NextResponse.json({
+    date: parsed.data.date,
+    partySize: parsed.data.partySize,
+    slots: detailed.map((s) => s.time),
+    areasByTime: Object.fromEntries(detailed.map((s) => [s.time, s.areas])),
+  });
 }

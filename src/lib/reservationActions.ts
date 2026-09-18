@@ -284,9 +284,12 @@ export async function createReservationForRestaurant(
     };
   } catch (err) {
     if (err instanceof NoAvailabilityError) {
+      const area = input.seatingPreference && input.seatingPreference !== "No preference" ? input.seatingPreference : null;
       return {
         ok: false,
-        error: "That time is no longer available. Please suggest a different time or ask what's open.",
+        error: area
+          ? `${area} has no room left at ${input.time}. Please pick another area or time.`
+          : "That time is no longer available. Please suggest a different time or ask what's open.",
       };
     }
     // Two near-simultaneous requests carrying the same idempotency key can

@@ -73,10 +73,11 @@ export async function seatWalkin(id: string, tableId?: string): Promise<{ tableI
   return jsonOrThrow<{ tableId: string }>(res);
 }
 
-export async function fetchReservationSlots(date: string, partySize: number): Promise<string[]> {
+export type ReservationSlots = { slots: string[]; areasByTime: Record<string, string[]> };
+
+export async function fetchReservationSlots(date: string, partySize: number): Promise<ReservationSlots> {
   const res = await fetch(`/api/host/reservations/slots?date=${date}&partySize=${partySize}`);
-  const data = await jsonOrThrow<{ slots: string[] }>(res);
-  return data.slots;
+  return jsonOrThrow<ReservationSlots>(res);
 }
 
 export type NewReservationInput = {

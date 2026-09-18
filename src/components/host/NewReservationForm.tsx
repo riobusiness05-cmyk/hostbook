@@ -28,6 +28,9 @@ export function NewReservationForm({
   const [date, setDate] = useState(todayStr());
   const [partySize, setPartySize] = useState(2);
   const [slots, setSlots] = useState<string[] | null>(null);
+  // Which areas still have room at each time — a booked area is honoured by
+  // the server, so a full one is shown but can't be chosen.
+  const [areasByTime, setAreasByTime] = useState<Record<string, string[]>>({});
   const [time, setTime] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,9 +61,10 @@ export function NewReservationForm({
     setSlots(null);
     setTime(null);
     try {
-      const s = await api.fetchReservationSlots(date, partySize);
+      const { slots: s, areasByTime: areas } = await api.fetchReservationSlots(date, partySize);
       if (seq !== checkSeq.current) return; // a newer check superseded this one
       setSlots(s);
+      setAreasByTime(areas ?? {});
       if (s.length === 0) setError("No availability for that date/party size. Try another date.");
     } catch (e) {
       if (seq !== checkSeq.current) return;
@@ -155,7 +159,10 @@ export function NewReservationForm({
             {slots.map((s) => (
               <button
                 key={s}
-                onClick={() => setTime(s)}
+                onClick={() => {
+                  setTime(s);
+                  if (seating !== NO_PREFERENCE && !(areasByTime[s] ?? []).includes(seating)) setSeating(NO_PREFERENCE);
+                }}
                 className={
                   "rounded-md border px-2.5 py-1 text-xs font-medium transition-colors " +
                   (time === s
@@ -179,7 +186,14 @@ export function NewReservationForm({
               {OCCASIONS.map((o) => <option key={o} value={o}>{o === "None" ? "Occasion" : o}</option>)}
             </select>
             <select className={input} value={seating} onChange={(e) => setSeating(e.target.value)}>
-              {[NO_PREFERENCE, ...sectionNames].map((s) => <option key={s} value={s}>{s === NO_PREFERENCE ? "Seating pref" : s}</option>)}
+              {[NO_PREFERENCE, ...sectionNames].map((s) => {
+                const full = s !== NO_PREFERENCE && !(areasByTime[time] ?? []).includes(s);
+                return (
+                  <option key={s} value={s} disabled={full}>
+                    {s === NO_PREFERENCE ? "Seating pref" : full ? `${s} (full)` : s}
+                  </option>
+                );
+              })}
             </select>
           </div>
           <label className="flex items-center gap-2 text-sm text-neutral-700 dark:text-neutral-200">

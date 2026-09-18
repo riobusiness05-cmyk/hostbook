@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/prisma";
-import { getAvailableSlots, toLocalDateStr, toLocalTimeStr } from "@/lib/availability";
+import { getSlotAvailability, toLocalDateStr, toLocalTimeStr } from "@/lib/availability";
 import { getSettings } from "@/lib/hostflow/floor";
 import {
   cancelReservationById,
@@ -59,7 +59,7 @@ const tools: ToolDefinition[] = [
   {
     name: "check_availability",
     description:
-      "Check which time slots are available for a given date and party size. Always call this before offering or booking a specific time.",
+      "Check which time slots are available for a given date and party size, and which seating areas (e.g. terrace, restaurant) still have room at each time. Always call this before offering or booking a specific time or area.",
     input_schema: {
       type: "object",
       properties: {
@@ -82,7 +82,12 @@ const tools: ToolDefinition[] = [
         customerName: { type: "string" },
         customerEmail: { type: "string", description: "Optional but recommended" },
         customerPhone: { type: "string", description: "Optional but recommended" },
-        notes: { type: "string", description: "Allergies, special occasions, seating requests, etc." },
+        notes: { type: "string", description: "Allergies, special occasions, etc." },
+        area: {
+          type: "string",
+          description:
+            "Seating area the guest asked for, exactly as named in check_availability's areas for that time. Omit if they have no preference. The booking is only made in that area — never elsewhere.",
+        },
       },
       required: ["date", "time", "partySize", "customerName"],
     },
@@ -134,13 +139,13 @@ async function executeTool(
 ): Promise<unknown> {
   switch (name) {
     case "check_availability": {
-      const slots = await getAvailableSlots({
+      const detailed = await getSlotAvailability({
         restaurant,
         dateStr: String(input.date),
         partySize: Number(input.partySize),
       });
-      return slots.length
-        ? { available: true, slots }
+      return detailed.length
+        ? { available: true, slots: detailed.map((s) => s.time), areasByTime: Object.fromEntries(detailed.map((s) => [s.time, s.areas])) }
         : { available: false, message: "No open tables for that date/party size." };
     }
 
@@ -153,6 +158,7 @@ async function executeTool(
         customerEmail: (input.customerEmail as string) || "",
         customerPhone: (input.customerPhone as string) || "",
         notes: (input.notes as string) || "",
+        seatingPreference: (input.area as string) || undefined,
         source: "WEB_CHAT",
       });
       return result.ok
