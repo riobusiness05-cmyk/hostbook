@@ -69,6 +69,10 @@ export const recommendSchema = z.object({
 
 export const reservationStatusSchema = z.object({
   status: z.enum(["CONFIRMED", "ARRIVED", "CANCELLED", "NO_SHOW"]),
+  // NO_SHOW only: false records the no-show without charging the guest's
+  // card (a benefit-of-the-doubt call staff make at the time). Omitted =
+  // charge, matching every existing caller.
+  chargeNoShowFee: z.boolean().optional(),
 });
 
 export const settingsSchema = z.object({

@@ -4,10 +4,11 @@ import { useEffect, useState } from "react";
 import type { FloorState, TableDTO } from "@/lib/hostflow/floor";
 import { STATUS_META } from "@/lib/hostflow/constants";
 import { Button, Chip } from "./ui";
+import { NoShowConfirm } from "./NoShowConfirm";
 import { cx, localDateStr, minutesLabel, money, timeOfDay } from "@/lib/host/format";
 import * as api from "@/lib/host/client";
 
-type Mode = "idle" | "seat" | "move" | "merge" | "reserve";
+type Mode = "idle" | "seat" | "move" | "merge" | "reserve" | "noshow";
 
 export function TablePanel({
   table,
@@ -57,14 +58,15 @@ export function TablePanel({
   };
 
   const [noShowNote, setNoShowNote] = useState<string | null>(null);
-  const markNoShow = async (reservationId: string) => {
+  const markNoShow = async (reservationId: string, chargeFee: boolean) => {
     setBusy(true);
     setError(null);
     setNoShowNote(null);
     try {
-      const { noShowCharge } = await api.setReservationStatus(reservationId, "NO_SHOW");
-      if (noShowCharge?.outcome === "charged") setNoShowNote("No-show fee charged.");
-      else if (noShowCharge?.outcome === "failed") setNoShowNote(`No-show fee not charged — ${noShowCharge.reason}`);
+      const { noShowCharge } = await api.setReservationStatus(reservationId, "NO_SHOW", { chargeNoShowFee: chargeFee });
+      if (noShowCharge?.outcome === "charged") setNoShowNote("Marked no-show — fee charged to their card.");
+      else if (noShowCharge?.outcome === "waived") setNoShowNote("Marked no-show — no fee charged.");
+      else if (noShowCharge?.outcome === "failed") setNoShowNote(`Marked no-show, but the fee wasn't charged — ${noShowCharge.reason}`);
       await refresh();
       setMode("idle");
     } catch (e) {
@@ -230,6 +232,20 @@ export function TablePanel({
           />
         )}
 
+        {mode === "noshow" && r && (
+          <div className="p-3">
+            <NoShowConfirm
+              customerName={r.customerName}
+              partySize={r.partySize}
+              hasCardOnFile={r.hasCardOnFile}
+              feePerPersonCents={state.settings.noShowFeeCents ?? null}
+              busy={busy}
+              onConfirm={(chargeFee) => markNoShow(r.id, chargeFee)}
+              onCancel={() => setMode("idle")}
+            />
+          </div>
+        )}
+
         {mode === "move" && s && (
           <TablePicker
             label="Move guests to"
@@ -324,19 +340,7 @@ export function TablePanel({
                 <Button onClick={() => run(() => api.setReservationStatus(r.id, "ARRIVED"))} disabled={busy}>
                   Mark arrived
                 </Button>
-                <Button
-                  className="text-amber-600 dark:text-amber-400"
-                  onClick={() => {
-                    const feeCents = state.settings.noShowFeeCents ? state.settings.noShowFeeCents * r.partySize : null;
-                    const feeNote = feeCents
-                      ? `This charges ${money(feeCents / 100)} (party of ${r.partySize}) to their card automatically.`
-                      : "If they have a card on file, this charges the no-show fee automatically.";
-                    if (window.confirm(`Mark ${r.customerName} a no-show? ${feeNote}`)) {
-                      markNoShow(r.id);
-                    }
-                  }}
-                  disabled={busy}
-                >
+                <Button className="text-amber-600 dark:text-amber-400" onClick={() => setMode("noshow")} disabled={busy}>
                   No show
                 </Button>
                 <Button

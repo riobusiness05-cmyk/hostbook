@@ -40,6 +40,9 @@ export type ReservationDTO = {
   occasion: string | null;
   seatingPreference: string | null;
   accessibilityNeeds: string | null;
+  // The guest saved a card at booking time, so a no-show fee *can* be
+  // charged — what the no-show confirmation uses to offer charge/waive.
+  hasCardOnFile: boolean;
   tableId: string | null;
   // Extra tables held alongside tableId for a party too big for one table —
   // empty for an ordinary single-table booking. See findAvailableTable's
@@ -378,6 +381,7 @@ export async function getFloorState(restaurantId: string): Promise<FloorState> {
       occasion: r.occasion,
       seatingPreference: r.seatingPreference,
       accessibilityNeeds: r.accessibilityNeeds,
+      hasCardOnFile: !!r.stripePaymentMethodId,
       tableId: r.tableId,
       comboTableNumbers: r.comboTables
         .map((ct) => tableNumberById.get(ct.tableId))

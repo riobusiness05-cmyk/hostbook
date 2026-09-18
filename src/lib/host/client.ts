@@ -115,13 +115,17 @@ export async function createReservation(input: NewReservationInput): Promise<Cre
   return data.reservation;
 }
 
-export type NoShowChargeOutcome = { outcome: "charged" | "failed"; reason?: string } | null;
+export type NoShowChargeOutcome = { outcome: "charged" | "failed" | "waived"; reason?: string } | null;
 
-export async function setReservationStatus(id: string, status: string): Promise<{ noShowCharge: NoShowChargeOutcome }> {
+export async function setReservationStatus(
+  id: string,
+  status: string,
+  opts: { chargeNoShowFee?: boolean } = {}
+): Promise<{ noShowCharge: NoShowChargeOutcome }> {
   const res = await fetch(`/api/host/reservations/${id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ status }),
+    body: JSON.stringify({ status, ...opts }),
   });
   return jsonOrThrow<{ ok: true; noShowCharge: NoShowChargeOutcome }>(res);
 }

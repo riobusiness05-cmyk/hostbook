@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FloorState, ReservationDTO } from "@/lib/hostflow/floor";
 import { Button, Card, Chip, SectionTitle } from "./ui";
-import { cx, localDateStr, minutesLabel, minutesOfDayInTz, money, timeOfDay } from "@/lib/host/format";
+import { cx, localDateStr, minutesLabel, minutesOfDayInTz, timeOfDay } from "@/lib/host/format";
+import { NoShowConfirm } from "./NoShowConfirm";
 import { NewReservationForm } from "./NewReservationForm";
 import * as api from "@/lib/host/client";
 
@@ -88,17 +89,53 @@ export function ReservationsPanel({
   const nightCount = state.reservations.filter((r) => minutesOfDayInTz(r.reservationTime, state.timezone) >= shiftStart).length;
 
   const [noShowNote, setNoShowNote] = useState<string | null>(null);
-  const act = async (id: string, status: string) => {
+  // Which booking is showing its "are you sure?" for a no-show, if any.
+  const [confirmingNoShow, setConfirmingNoShow] = useState<string | null>(null);
+  const act = async (id: string, status: string, opts: { chargeNoShowFee?: boolean } = {}) => {
     setBusyId(id);
     setError(null);
     setNoShowNote(null);
     try {
-      const { noShowCharge } = await api.setReservationStatus(id, status);
-      if (noShowCharge?.outcome === "charged") setNoShowNote("No-show fee charged.");
-      else if (noShowCharge?.outcome === "failed") setNoShowNote(`No-show fee not charged — ${noShowCharge.reason}`);
+      const { noShowCharge } = await api.setReservationStatus(id, status, opts);
+      if (noShowCharge?.outcome === "charged") setNoShowNote("Marked no-show — fee charged to their card.");
+      else if (noShowCharge?.outcome === "waived") setNoShowNote("Marked no-show — no fee charged.");
+      else if (noShowCharge?.outcome === "failed") setNoShowNote(`Marked no-show, but the fee wasn't charged — ${noShowCharge.reason}`);
+      setConfirmingNoShow(null);
       await refresh();
     } catch (e) {
       setError((e as Error).message);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  // Straight from the list to a seated table — no detour through the floor
+  // plan. The booking already knows its table; seating it is one tap.
+  const seat = async (r: ReservationDTO) => {
+    if (!r.tableId) return;
+    setBusyId(r.id);
+    setError(null);
+    setNoShowNote(null);
+    try {
+      await api.tableAction(r.tableId, {
+        action: "seat",
+        guestName: r.customerName,
+        partySize: r.partySize,
+        source: "RESERVATION",
+        reservationId: r.id,
+        occasion: r.occasion ?? undefined,
+      });
+      await refresh();
+    } catch (e) {
+      const msg = (e as Error).message;
+      const tableNo = tableNumberById.get(r.tableId);
+      // The usual reason: the previous party is still sitting there. Say so
+      // in terms of what to do next, not just what went wrong.
+      setError(
+        /occupied/i.test(msg)
+          ? `Table ${tableNo ?? ""} still has guests on it — clear it first, or open the table on the floor plan to move this booking.`
+          : msg
+      );
     } finally {
       setBusyId(null);
     }
@@ -232,31 +269,47 @@ export function ReservationsPanel({
                     {r.seatingPreference && <span>· {r.seatingPreference}</span>}
                   </div>
 
-                  <div className="mt-2 flex gap-2">
-                    <Button size="sm" variant="primary" className="flex-1" disabled={busyId === r.id} onClick={() => act(r.id, "ARRIVED")}>
-                      Mark arrived
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="text-amber-600 dark:text-amber-400"
-                      disabled={busyId === r.id}
-                      onClick={() => {
-                        const feeCents = state.settings.noShowFeeCents ? state.settings.noShowFeeCents * r.partySize : null;
-                        const feeNote = feeCents
-                          ? `This charges ${money(feeCents / 100)} (party of ${r.partySize}) to their card automatically.`
-                          : "If they have a card on file, this charges the no-show fee automatically.";
-                        if (window.confirm(`Mark ${r.customerName} a no-show? ${feeNote}`)) {
-                          act(r.id, "NO_SHOW");
-                        }
-                      }}
-                    >
-                      No show
-                    </Button>
-                    <Button size="sm" variant="ghost" disabled={busyId === r.id} onClick={() => act(r.id, "CANCELLED")}>
-                      Cancel
-                    </Button>
-                  </div>
+                  {confirmingNoShow === r.id ? (
+                    <NoShowConfirm
+                      customerName={r.customerName}
+                      partySize={r.partySize}
+                      hasCardOnFile={r.hasCardOnFile}
+                      feePerPersonCents={state.settings.noShowFeeCents ?? null}
+                      busy={busyId === r.id}
+                      onConfirm={(chargeFee) => act(r.id, "NO_SHOW", { chargeNoShowFee: chargeFee })}
+                      onCancel={() => setConfirmingNoShow(null)}
+                    />
+                  ) : (
+                    <div className="mt-2 flex gap-1.5">
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        className="flex-1"
+                        disabled={busyId === r.id || !r.tableId}
+                        title={r.tableId ? `Seat at ${tableNo != null ? `Table ${tableNo}` : "their table"}` : "No table assigned yet"}
+                        onClick={() => seat(r)}
+                      >
+                        Seated
+                      </Button>
+                      {r.status !== "ARRIVED" && (
+                        <Button size="sm" variant="ghost" disabled={busyId === r.id} onClick={() => act(r.id, "ARRIVED")}>
+                          Arrived
+                        </Button>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-amber-600 dark:text-amber-400"
+                        disabled={busyId === r.id}
+                        onClick={() => setConfirmingNoShow(r.id)}
+                      >
+                        No show
+                      </Button>
+                      <Button size="sm" variant="ghost" disabled={busyId === r.id} onClick={() => act(r.id, "CANCELLED")}>
+                        Cancel
+                      </Button>
+                    </div>
+                  )}
                 </div>
               );
             })}

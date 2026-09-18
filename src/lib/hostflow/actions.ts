@@ -622,7 +622,8 @@ export async function updateWalkin(
 export async function updateReservationStatus(
   restaurantId: string,
   reservationId: string,
-  status: "CONFIRMED" | "ARRIVED" | "CANCELLED" | "NO_SHOW"
+  status: "CONFIRMED" | "ARRIVED" | "CANCELLED" | "NO_SHOW",
+  opts: { chargeNoShowFee?: boolean } = {}
 ) {
   const r = await prisma.reservation.findUnique({ where: { id: reservationId } });
   if (!r || r.restaurantId !== restaurantId) throw new HostFlowError("Reservation not found", 404);
@@ -649,8 +650,13 @@ export async function updateReservationStatus(
   // no-show status itself from being recorded (same discipline as the
   // email side effects in reservationActions.ts). Only attempted when the
   // guest actually saved a card at booking time.
-  let noShowCharge: { outcome: "charged" | "failed"; reason?: string } | undefined;
-  if (status === "NO_SHOW" && r.stripePaymentMethodId) {
+  let noShowCharge: { outcome: "charged" | "failed" | "waived"; reason?: string } | undefined;
+  if (status === "NO_SHOW" && r.stripePaymentMethodId && opts.chargeNoShowFee === false) {
+    // Staff chose to let this one go. Recorded so the booking's history says
+    // the fee was waived rather than looking like the charge never ran.
+    await prisma.reservation.update({ where: { id: reservationId }, data: { noShowChargeStatus: "WAIVED" } });
+    noShowCharge = { outcome: "waived" };
+  } else if (status === "NO_SHOW" && r.stripePaymentMethodId) {
     try {
       const [restaurant, settings] = await Promise.all([
         prisma.restaurant.findUniqueOrThrow({ where: { id: restaurantId } }),
