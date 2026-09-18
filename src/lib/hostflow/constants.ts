@@ -81,3 +81,10 @@ export type NotificationSeverity = (typeof NOTIFICATION_SEVERITIES)[number];
 // Statuses that mean a table cannot currently seat a new party.
 export const OCCUPIED_STATUSES: TableStatus[] = ["OCCUPIED", "RESERVED", "ARRIVING_SOON", "LATE"];
 export const UNAVAILABLE_STATUSES: TableStatus[] = [...OCCUPIED_STATUSES, "DIRTY", "CLEANING", "BLOCKED"];
+
+// Built-in wording for the post-visit thank-you email, used when a
+// restaurant hasn't written its own (see guestEmails.ts). {name} and
+// {restaurant} are filled in at send time.
+export const DEFAULT_THANK_YOU_SUBJECT = "Thanks for visiting {restaurant}";
+export const DEFAULT_THANK_YOU_BODY =
+  "Hi {name},\n\nThank you for dining with us at {restaurant} — we hope you had a lovely time.\n\nIf you have a minute, we'd really appreciate a quick Google review. It genuinely helps a small team like ours, and we read every single one.\n\nSee you again soon!";

@@ -6,6 +6,7 @@ import { HostFlowMark } from "@/components/HostFlowLogo";
 import { cx } from "@/lib/host/format";
 import { BillingSection } from "./BillingSection";
 import { GeneralSettings } from "./GeneralSettings";
+import { GuestEmailSettings } from "./GuestEmailSettings";
 import { HoursSettings } from "./HoursSettings";
 import { TableAvailabilitySettings } from "./TableAvailabilitySettings";
 import { WebsiteWidgetSettings } from "./WebsiteWidgetSettings";
@@ -13,7 +14,7 @@ import type { BillingState, PlanDTO } from "@/lib/billing/subscription";
 import type { SettingsDTO } from "@/lib/hostflow/floor";
 import type { HourRow, TableRow } from "@/lib/host/client";
 
-type Tab = "billing" | "general" | "hours" | "tables" | "website";
+type Tab = "billing" | "general" | "hours" | "tables" | "website" | "emails";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "billing", label: "Billing" },
@@ -21,6 +22,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "hours", label: "Hours" },
   { id: "tables", label: "Tables" },
   { id: "website", label: "Website" },
+  { id: "emails", label: "Emails" },
 ];
 
 export function SettingsShell({
@@ -108,6 +110,7 @@ export function SettingsShell({
           {tab === "hours" && <HoursSettings initialHours={initialHours} />}
           {tab === "tables" && <TableAvailabilitySettings initialTables={initialTables} />}
           {tab === "website" && <WebsiteWidgetSettings restaurantSlug={restaurantSlug} />}
+          {tab === "emails" && <GuestEmailSettings initialSettings={initialSettings} />}
         </main>
       </div>
     </div>

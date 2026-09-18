@@ -257,6 +257,10 @@ model Reservation {
   noShowChargeId        String?
   noShowChargedAt       DateTime?
 
+  // Set once the post-visit thank-you email has gone out, so releasing a
+  // table twice (or a retried request) never emails the guest twice.
+  thankYouEmailSentAt   DateTime?
+
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
 
@@ -446,6 +450,15 @@ model RestaurantSettings {
   noShowProtectionEnabled Boolean  @default(false)
   noShowFeeCents          Int?     // null while protection is off or not yet configured
   noShowMinPartySize      Int?     // null = applies to every online booking regardless of size
+
+  // ── Thank-you email: sent to a booked guest when staff release their table
+  // (the moment the party leaves), in the restaurant's own branding, asking
+  // how it went and linking to their Google review page. Off by default —
+  // each restaurant switches it on and writes its own message.
+  thankYouEmailEnabled  Boolean  @default(false)
+  thankYouEmailSubject  String?  // null = "Thanks for visiting {restaurant}"
+  thankYouEmailBody     String?  // null = the built-in default message; supports {name} and {restaurant}
+  googleReviewUrl       String?  // the restaurant's "write a review" link; the button is hidden while null
 
   updatedAt             DateTime   @updatedAt
 }

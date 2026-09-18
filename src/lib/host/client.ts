@@ -269,7 +269,14 @@ export async function fetchAllTables(): Promise<TableRow[]> {
   return data.tables;
 }
 
-export type RestaurantRow = { name: string; timezone: string; onboardingCompletedAt: string | null };
+export type RestaurantRow = {
+  name: string;
+  timezone: string;
+  onboardingCompletedAt: string | null;
+  brandColor: string;
+  logoUrl: string | null;
+  email: string | null;
+};
 
 export async function fetchRestaurant(): Promise<RestaurantRow> {
   const res = await fetch("/api/host/restaurant", { cache: "no-store" });
@@ -277,7 +284,12 @@ export async function fetchRestaurant(): Promise<RestaurantRow> {
   return data.restaurant;
 }
 
-export async function updateRestaurant(patch: { timezone?: string; onboardingCompletedAt?: true }): Promise<void> {
+export async function updateRestaurant(patch: {
+  timezone?: string;
+  onboardingCompletedAt?: true;
+  brandColor?: string;
+  logoUrl?: string | null;
+}): Promise<void> {
   const res = await fetch("/api/host/restaurant", {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -345,4 +357,12 @@ export async function applyFloorPlan(payload: {
     body: JSON.stringify(payload),
   });
   return jsonOrThrow(res);
+}
+
+// ── Guest emails ────────────────────────────────────────────────────────
+
+/** Sends the saved thank-you email to the signed-in account's own inbox. */
+export async function sendThankYouTestEmail(): Promise<{ to: string }> {
+  const res = await fetch("/api/host/settings/thank-you-email", { method: "POST" });
+  return jsonOrThrow<{ ok: true; to: string }>(res);
 }

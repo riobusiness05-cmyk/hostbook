@@ -216,6 +216,10 @@ export type SettingsDTO = {
   noShowProtectionEnabled: boolean;
   noShowFeeCents: number | null;
   noShowMinPartySize: number | null;
+  thankYouEmailEnabled: boolean;
+  thankYouEmailSubject: string | null;
+  thankYouEmailBody: string | null;
+  googleReviewUrl: string | null;
 };
 
 const minutesBetween = (a: Date, b: Date) => Math.round((a.getTime() - b.getTime()) / 60000);
@@ -269,6 +273,10 @@ export async function getSettings(restaurantId: string): Promise<SettingsDTO> {
     noShowProtectionEnabled: s.noShowProtectionEnabled,
     noShowFeeCents: s.noShowFeeCents,
     noShowMinPartySize: s.noShowMinPartySize,
+    thankYouEmailEnabled: s.thankYouEmailEnabled,
+    thankYouEmailSubject: s.thankYouEmailSubject,
+    thankYouEmailBody: s.thankYouEmailBody,
+    googleReviewUrl: s.googleReviewUrl,
   };
 }
 

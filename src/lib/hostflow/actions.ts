@@ -3,6 +3,7 @@ import { emitFloorChange } from "./events";
 import { getSettings } from "./floor";
 import { TableStatus } from "./constants";
 import { chargeNoShowFee } from "@/lib/stripeConnect";
+import { sendThankYouForReservation } from "./guestEmails";
 
 // Every function here is a small, auditable state transition. They all:
 //   1. mutate the DB,
@@ -95,6 +96,13 @@ export async function markClean(restaurantId: string, tableId: string) {
 }
 
 export async function releaseTable(restaurantId: string, tableId: string) {
+  // Remember who was sitting here before the session closes — a booked
+  // party leaving is the cue for their thank-you email (below).
+  const leaving = await prisma.tableSession.findFirst({
+    where: { tableId, status: "SEATED", reservationId: { not: null } },
+    select: { reservationId: true },
+  });
+
   // Free the table for new guests: close any lingering session, clear held
   // reservation link and set AVAILABLE.
   await prisma.tableSession.updateMany({
@@ -102,6 +110,17 @@ export async function releaseTable(restaurantId: string, tableId: string) {
     data: { status: "FINISHED", finishedAt: new Date() },
   });
   await recordStatus(restaurantId, tableId, "AVAILABLE");
+
+  // Best-effort and awaited (not fire-and-forget: on Vercel the function can
+  // be frozen the moment it responds, which would kill an in-flight send).
+  // Never lets a mail problem stop the table being freed.
+  if (leaving?.reservationId) {
+    try {
+      await sendThankYouForReservation(restaurantId, leaving.reservationId);
+    } catch (err) {
+      console.error("[thank-you email]", leaving.reservationId, err);
+    }
+  }
   const t = await prisma.diningTable.findUnique({ where: { id: tableId }, include: { section: true } });
   await notify(restaurantId, {
     type: "TABLE_AVAILABLE",

@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
   if ("error" in ctx) return ctx.error;
   const restaurant = await prisma.restaurant.findUniqueOrThrow({
     where: { id: ctx.restaurantId },
-    select: { name: true, timezone: true, onboardingCompletedAt: true },
+    select: { name: true, timezone: true, onboardingCompletedAt: true, brandColor: true, logoUrl: true, email: true },
   });
   return NextResponse.json({ restaurant });
 }
@@ -33,6 +33,10 @@ const patchSchema = z.object({
     }, "Not a recognized timezone")
     .optional(),
   onboardingCompletedAt: z.literal(true).optional(), // marks the wizard done — never unset it via this route
+  // Look & feel — colours the booking widget and any email the restaurant
+  // sends its guests (see guestEmails.ts).
+  brandColor: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Use a 6-digit hex colour like #c9611f").optional(),
+  logoUrl: z.string().trim().url().max(500).nullable().optional(),
 });
 
 export async function PATCH(req: NextRequest) {
@@ -48,6 +52,8 @@ export async function PATCH(req: NextRequest) {
     data: {
       ...(parsed.data.timezone ? { timezone: parsed.data.timezone } : {}),
       ...(parsed.data.onboardingCompletedAt ? { onboardingCompletedAt: new Date() } : {}),
+      ...(parsed.data.brandColor ? { brandColor: parsed.data.brandColor } : {}),
+      ...(parsed.data.logoUrl !== undefined ? { logoUrl: parsed.data.logoUrl } : {}),
     },
   });
   return NextResponse.json({ ok: true });

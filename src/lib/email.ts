@@ -16,9 +16,16 @@ export async function sendEmail(params: {
   to: string;
   subject: string;
   html: string;
+  // Guest-facing mail from a restaurant goes out under the restaurant's own
+  // name ("The Colonial via Host Flow") with replies landing in their inbox,
+  // not ours — the sending address itself stays on our verified domain.
+  fromName?: string;
+  replyTo?: string;
 }): Promise<{ ok: boolean; error?: string }> {
   const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.RESEND_FROM_EMAIL || "Host Flow <onboarding@hostflow.app>";
+  const defaultFrom = process.env.RESEND_FROM_EMAIL || "Host Flow <onboarding@hostflow.app>";
+  const fromAddress = defaultFrom.match(/<([^>]+)>/)?.[1] ?? defaultFrom;
+  const from = params.fromName ? `${params.fromName.replace(/[<>"]/g, "")} via Host Flow <${fromAddress}>` : defaultFrom;
 
   if (!apiKey) {
     console.log(`[email:not-configured] Would send to ${params.to}: "${params.subject}"\n${params.html}`);
@@ -29,7 +36,13 @@ export async function sendEmail(params: {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from, to: params.to, subject: params.subject, html: params.html }),
+      body: JSON.stringify({
+        from,
+        to: params.to,
+        subject: params.subject,
+        html: params.html,
+        ...(params.replyTo ? { reply_to: params.replyTo } : {}),
+      }),
     });
 
     if (!res.ok) {
@@ -273,4 +286,112 @@ export function paymentRequiredEmailHtml(params: { restaurantName: string; check
     emailButton(checkoutUrl, "Complete payment") +
     emailFallbackLink(checkoutUrl);
   return emailLayout({ previewText: `${restaurantName}'s Host Flow trial ends in ${daysLeft} ${dayWord} — add a payment method to continue.`, bodyHtml: body });
+}
+
+// ── Restaurant-branded guest email ───────────────────────────────────────
+// Unlike everything above (which is Host Flow writing to a restaurant),
+// this is a restaurant writing to its own guest, so it wears the
+// restaurant's colours and logo and Host Flow only appears as a footer
+// credit. Kept dependency-free and inline-styled like the rest.
+
+
+/** Swaps {name} / {restaurant} in a host-written subject or message. */
+export function fillThankYouTemplate(text: string, vars: { name: string; restaurant: string }): string {
+  return text.replace(/\{name\}/gi, vars.name).replace(/\{restaurant\}/gi, vars.restaurant);
+}
+
+/** Darkens a hex colour enough for white text to stay legible on it. */
+function readableOn(hex: string): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return "#c9611f";
+  const n = parseInt(m[1], 16);
+  const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  if (luminance < 0.6) return `#${m[1]}`;
+  const dim = (c: number) => Math.round(c * 0.6).toString(16).padStart(2, "0");
+  return `#${dim(r)}${dim(g)}${dim(b)}`;
+}
+
+export function thankYouEmailHtml(params: {
+  restaurantName: string;
+  brandColor: string;
+  logoUrl: string | null;
+  address: string | null;
+  customerName: string;
+  subject: string;
+  message: string;
+  reviewUrl: string | null;
+}): string {
+  const { restaurantName, logoUrl, address, customerName, subject, message, reviewUrl } = params;
+  const accent = readableOn(params.brandColor);
+  const font = "-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif";
+  const vars = { name: customerName, restaurant: restaurantName };
+  const paragraphs = fillThankYouTemplate(message, vars)
+    .split(/\n{2,}/)
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .map(
+      (p) =>
+        `<p style="margin:0 0 14px 0; font-family:${font}; font-size:15px; line-height:1.65; color:${INK_MUTED};">${escapeHtml(p).replace(/\n/g, "<br/>")}</p>`
+    )
+    .join("");
+
+  const header = logoUrl
+    ? `<img src="${escapeHtml(logoUrl)}" alt="${escapeHtml(restaurantName)}" style="display:block; max-height:64px; max-width:220px; margin:0 auto;" />`
+    : `<span style="font-family:Georgia,'Times New Roman',serif; font-size:24px; font-weight:700; letter-spacing:0.02em; color:#ffffff;">${escapeHtml(restaurantName)}</span>`;
+
+  const reviewBlock = reviewUrl
+    ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:22px auto 6px auto;">
+        <tr>
+          <td style="border-radius:8px; background:${accent};">
+            <a href="${escapeHtml(reviewUrl)}" style="display:inline-block; padding:13px 26px; font-family:${font}; font-size:15px; font-weight:700; color:#ffffff; text-decoration:none; border-radius:8px;">Leave us a Google review</a>
+          </td>
+        </tr>
+      </table>
+      <p style="margin:0; font-family:${font}; font-size:12px; color:#9a9690; text-align:center;">It takes about a minute.</p>`
+    : "";
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="light" />
+<title>${escapeHtml(restaurantName)}</title>
+<style>
+  @media (max-width: 600px) {
+    .hf-container { width: 100% !important; }
+    .hf-card { padding: 24px !important; }
+  }
+</style>
+</head>
+<body style="margin:0; padding:0; background:${PAGE_BG}; -webkit-text-size-adjust:100%;">
+  <div style="display:none; max-height:0; overflow:hidden; opacity:0;">${escapeHtml(fillThankYouTemplate(subject, vars))}</div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${PAGE_BG};">
+    <tr>
+      <td align="center" style="padding:32px 16px;">
+        <table role="presentation" class="hf-container" width="600" cellpadding="0" cellspacing="0" style="width:600px; max-width:100%; border-radius:14px; overflow:hidden; border:1px solid ${BORDER};">
+          <tr>
+            <td align="center" style="background:${accent}; padding:28px 32px;">
+              ${header}
+            </td>
+          </tr>
+          <tr>
+            <td class="hf-card" style="background:${CARD_BG}; padding:32px; font-family:${font};">
+              ${paragraphs}
+              ${reviewBlock}
+            </td>
+          </tr>
+          <tr>
+            <td style="background:${CARD_BG}; border-top:1px solid ${BORDER}; padding:16px 32px; font-family:${font}; font-size:12px; line-height:1.6; color:#9a9690; text-align:center;">
+              <strong style="color:${INK_MUTED};">${escapeHtml(restaurantName)}</strong>${address ? `<br/>${escapeHtml(address)}` : ""}
+            </td>
+          </tr>
+        </table>
+        <p style="margin:18px 0 0 0; font-family:${font}; font-size:11px; color:#b5b0a8; text-align:center;">Sent with Host Flow</p>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
 }

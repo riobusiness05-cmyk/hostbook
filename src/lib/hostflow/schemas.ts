@@ -100,6 +100,10 @@ export const settingsSchema = z.object({
   noShowProtectionEnabled: z.boolean().optional(),
   noShowFeeCents: z.number().int().min(0).max(100000).nullable().optional(),
   noShowMinPartySize: z.number().int().min(1).max(30).nullable().optional(),
+  thankYouEmailEnabled: z.boolean().optional(),
+  thankYouEmailSubject: z.string().trim().max(150).nullable().optional(),
+  thankYouEmailBody: z.string().trim().max(2000).nullable().optional(),
+  googleReviewUrl: z.string().trim().url().max(500).nullable().optional(),
 });
 
 export const assistantSchema = z.object({
