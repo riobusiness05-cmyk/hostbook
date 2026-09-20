@@ -14,6 +14,18 @@ const inputCls =
   "mt-1 w-full rounded-lg border border-black/10 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-sky-500 dark:border-white/15 dark:bg-white/5 dark:text-white";
 
 
+// What each status means to a host, and how loudly to show it.
+const STATUS_META: Record<string, { label: string; cls: string }> = {
+  SENT: { label: "Sent", cls: "bg-sky-500/15 text-sky-600 dark:text-sky-400" },
+  DELAYED: { label: "Delayed", cls: "bg-amber-500/15 text-amber-600 dark:text-amber-400" },
+  DELIVERED: { label: "Delivered", cls: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" },
+  OPENED: { label: "Opened", cls: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" },
+  BOUNCED: { label: "Bounced", cls: "bg-red-500/15 text-red-600 dark:text-red-400" },
+  COMPLAINED: { label: "Marked spam", cls: "bg-red-500/15 text-red-600 dark:text-red-400" },
+  FAILED: { label: "Failed", cls: "bg-red-500/15 text-red-600 dark:text-red-400" },
+  SKIPPED: { label: "Not sent", cls: "bg-neutral-500/15 text-neutral-500 dark:text-neutral-400" },
+};
+
 const KIND_LABEL: Record<string, string> = {
   SIGNUP_VERIFY: "Welcome / verify email",
   PASSWORD_RESET: "Password reset",
@@ -333,8 +345,9 @@ export function GuestEmailSettings({
           </Button>
         </div>
         <p className="mb-3 text-xs text-neutral-500 dark:text-neutral-400">
-          Every email sent for this venue — confirmations, thank-yous, sign-in alerts — and whether Resend accepted it.
-          &ldquo;Sent&rdquo; means Resend took it; if it still isn&apos;t in the inbox, check spam, then the Resend dashboard for delivery.
+          Every email sent for this venue — confirmations, thank-yous, sign-in alerts — and what happened to it.
+          &ldquo;Sent&rdquo; means it left us; it becomes &ldquo;Delivered&rdquo; (or &ldquo;Bounced&rdquo;) once the receiving mail server
+          answers, and &ldquo;Opened&rdquo; when the guest reads it. Delivered but not in the inbox = check spam.
         </p>
         {log === null ? (
           <p className="text-sm text-neutral-400">Loading…</p>
@@ -347,17 +360,8 @@ export function GuestEmailSettings({
                 <span className="w-24 shrink-0 tabular-nums text-neutral-400">
                   {new Date(e.createdAt).toLocaleString(undefined, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
                 </span>
-                <span
-                  className={
-                    "shrink-0 rounded-md px-1.5 py-0.5 font-semibold " +
-                    (e.status === "SENT"
-                      ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
-                      : e.status === "FAILED"
-                        ? "bg-red-500/15 text-red-600 dark:text-red-400"
-                        : "bg-neutral-500/15 text-neutral-500 dark:text-neutral-400")
-                  }
-                >
-                  {e.status === "SENT" ? "Sent" : e.status === "FAILED" ? "Failed" : "Not sent"}
+                <span className={"shrink-0 rounded-md px-1.5 py-0.5 font-semibold " + (STATUS_META[e.status]?.cls ?? STATUS_META.SKIPPED.cls)}>
+                  {STATUS_META[e.status]?.label ?? e.status}
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="font-medium text-neutral-800 dark:text-neutral-100">{KIND_LABEL[e.kind] ?? e.kind}</span>

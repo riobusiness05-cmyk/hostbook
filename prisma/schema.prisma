@@ -644,7 +644,10 @@ model EmailLog {
   kind         String      // SIGNUP_VERIFY | PASSWORD_RESET | LOGIN_ALERT | BOOKING_CONFIRMATION | OWNER_NEW_BOOKING | THANK_YOU | THANK_YOU_TEST | PAYMENT_FAILED | PAYMENT_REQUIRED
   to           String
   subject      String
-  status       String      // SENT (accepted by Resend) | FAILED (Resend refused it) | SKIPPED (no RESEND_API_KEY, local dev)
+  // SENT (accepted by Resend) → DELAYED | DELIVERED | OPENED | BOUNCED | COMPLAINED
+  // (updated by Resend's webhook, src/app/api/resend/webhook) ·
+  // FAILED (Resend refused it) · SKIPPED (no RESEND_API_KEY, local dev)
+  status       String
   error        String?
   providerId   String?     // Resend's message id — searchable in the Resend dashboard
   createdAt    DateTime    @default(now())
