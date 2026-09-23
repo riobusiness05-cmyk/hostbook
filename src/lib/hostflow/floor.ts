@@ -233,6 +233,7 @@ export type SettingsDTO = {
   instagramUrl: string | null;
   websiteUrl: string | null;
   defaultLanguage: string;
+  thankYouEmailHtml: string | null;
 };
 
 const minutesBetween = (a: Date, b: Date) => Math.round((a.getTime() - b.getTime()) / 60000);
@@ -303,6 +304,7 @@ export async function getSettings(restaurantId: string): Promise<SettingsDTO> {
     instagramUrl: s.instagramUrl,
     websiteUrl: s.websiteUrl,
     defaultLanguage: s.defaultLanguage,
+    thankYouEmailHtml: s.thankYouEmailHtml,
   };
 }
 

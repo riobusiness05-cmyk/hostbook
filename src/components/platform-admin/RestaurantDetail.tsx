@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { Chip, Button, StatCard, Card, SectionTitle } from "@/components/host/ui";
 import { HostFlowLogo } from "@/components/HostFlowLogo";
+import { EmailDesignEditor } from "./EmailDesignEditor";
 import { STATUS_META, formatCents, formatDate, formatDateTime } from "./format";
 import type { RestaurantDetail as RestaurantDetailData } from "@/lib/platformAdmin";
 import type { StripeCustomerSummary } from "@/lib/billing/subscription";
@@ -260,6 +261,8 @@ export function RestaurantDetail({ restaurant }: { restaurant: RestaurantDetailD
             </div>
           )}
         </Card>
+
+        <EmailDesignEditor restaurantId={restaurant.id} restaurantName={restaurant.name} />
 
         <Card className="p-4">
           <SectionTitle>Recent bookings</SectionTitle>

@@ -193,7 +193,15 @@ export function BrandKitSettings({ initialSettings, premium, onUpgrade }: { init
         {/* ── Look & voice ── */}
         <Card className="p-5">
           <SectionTitle>Look &amp; voice</SectionTitle>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {initialSettings.thankYouEmailHtml && (
+            <div className="mb-4 rounded-lg border border-emerald-500/30 bg-emerald-500/[0.07] p-3 text-sm">
+              <p className="font-semibold text-emerald-700 dark:text-emerald-300">Your email is designed by Host Flow</p>
+              <p className="mt-0.5 text-xs text-neutral-600 dark:text-neutral-300">
+                The layout was made for you by hand — the preview on the right shows it. Your tone, sign-off, review link and sender details below still apply. Want a change to the design? Just ask us.
+              </p>
+            </div>
+          )}
+          <div className={"grid grid-cols-1 gap-4 sm:grid-cols-2" + (initialSettings.thankYouEmailHtml ? " hidden" : "")}>
             <div className="text-xs font-medium text-neutral-500 dark:text-neutral-400">
               Brand colour
               <div className="mt-1 flex items-center gap-2">
@@ -208,8 +216,8 @@ export function BrandKitSettings({ initialSettings, premium, onUpgrade }: { init
               </select>
             </Field>
           </div>
-          <p className="mt-4 text-xs font-medium text-neutral-500 dark:text-neutral-400">Font style <span className="font-normal text-neutral-400">· email clients only allow built-in fonts, so these use safe fallbacks</span></p>
-          <div className="mt-1 grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <p className={"mt-4 text-xs font-medium text-neutral-500 dark:text-neutral-400" + (initialSettings.thankYouEmailHtml ? " hidden" : "")}>Font style <span className="font-normal text-neutral-400">· email clients only allow built-in fonts, so these use safe fallbacks</span></p>
+          <div className={"mt-1 grid grid-cols-1 gap-2 sm:grid-cols-3" + (initialSettings.thankYouEmailHtml ? " hidden" : "")}>
             {(Object.keys(FONT_STYLES) as (keyof typeof FONT_STYLES)[]).map((f) => (
               <button key={f} type="button" className={radio(d.brandFont === f)} onClick={() => set("brandFont", f)}>
                 <p className="text-lg leading-tight" style={{ fontFamily: FONT_STYLES[f].heading }}>{venue?.name ?? "Your venue"}</p>

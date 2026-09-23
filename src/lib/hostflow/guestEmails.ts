@@ -4,6 +4,8 @@ import { guestThankYouEmail, sendEmail, sendingDomain } from "@/lib/email";
 import { resolveBrandKit, type BrandKit, type Language, THANK_YOU_DELAYS, type ThankYouDelay } from "@/lib/brandKit";
 import { composeThankYou } from "./thankYouCopy";
 import { unsubscribeUrl } from "@/lib/unsubscribe";
+import { renderTemplate } from "@/lib/emailTemplate";
+import { FONT_STYLES, readableOn } from "@/lib/brandKit";
 import { hasPremiumFeatures } from "@/lib/billing/subscription";
 import { combineDateAndTime, toLocalDateStr } from "@/lib/availability";
 import type { Restaurant } from "@prisma/client";
@@ -73,7 +75,7 @@ export type VisitFacts = {
 export type RenderedThankYou = { subject: string; html: string; text: string; language: Language; headers: Record<string, string> };
 
 /** The complete email for one visit, from the kit and the facts — pure once the kit is loaded. */
-export function renderThankYou(kit: BrandKit, settings: Pick<SettingsDTO, "thankYouEmailSubject" | "thankYouEmailBody">, restaurantId: string, timezone: string, facts: VisitFacts, now = new Date()): RenderedThankYou {
+export function renderThankYou(kit: BrandKit, settings: Pick<SettingsDTO, "thankYouEmailSubject" | "thankYouEmailBody" | "thankYouEmailHtml">, restaurantId: string, timezone: string, facts: VisitFacts, now = new Date()): RenderedThankYou {
   const composed = composeThankYou({
     firstName: facts.firstName,
     venueName: kit.venueName,
@@ -91,13 +93,45 @@ export function renderThankYou(kit: BrandKit, settings: Pick<SettingsDTO, "thank
     customSubject: settings.thankYouEmailSubject,
   });
   const unsub = unsubscribeUrl(appUrl(), restaurantId, facts.email);
-  const { html, text } = guestThankYouEmail(kit, {
+  const builtIn = guestThankYouEmail(kit, {
     subject: composed.subject,
     paragraphs: composed.paragraphs,
     signOff: composed.signOff,
     unsubscribeUrl: unsub,
     language: facts.language,
   });
+  const text = builtIn.text;
+  // A hand-designed template (set by the platform admin) replaces the
+  // built-in layout; the words and links drop in through placeholders.
+  const custom = settings.thankYouEmailHtml?.trim();
+  const es = facts.language === "es";
+  const font = FONT_STYLES[kit.font];
+  const html = custom
+    ? renderTemplate(custom, {
+        name: facts.firstName,
+        venue: kit.venueName,
+        subject: composed.subject,
+        message: composed.paragraphs.map((p) => `<p>${p.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p>`).join("\n"),
+        message_text: composed.paragraphs.join("\n\n"),
+        sign_off: composed.signOff,
+        review_url: kit.reviewUrl,
+        review_label: es ? "Déjanos una reseña en Google" : "Leave us a Google review",
+        booking_url: kit.bookingUrl,
+        book_label: es ? "Reservar mesa" : "Book a table",
+        book_line: es ? "Cuando quieras volver, tu mesa está a un toque:" : "Whenever you'd like to come back, your table is a tap away:",
+        unsubscribe_url: unsub,
+        unsubscribe_label: es ? "Darse de baja de estos correos" : "Unsubscribe from these emails",
+        address: kit.address,
+        phone: kit.phone,
+        instagram_url: kit.instagramUrl,
+        website_url: kit.websiteUrl,
+        primary: readableOn(kit.primary),
+        font_heading: font.heading,
+        font_body: font.body,
+        year: String(now.getFullYear()),
+        language: facts.language,
+      })
+    : builtIn.html;
   const oneClick = unsub.replace("/email/unsubscribe?", "/api/email/unsubscribe?");
   return {
     subject: composed.subject,

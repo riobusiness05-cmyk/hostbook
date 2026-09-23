@@ -489,6 +489,10 @@ model RestaurantSettings {
   instagramUrl          String?
   websiteUrl            String?
   defaultLanguage       String   @default("en")
+  // A bespoke HTML template designed for this venue (platform admin only).
+  // When set it replaces the built-in design; the note, links and
+  // unsubscribe drop in via {{placeholders}} — see src/lib/emailTemplate.ts.
+  thankYouEmailHtml     String?
 
   updatedAt             DateTime   @updatedAt
 }

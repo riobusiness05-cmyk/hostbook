@@ -87,7 +87,7 @@ describe("renderThankYou", () => {
   });
 
   it("always produces a complete email, even with no brand kit at all", () => {
-    const r = renderThankYou(kit, { thankYouEmailSubject: null, thankYouEmailBody: null }, "venue1", "Atlantic/Canary", {
+    const r = renderThankYou(kit, { thankYouEmailSubject: null, thankYouEmailBody: null, thankYouEmailHtml: null }, "venue1", "Atlantic/Canary", {
       firstName: "Sam", email: "sam@example.com", partySize: 2, visitAt: new Date("2026-09-22T20:00:00Z"), occasion: null, visitCount: 1, language: "en", seed: "v",
     }, new Date("2026-09-22T22:00:00Z"));
     expect(r.subject).toContain("Sam");
@@ -100,6 +100,20 @@ describe("renderThankYou", () => {
     expect(r.headers["List-Unsubscribe"]).toMatch(/^<https?:\/\/[^/]+\/api\/email\/unsubscribe\?/);
     expect(r.headers["List-Unsubscribe-Post"]).toBe("List-Unsubscribe=One-Click");
   });
+
+  it("uses the hand-made HTML and drops the words and links into it", () => {
+    const template = '<html><body class="mine">{{{message}}}<a href="{{unsubscribe_url}}">bye</a>{{#review_url}}<a href="{{review_url}}">rev</a>{{/review_url}}<a href="{{booking_url}}">{{book_label}}</a></body></html>';
+    const r = renderThankYou({ ...kit, reviewUrl: null }, { thankYouEmailSubject: null, thankYouEmailBody: null, thankYouEmailHtml: template }, "venue1", "UTC", {
+      firstName: "Sam", email: "sam@example.com", partySize: 2, visitAt: new Date("2026-09-22T20:00:00Z"), occasion: null, visitCount: 1, language: "es", seed: "v",
+    }, new Date("2026-09-22T22:00:00Z"));
+    expect(r.html).toContain('class="mine"');
+    expect(r.html).toContain("<p>Hola Sam,</p>");
+    expect(r.html).toContain("/email/unsubscribe?");
+    expect(r.html).not.toContain("rev"); // no review link → the wrapped block vanishes
+    expect(r.html).toContain(">Reservar mesa<");
+    expect(r.text).toContain("Sam"); // plain-text twin is still the built-in one
+  });
+
 });
 
 describe("nextSendAt", () => {
