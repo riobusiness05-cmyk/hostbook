@@ -224,7 +224,6 @@ export async function createReservationForRestaurant(
           html: reservationConfirmationHtml({
             restaurantName: restaurant.name,
             brandColor: restaurant.brandColor,
-            logoUrl: restaurant.logoUrl,
             address: restaurant.address,
             customerName: input.customerName,
             date: input.date,

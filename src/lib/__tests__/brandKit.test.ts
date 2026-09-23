@@ -2,13 +2,12 @@ import { describe, expect, it } from "vitest";
 import { buildReviewUrl, contrastText, extractPlaceId, isReviewLink, resolveBrandKit, readableOn } from "@/lib/brandKit";
 
 const bare = {
-  restaurant: { name: "The Harbour", slug: "the-harbour", brandColor: "#0ea5e9", logoUrl: null, address: null, phone: null, email: null },
+  restaurant: { name: "The Harbour", slug: "the-harbour", brandColor: "#0ea5e9", address: null, phone: null, email: null },
   settings: {
-    brandPrimary: null, brandSecondary: null, brandBackground: null, brandText: null, brandFont: "nonsense", brandTone: "nonsense",
+    brandPrimary: null, brandFont: "nonsense", brandTone: "nonsense",
     brandVoiceNotes: null, brandSignOff: null, googlePlaceId: null, googleReviewUrl: null, instagramUrl: null, websiteUrl: null,
     defaultLanguage: "fr", emailFromName: null, emailReplyTo: null,
   },
-  assets: [],
   appUrl: "https://hostflow.space",
   senderAddress: "the-harbour@hostflow.space",
 };
@@ -22,29 +21,16 @@ describe("resolveBrandKit", () => {
     expect(kit.signOff).toBe("The team at The Harbour");
     expect(kit.fromName).toBe("The Harbour");
     expect(kit.defaultLanguage).toBe("en");
-    expect(kit.photos).toEqual([]);
-    expect(kit.logoUrl).toBeNull();
     expect(kit.reviewUrl).toBeNull();
     expect(kit.bookingUrl).toBe("https://hostflow.space/widget/the-harbour");
-    expect(kit.background).toMatch(/^#[0-9a-f]{6}$/);
   });
 
-  it("prefers uploaded assets and explicit settings", () => {
+  it("prefers explicit settings", () => {
     const kit = resolveBrandKit({
       ...bare,
-      restaurant: { ...bare.restaurant, logoUrl: "https://old/logo.png" },
       settings: { ...bare.settings, brandPrimary: "#112233", brandSignOff: "Maria & the team", googlePlaceId: "ChIJabcdefghijklmnopqrstuv", defaultLanguage: "es" },
-      assets: [
-        { kind: "LOGO", url: "https://blob/logo.png", alt: null, sortOrder: 0 },
-        { kind: "PHOTO", url: "https://blob/2.jpg", alt: "Terrace", sortOrder: 1 },
-        { kind: "PHOTO", url: "https://blob/1.jpg", alt: null, sortOrder: 0 },
-      ],
     });
     expect(kit.primary).toBe("#112233");
-    expect(kit.logoUrl).toBe("https://blob/logo.png");
-    expect(kit.photos.map((p) => p.url)).toEqual(["https://blob/1.jpg", "https://blob/2.jpg"]);
-    expect(kit.photos[1].alt).toBe("Terrace");
-    expect(kit.photos[0].alt).toBe("The Harbour");
     expect(kit.signOff).toBe("Maria & the team");
     expect(kit.reviewUrl).toBe("https://search.google.com/local/writereview?placeid=ChIJabcdefghijklmnopqrstuv");
     expect(kit.defaultLanguage).toBe("es");

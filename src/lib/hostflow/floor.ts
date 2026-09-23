@@ -225,9 +225,6 @@ export type SettingsDTO = {
   thankYouMode: string;
   thankYouDelay: string;
   brandPrimary: string | null;
-  brandSecondary: string | null;
-  brandBackground: string | null;
-  brandText: string | null;
   brandFont: string;
   brandTone: string;
   brandVoiceNotes: string | null;
@@ -298,9 +295,6 @@ export async function getSettings(restaurantId: string): Promise<SettingsDTO> {
     thankYouMode: s.thankYouMode,
     thankYouDelay: s.thankYouDelay,
     brandPrimary: s.brandPrimary,
-    brandSecondary: s.brandSecondary,
-    brandBackground: s.brandBackground,
-    brandText: s.brandText,
     brandFont: s.brandFont,
     brandTone: s.brandTone,
     brandVoiceNotes: s.brandVoiceNotes,

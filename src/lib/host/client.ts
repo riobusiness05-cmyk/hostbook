@@ -65,32 +65,6 @@ export function visitThankYouPreviewUrl(visitId: string, email?: string): string
 
 // ── Brand kit ───────────────────────────────────────────────────────────
 
-export type BrandAsset = { id: string; kind: "LOGO" | "PHOTO"; url: string; width: number | null; height: number | null; bytes: number; alt: string | null; sortOrder: number };
-export type Palette = { primary: string | null; secondary: string | null; swatches: string[] };
-
-export async function fetchBrandAssets(): Promise<BrandAsset[]> {
-  const res = await fetch("/api/host/brand/assets", { cache: "no-store" });
-  return (await jsonOrThrow<{ assets: BrandAsset[] }>(res)).assets;
-}
-
-export async function uploadBrandAsset(kind: "LOGO" | "PHOTO", file: File): Promise<{ asset: BrandAsset; palette: Palette }> {
-  const form = new FormData();
-  form.append("kind", kind);
-  form.append("file", file);
-  const res = await fetch("/api/host/brand/assets", { method: "POST", body: form });
-  return jsonOrThrow<{ asset: BrandAsset; palette: Palette }>(res);
-}
-
-export async function updateBrandAsset(id: string, patch: { alt?: string | null; sortOrder?: number }): Promise<void> {
-  const res = await fetch(`/api/host/brand/assets/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
-  await jsonOrThrow(res);
-}
-
-export async function deleteBrandAsset(id: string): Promise<void> {
-  const res = await fetch(`/api/host/brand/assets/${id}`, { method: "DELETE" });
-  await jsonOrThrow(res);
-}
-
 /** Renders the first sample with UNSAVED settings — the live preview while editing. */
 export async function previewThankYou(draft: Partial<SettingsDTO>): Promise<string> {
   const res = await fetch("/api/host/brand/preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(draft) });

@@ -50,14 +50,10 @@ export function normalizeLanguage(value: string | null | undefined, fallback: La
 // ── Brand kit ────────────────────────────────────────────────────────────
 
 export async function loadBrandKit(restaurantId: string, overrides: Partial<SettingsDTO> = {}): Promise<{ kit: BrandKit; restaurant: Restaurant; settings: SettingsDTO }> {
-  const [restaurant, saved, assets] = await Promise.all([
-    prisma.restaurant.findUniqueOrThrow({ where: { id: restaurantId } }),
-    getSettings(restaurantId),
-    prisma.brandAsset.findMany({ where: { restaurantId }, orderBy: [{ kind: "asc" }, { sortOrder: "asc" }] }),
-  ]);
+  const [restaurant, saved] = await Promise.all([prisma.restaurant.findUniqueOrThrow({ where: { id: restaurantId } }), getSettings(restaurantId)]);
   // `overrides` = a draft the settings page hasn't saved yet (live preview).
   const settings = { ...saved, ...overrides };
-  const kit = resolveBrandKit({ restaurant, settings, assets, appUrl: appUrl(), senderAddress: senderAddressFor(restaurant) });
+  const kit = resolveBrandKit({ restaurant, settings, appUrl: appUrl(), senderAddress: senderAddressFor(restaurant) });
   return { kit, restaurant, settings };
 }
 
@@ -94,14 +90,11 @@ export function renderThankYou(kit: BrandKit, settings: Pick<SettingsDTO, "thank
     customBody: settings.thankYouEmailBody,
     customSubject: settings.thankYouEmailSubject,
   });
-  // Rotate hero photos so a regular sees a different picture each time.
-  const heroPhoto = kit.photos.length ? kit.photos[(Math.max(1, facts.visitCount) - 1) % kit.photos.length] : null;
   const unsub = unsubscribeUrl(appUrl(), restaurantId, facts.email);
   const { html, text } = guestThankYouEmail(kit, {
     subject: composed.subject,
     paragraphs: composed.paragraphs,
     signOff: composed.signOff,
-    heroPhoto,
     unsubscribeUrl: unsub,
     language: facts.language,
   });

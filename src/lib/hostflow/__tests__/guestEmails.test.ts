@@ -77,13 +77,13 @@ describe("sendThankYouWithDeps", () => {
 
 describe("renderThankYou", () => {
   const kit = resolveBrandKit({
-    restaurant: { name: "Bare Bar", slug: "bare-bar", brandColor: "#c9611f", logoUrl: null, address: null, phone: null, email: null },
+    restaurant: { name: "Bare Bar", slug: "bare-bar", brandColor: "#c9611f", address: null, phone: null, email: null },
     settings: {
-      brandPrimary: null, brandSecondary: null, brandBackground: null, brandText: null, brandFont: "MODERN_SANS", brandTone: "BEACH_BAR",
+      brandPrimary: null, brandFont: "MODERN_SANS", brandTone: "BEACH_BAR",
       brandVoiceNotes: null, brandSignOff: null, googlePlaceId: null, googleReviewUrl: null, instagramUrl: null, websiteUrl: null,
       defaultLanguage: "en", emailFromName: null, emailReplyTo: null,
     },
-    assets: [], appUrl: "https://hostflow.space", senderAddress: "bare-bar@hostflow.space",
+    appUrl: "https://hostflow.space", senderAddress: "bare-bar@hostflow.space",
   });
 
   it("always produces a complete email, even with no brand kit at all", () => {
@@ -96,17 +96,9 @@ describe("renderThankYou", () => {
     expect(r.html).not.toMatch(/undefined|null|\[object/);
     expect(r.html).not.toMatch(/writereview|g\.page/); // no review link configured → no button
     expect(r.text).toContain("Sam");
+    expect(r.html).toContain("/widget/bare-bar"); // the "book again" link
     expect(r.headers["List-Unsubscribe"]).toMatch(/^<https?:\/\/[^/]+\/api\/email\/unsubscribe\?/);
     expect(r.headers["List-Unsubscribe-Post"]).toBe("List-Unsubscribe=One-Click");
-  });
-
-  it("rotates hero photos across a guest's visits", () => {
-    const withPhotos = { ...kit, photos: [{ url: "https://p/1.jpg", alt: "one" }, { url: "https://p/2.jpg", alt: "two" }] };
-    const facts = { firstName: "A", email: "a@b.c", partySize: 2, visitAt: new Date("2026-09-22T20:00:00Z"), occasion: null, language: "en" as const, seed: "s" };
-    const s = { thankYouEmailSubject: null, thankYouEmailBody: null };
-    expect(renderThankYou(withPhotos, s, "v", "UTC", { ...facts, visitCount: 1 }).html).toContain("https://p/1.jpg");
-    expect(renderThankYou(withPhotos, s, "v", "UTC", { ...facts, visitCount: 2 }).html).toContain("https://p/2.jpg");
-    expect(renderThankYou(withPhotos, s, "v", "UTC", { ...facts, visitCount: 3 }).html).toContain("https://p/1.jpg");
   });
 });
 

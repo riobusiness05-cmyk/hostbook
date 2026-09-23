@@ -107,12 +107,7 @@ export function buildReviewUrl(placeId: string | null | undefined, fallbackUrl: 
 export type BrandKit = {
   venueName: string;
   slug: string;
-  logoUrl: string | null;
-  photos: { url: string; alt: string }[];
   primary: string;
-  secondary: string;
-  background: string;
-  text: string;
   font: FontStyle;
   tone: Tone;
   voiceNotes: string | null;
@@ -130,20 +125,9 @@ export type BrandKit = {
 };
 
 export type BrandKitSource = {
-  restaurant: {
-    name: string;
-    slug: string;
-    brandColor: string;
-    logoUrl: string | null;
-    address: string | null;
-    phone: string | null;
-    email: string | null;
-  };
+  restaurant: { name: string; slug: string; brandColor: string; address: string | null; phone: string | null; email: string | null };
   settings: {
     brandPrimary: string | null;
-    brandSecondary: string | null;
-    brandBackground: string | null;
-    brandText: string | null;
     brandFont: string;
     brandTone: string;
     brandVoiceNotes: string | null;
@@ -156,7 +140,6 @@ export type BrandKitSource = {
     emailFromName: string | null;
     emailReplyTo: string | null;
   };
-  assets: { kind: string; url: string; alt: string | null; sortOrder: number }[];
   appUrl: string;
   senderAddress: string;
 };
@@ -168,20 +151,10 @@ export function resolveBrandKit(src: BrandKitSource): BrandKit {
   const primary = parseHex(s.brandPrimary) ? s.brandPrimary! : r.brandColor;
   const font = (s.brandFont in FONT_STYLES ? s.brandFont : "MODERN_SANS") as FontStyle;
   const tone = (s.brandTone in TONES ? s.brandTone : "WARM_FAMILY") as Tone;
-  const logo = src.assets.find((a) => a.kind === "LOGO")?.url ?? r.logoUrl ?? null;
-  const photos = src.assets
-    .filter((a) => a.kind === "PHOTO")
-    .sort((a, b) => a.sortOrder - b.sortOrder)
-    .map((a) => ({ url: a.url, alt: a.alt?.trim() || r.name }));
   return {
     venueName: r.name,
     slug: r.slug,
-    logoUrl: logo,
-    photos,
     primary,
-    secondary: parseHex(s.brandSecondary) ? s.brandSecondary! : shade(primary, 0.75),
-    background: parseHex(s.brandBackground) ? s.brandBackground! : "#f6f4f0",
-    text: parseHex(s.brandText) ? s.brandText! : "#1a1a1a",
     font,
     tone,
     voiceNotes: s.brandVoiceNotes?.trim() || null,

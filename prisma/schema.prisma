@@ -60,7 +60,6 @@ model Restaurant {
   walkins             Walkin[]
   notifications       Notification[]
   emailLogs           EmailLog[]
-  brandAssets         BrandAsset[]
   emailSuppressions   EmailSuppression[]
   scheduledEmails     ScheduledEmail[]
   tableStatusHistory  TableStatusHistory[]
@@ -482,9 +481,6 @@ model RestaurantSettings {
   thankYouMode          String   @default("OFF")        // ASK (staff confirm) | AUTO (queued on release) | OFF
   thankYouDelay         String   @default("IMMEDIATE")  // IMMEDIATE | MIN_30 | HOUR_2 | NEXT_MORNING (10:00 venue time)
   brandPrimary          String?  // null = Restaurant.brandColor
-  brandSecondary        String?
-  brandBackground       String?
-  brandText             String?
   brandFont             String   @default("MODERN_SANS")  // CLASSIC_SERIF | MODERN_SANS | ELEGANT_SCRIPT
   brandTone             String   @default("WARM_FAMILY")  // WARM_FAMILY | UPSCALE | FUN_LIVELY | BEACH_BAR
   brandVoiceNotes       String?  // "how we talk to guests", free text
@@ -683,24 +679,6 @@ model EmailLog {
   createdAt    DateTime    @default(now())
 
   @@index([restaurantId, createdAt])
-}
-
-// A venue's uploaded logo and hero photos, processed for email (resized,
-// compressed) and stored publicly — see src/lib/storage.ts.
-model BrandAsset {
-  id           String     @id @default(cuid())
-  restaurantId String
-  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
-  kind         String     // LOGO | PHOTO
-  url          String
-  width        Int?
-  height       Int?
-  bytes        Int
-  alt          String?    // what's in the photo, for the email's alt text
-  sortOrder    Int        @default(0)
-  createdAt    DateTime   @default(now())
-
-  @@index([restaurantId, kind, sortOrder])
 }
 
 // Guests who unsubscribed from a venue's post-visit emails — honoured

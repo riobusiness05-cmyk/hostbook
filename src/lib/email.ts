@@ -245,7 +245,6 @@ export function passwordResetEmailHtml(resetUrl: string, ownerName: string): str
 export function reservationConfirmationHtml(params: {
   restaurantName: string;
   brandColor: string;
-  logoUrl: string | null;
   address: string | null;
   customerName: string;
   date: string;
@@ -269,7 +268,6 @@ export function reservationConfirmationHtml(params: {
   return restaurantEmailLayout({
     restaurantName,
     brandColor: params.brandColor,
-    logoUrl: params.logoUrl,
     address: params.address,
     previewText: `You're booked at ${restaurantName} — ${date} at ${time}.`,
     bodyHtml: body,
@@ -389,16 +387,13 @@ function brandButton(url: string, label: string, accent: string): string {
 export function restaurantEmailLayout(params: {
   restaurantName: string;
   brandColor: string;
-  logoUrl: string | null;
   address: string | null;
   previewText: string;
   bodyHtml: string;
 }): string {
-  const { restaurantName, logoUrl, address, previewText, bodyHtml } = params;
+  const { restaurantName, address, previewText, bodyHtml } = params;
   const accent = readableOn(params.brandColor);
-  const header = logoUrl
-    ? `<img src="${escapeHtml(logoUrl)}" alt="${escapeHtml(restaurantName)}" style="display:block; max-height:64px; max-width:220px; margin:0 auto;" />`
-    : `<span style="font-family:Georgia,'Times New Roman',serif; font-size:24px; font-weight:700; letter-spacing:0.02em; color:#ffffff;">${escapeHtml(restaurantName)}</span>`;
+  const header = `<span style="font-family:Georgia,'Times New Roman',serif; font-size:24px; font-weight:700; letter-spacing:0.02em; color:#ffffff;">${escapeHtml(restaurantName)}</span>`;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -443,42 +438,6 @@ export function restaurantEmailLayout(params: {
 </html>`;
 }
 
-export function thankYouEmailHtml(params: {
-  restaurantName: string;
-  brandColor: string;
-  logoUrl: string | null;
-  address: string | null;
-  customerName: string;
-  subject: string;
-  message: string;
-  reviewUrl: string | null;
-}): string {
-  const { restaurantName, customerName, subject, message, reviewUrl } = params;
-  const accent = readableOn(params.brandColor);
-  const vars = { name: customerName, restaurant: restaurantName };
-  const paragraphs = fillThankYouTemplate(message, vars)
-    .split(/\n{2,}/)
-    .map((p) => p.trim())
-    .filter(Boolean)
-    .map(
-      (p) =>
-        `<p style="margin:0 0 14px 0; font-family:${FONT}; font-size:15px; line-height:1.65; color:${INK_MUTED};">${escapeHtml(p).replace(/\n/g, "<br/>")}</p>`
-    )
-    .join("");
-  const reviewBlock = reviewUrl
-    ? brandButton(reviewUrl, "Leave us a Google review", accent) +
-      `<p style="margin:0; font-family:${FONT}; font-size:12px; color:#9a9690; text-align:center;">It takes about a minute.</p>`
-    : "";
-  return restaurantEmailLayout({
-    restaurantName,
-    brandColor: params.brandColor,
-    logoUrl: params.logoUrl,
-    address: params.address,
-    previewText: fillThankYouTemplate(subject, vars),
-    bodyHtml: paragraphs + reviewBlock,
-  });
-}
-
 // ── The post-visit thank-you, brand-kit edition ──────────────────────────
 // Editorial, not a marketing blast: logo, one hero photo, a short personal
 // note, one button, a soft invitation back, a quiet footer. Table layout
@@ -492,47 +451,32 @@ const T = {
 
 export function guestThankYouEmail(
   kit: BrandKit,
-  params: {
-    subject: string;
-    paragraphs: string[];
-    signOff: string;
-    heroPhoto: { url: string; alt: string } | null;
-    unsubscribeUrl: string;
-    language: Language;
-  }
+  params: { subject: string; paragraphs: string[]; signOff: string; unsubscribeUrl: string; language: Language }
 ): { html: string; text: string } {
   const t = T[params.language === "es" ? "es" : "en"];
   const font = FONT_STYLES[kit.font];
   const accent = readableOn(kit.primary);
   const buttonInk = contrastText(accent);
-  const bg = kit.background;
-  const ink = kit.text;
+  const bg = "#f6f4f0";
+  const ink = "#1a1a1a";
   const muted = "#6b6560";
   const faint = "#9a9490";
   const card = "#ffffff";
 
-  const header = kit.logoUrl
-    ? `<img src="${escapeHtml(kit.logoUrl)}" alt="${escapeHtml(kit.venueName)}" width="180" style="display:block; width:180px; max-width:60%; height:auto; margin:0 auto;" />`
-    : `<span style="font-family:${font.heading}; font-size:26px; letter-spacing:0.02em; color:${ink};">${escapeHtml(kit.venueName)}</span>`;
-
-  const hero = params.heroPhoto
-    ? `<tr><td style="padding:0;"><img src="${escapeHtml(params.heroPhoto.url)}" alt="${escapeHtml(params.heroPhoto.alt)}" width="600" style="display:block; width:100%; max-width:600px; height:auto; border:0;" /></td></tr>`
-    : "";
-
   const body = params.paragraphs
     .map(
       (p, i) =>
-        `<p style="margin:0 0 ${i === 0 ? 18 : 16}px 0; font-family:${font.body}; font-size:16px; line-height:1.7; color:${ink};">${escapeHtml(p).replace(/\n/g, "<br/>")}</p>`
+        `<p class="hf-ink" style="margin:0 0 ${i === 0 ? 18 : 16}px 0; font-family:${font.body}; font-size:16px; line-height:1.75; color:${ink};">${escapeHtml(p).replace(/\n/g, "<br/>")}</p>`
     )
     .join("");
 
   const review = kit.reviewUrl
-    ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:28px auto 8px auto;">
+    ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:30px auto 8px auto;">
         <tr><td style="border-radius:6px; background:${accent};">
           <a href="${escapeHtml(kit.reviewUrl)}" style="display:inline-block; padding:14px 30px; font-family:${font.body}; font-size:15px; font-weight:700; letter-spacing:0.02em; color:${buttonInk}; text-decoration:none; border-radius:6px;">${t.review}</a>
         </td></tr>
       </table>
-      <p style="margin:0 0 8px 0; font-family:${font.body}; font-size:12px; color:${faint}; text-align:center;">${t.takes}</p>`
+      <p style="margin:0; font-family:${font.body}; font-size:12px; color:${faint}; text-align:center;">${t.takes}</p>`
     : "";
 
   const footerLinks = [
@@ -552,7 +496,7 @@ export function guestThankYouEmail(
 <!--[if mso]><noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript><![endif]-->
 <style>
   :root { color-scheme: light dark; supported-color-schemes: light dark; }
-  @media (max-width: 620px) { .hf-w { width: 100% !important; } .hf-pad { padding: 28px 22px !important; } }
+  @media (max-width: 620px) { .hf-w { width: 100% !important; } .hf-pad { padding: 30px 24px !important; } }
   @media (prefers-color-scheme: dark) {
     .hf-page { background: #121110 !important; }
     .hf-card { background: #1c1a18 !important; }
@@ -569,15 +513,16 @@ export function guestThankYouEmail(
 <body class="hf-page" style="margin:0; padding:0; background:${bg}; -webkit-text-size-adjust:100%;">
   <div style="display:none; max-height:0; overflow:hidden; opacity:0; mso-hide:all;">${escapeHtml(params.paragraphs[1] ?? params.subject)}</div>
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="hf-page" style="background:${bg};">
-    <tr><td align="center" style="padding:36px 16px;">
+    <tr><td align="center" style="padding:40px 16px;">
       <table role="presentation" class="hf-w" width="600" cellpadding="0" cellspacing="0" style="width:600px; max-width:100%;">
-        <tr><td align="center" style="padding:6px 0 26px 0;">${header}</td></tr>
-        <tr><td class="hf-card" style="background:${card}; border-radius:10px; overflow:hidden;">
+        <tr><td class="hf-card" style="background:${card}; border-radius:10px; border-top:4px solid ${accent};">
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-            ${hero}
-            <tr><td class="hf-pad" style="padding:40px 48px 36px 48px;">
+            <tr><td align="center" style="padding:38px 48px 8px 48px;">
+              <span style="font-family:${font.heading}; font-size:30px; line-height:1.2; letter-spacing:0.01em; color:${accent};">${escapeHtml(kit.venueName)}</span>
+            </td></tr>
+            <tr><td class="hf-pad" style="padding:26px 48px 36px 48px;">
               ${body}
-              <p class="hf-ink" style="margin:22px 0 0 0; font-family:${font.body}; font-size:16px; line-height:1.7; color:${ink};">${escapeHtml(params.signOff)}</p>
+              <p class="hf-ink" style="margin:22px 0 0 0; font-family:${font.body}; font-size:16px; line-height:1.75; color:${ink};">${escapeHtml(params.signOff)}</p>
               ${review}
             </td></tr>
             <tr><td class="hf-line" style="padding:22px 48px 30px 48px; border-top:1px solid #eee9e2;">

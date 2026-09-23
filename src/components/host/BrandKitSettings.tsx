@@ -4,21 +4,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, Card, SectionTitle } from "./ui";
 import * as api from "@/lib/host/client";
 import type { SettingsDTO } from "@/lib/hostflow/floor";
-import {
-  FONT_STYLES,
-  LANGUAGES,
-  THANK_YOU_DELAYS,
-  THANK_YOU_MODES,
-  TONES,
-  buildReviewUrl,
-  extractPlaceId,
-  isReviewLink,
-  shade,
-} from "@/lib/brandKit";
+import { FONT_STYLES, LANGUAGES, THANK_YOU_DELAYS, THANK_YOU_MODES, TONES, buildReviewUrl, extractPlaceId, isReviewLink } from "@/lib/brandKit";
 
-// A venue's brand kit and post-visit email, on one page: what gets sent,
-// when, how it looks, how it sounds — with the real email rendering live on
-// the right as they edit.
+// A venue's post-visit email, on one page: what gets sent, when, how it
+// looks, how it sounds — with the real email rendering live on the right
+// as they edit. Deliberately simple: one colour, one font, one voice.
 
 const inputCls =
   "mt-1 w-full rounded-lg border border-black/10 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-sky-500 dark:border-white/15 dark:bg-white/5 dark:text-white";
@@ -30,24 +20,6 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
       {children}
       {hint && <span className="mt-1 block text-[11px] font-normal text-neutral-400">{hint}</span>}
     </label>
-  );
-}
-
-function ColourField({ label, value, fallback, onChange }: { label: string; value: string | null; fallback: string; onChange: (v: string | null) => void }) {
-  const shown = value ?? fallback;
-  return (
-    <div className="text-xs font-medium text-neutral-500 dark:text-neutral-400">
-      {label}
-      <div className="mt-1 flex items-center gap-2">
-        <input type="color" value={shown} onChange={(e) => onChange(e.target.value)} className="h-9 w-11 cursor-pointer rounded-md border border-black/10 bg-transparent p-0.5 dark:border-white/15" />
-        <input className={inputCls.replace("mt-1 ", "")} value={shown} onChange={(e) => onChange(e.target.value)} />
-        {value !== null && (
-          <button type="button" className="text-[11px] text-neutral-400 hover:text-neutral-600" onClick={() => onChange(null)} title="Back to default">
-            reset
-          </button>
-        )}
-      </div>
-    </div>
   );
 }
 
@@ -75,9 +47,9 @@ const KIND_LABEL: Record<string, string> = {
 
 type Draft = Pick<
   SettingsDTO,
-  | "thankYouMode" | "thankYouDelay" | "brandPrimary" | "brandSecondary" | "brandBackground" | "brandText" | "brandFont" | "brandTone"
-  | "brandVoiceNotes" | "brandSignOff" | "googlePlaceId" | "googleReviewUrl" | "instagramUrl" | "websiteUrl" | "defaultLanguage"
-  | "emailFromName" | "emailReplyTo" | "thankYouEmailSubject" | "thankYouEmailBody"
+  | "thankYouMode" | "thankYouDelay" | "brandPrimary" | "brandFont" | "brandTone" | "brandVoiceNotes" | "brandSignOff"
+  | "googlePlaceId" | "googleReviewUrl" | "instagramUrl" | "websiteUrl" | "defaultLanguage" | "emailFromName" | "emailReplyTo"
+  | "thankYouEmailSubject" | "thankYouEmailBody"
 >;
 
 export function BrandKitSettings({ initialSettings, premium, onUpgrade }: { initialSettings: SettingsDTO; premium: boolean; onUpgrade: () => void }) {
@@ -85,13 +57,10 @@ export function BrandKitSettings({ initialSettings, premium, onUpgrade }: { init
   const [venue, setVenue] = useState<api.RestaurantRow | null>(null);
   const [address, setAddress] = useState("");
   const [phone, setPhone] = useState("");
-  const [assets, setAssets] = useState<api.BrandAsset[]>([]);
-  const [palette, setPalette] = useState<api.Palette | null>(null);
   const [reviewInput, setReviewInput] = useState(initialSettings.googlePlaceId ?? initialSettings.googleReviewUrl ?? "");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [uploading, setUploading] = useState<"LOGO" | "PHOTO" | null>(null);
   const [previewHtml, setPreviewHtml] = useState<string>("");
   const [samples, setSamples] = useState<api.ThankYouSample[] | null>(null);
   const [showSamples, setShowSamples] = useState(false);
@@ -108,7 +77,6 @@ export function BrandKitSettings({ initialSettings, premium, onUpgrade }: { init
 
   useEffect(() => {
     api.fetchRestaurant().then((r) => { setVenue(r); setAddress(r.address ?? ""); setPhone(r.phone ?? ""); }).catch(() => {});
-    api.fetchBrandAssets().then(setAssets).catch(() => {});
     api.fetchEmailLog().then(setLog).catch(() => setLog([]));
   }, []);
 
@@ -124,7 +92,7 @@ export function BrandKitSettings({ initialSettings, premium, onUpgrade }: { init
   useEffect(() => {
     const id = setTimeout(() => refreshPreview(d), 450);
     return () => clearTimeout(id);
-  }, [d, assets, refreshPreview]);
+  }, [d, refreshPreview]);
 
   const loadSamples = async () => {
     setShowSamples(true);
@@ -168,28 +136,6 @@ export function BrandKitSettings({ initialSettings, premium, onUpgrade }: { init
     }
   };
 
-  const upload = async (kind: "LOGO" | "PHOTO", file: File | undefined) => {
-    if (!file) return;
-    setUploading(kind); setError(null);
-    try {
-      const { asset, palette: pal } = await api.uploadBrandAsset(kind, file);
-      setAssets((a) => (kind === "LOGO" ? [asset, ...a.filter((x) => x.kind !== "LOGO")] : [...a, asset]));
-      if (pal.primary) setPalette(pal);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setUploading(null);
-    }
-  };
-  const remove = async (id: string) => {
-    setError(null);
-    try { await api.deleteBrandAsset(id); setAssets((a) => a.filter((x) => x.id !== id)); } catch (e) { setError((e as Error).message); }
-  };
-  const setAlt = async (id: string, alt: string) => {
-    setAssets((a) => a.map((x) => (x.id === id ? { ...x, alt } : x)));
-    try { await api.updateBrandAsset(id, { alt: alt.trim() || null }); } catch { /* non-critical */ }
-  };
-
   const sendTest = async () => {
     setTesting(true); setError(null); setTestNote(null);
     try {
@@ -199,8 +145,6 @@ export function BrandKitSettings({ initialSettings, premium, onUpgrade }: { init
     } catch (e) { setError((e as Error).message); } finally { setTesting(false); }
   };
 
-  const logo = assets.find((a) => a.kind === "LOGO") ?? null;
-  const photos = assets.filter((a) => a.kind === "PHOTO");
   const primaryShown = d.brandPrimary ?? venue?.brandColor ?? "#c9611f";
   const radio = (checked: boolean) =>
     "cursor-pointer rounded-xl border p-3 text-left transition-colors " +
@@ -216,8 +160,8 @@ export function BrandKitSettings({ initialSettings, premium, onUpgrade }: { init
             <p className="text-xs font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400">Premium</p>
             <h3 className="mt-1 text-lg font-bold">Turn every visit into a Google review</h3>
             <p className="mt-1 max-w-xl text-sm text-neutral-600 dark:text-neutral-300">
-              When a table is finished, the guest gets a thank-you designed in your brand and written in your voice, with a one-tap link to your Google
-              review page. Build your brand kit and see it live here — sending is part of the Premium plan.
+              When a table is finished, the guest gets a thank-you in your colour and your voice, with a one-tap link to your Google review page
+              and a link to book again. Set it up and see it live here — sending is part of the Premium plan.
             </p>
             <div className="mt-3"><Button variant="primary" onClick={onUpgrade}>Upgrade to Premium</Button></div>
           </Card>
@@ -246,74 +190,25 @@ export function BrandKitSettings({ initialSettings, premium, onUpgrade }: { init
           <p className="mt-3 text-[11px] text-neutral-400">Every guest who leaves is asked — Google doesn&apos;t allow only asking the happy ones. Guests can unsubscribe with one tap, and we never email a visit twice.</p>
         </Card>
 
-        {/* ── Logo & photos ── */}
+        {/* ── Look & voice ── */}
         <Card className="p-5">
-          <SectionTitle>Logo &amp; photos</SectionTitle>
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-[180px_1fr]">
-            <div>
-              <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400">Logo</p>
-              <div className="mt-1 grid h-28 place-items-center rounded-xl border border-dashed border-black/15 bg-[#f6f4f0] p-3 dark:border-white/15 dark:bg-white/5">
-                {logo ? <img src={logo.url} alt="Logo" className="max-h-full max-w-full object-contain" /> : <span className="text-[11px] text-neutral-400">PNG or SVG, transparent is best</span>}
-              </div>
-              <div className="mt-2 flex gap-2">
-                <label className="cursor-pointer rounded-lg border border-black/10 px-2.5 py-1.5 text-xs font-medium hover:bg-black/5 dark:border-white/15 dark:hover:bg-white/10">
-                  {uploading === "LOGO" ? "Uploading…" : logo ? "Replace" : "Upload"}
-                  <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" className="hidden" disabled={uploading !== null} onChange={(e) => upload("LOGO", e.target.files?.[0])} />
-                </label>
-                {logo && <button type="button" className="text-xs text-neutral-400 hover:text-red-500" onClick={() => remove(logo.id)}>Remove</button>}
-              </div>
-            </div>
-            <div>
-              <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400">Atmosphere photos <span className="font-normal text-neutral-400">· up to 5, rotated between emails</span></p>
-              <div className="mt-1 grid grid-cols-2 gap-2 sm:grid-cols-3">
-                {photos.map((p) => (
-                  <div key={p.id} className="overflow-hidden rounded-xl border border-black/10 dark:border-white/10">
-                    <img src={p.url} alt={p.alt ?? ""} className="aspect-[4/3] w-full object-cover" />
-                    <input className="w-full border-t border-black/5 bg-transparent px-2 py-1.5 text-[11px] outline-none dark:border-white/10" placeholder="Describe it (alt text)" value={p.alt ?? ""} onChange={(e) => setAlt(p.id, e.target.value)} />
-                    <button type="button" className="w-full border-t border-black/5 py-1 text-[11px] text-neutral-400 hover:text-red-500 dark:border-white/10" onClick={() => remove(p.id)}>Remove</button>
-                  </div>
-                ))}
-                {photos.length < 5 && (
-                  <label className="grid aspect-[4/3] cursor-pointer place-items-center rounded-xl border border-dashed border-black/15 text-xs text-neutral-400 hover:border-black/30 dark:border-white/15">
-                    {uploading === "PHOTO" ? "Uploading…" : "+ Add photo"}
-                    <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" disabled={uploading !== null} onChange={(e) => upload("PHOTO", e.target.files?.[0])} />
-                  </label>
-                )}
-              </div>
-              <p className="mt-1.5 text-[11px] text-neutral-400">Interior, food, drinks, the terrace. Resized and compressed for email automatically.</p>
-            </div>
-          </div>
-        </Card>
-
-        {/* ── Colours ── */}
-        <Card className="p-5">
-          <SectionTitle>Colours</SectionTitle>
-          {palette && (palette.primary || palette.swatches.length > 0) && (
-            <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-black/10 bg-black/[0.02] p-2.5 text-xs dark:border-white/10 dark:bg-white/[0.03]">
-              <span className="text-neutral-500 dark:text-neutral-400">Suggested from your image:</span>
-              {palette.swatches.map((c) => (
-                <button key={c} type="button" title={`Use ${c} as primary`} className="h-7 w-7 rounded-full border border-black/10 dark:border-white/20" style={{ background: c }} onClick={() => { set("brandPrimary", c); set("brandSecondary", shade(c, 0.75)); }} />
-              ))}
-              {palette.primary && (
-                <Button size="sm" variant="secondary" onClick={() => { set("brandPrimary", palette.primary); set("brandSecondary", palette.secondary ?? shade(palette.primary!, 0.75)); }}>
-                  Use suggested
-                </Button>
-              )}
-            </div>
-          )}
+          <SectionTitle>Look &amp; voice</SectionTitle>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <ColourField label="Primary (button, accents)" value={d.brandPrimary} fallback={venue?.brandColor ?? "#c9611f"} onChange={(v) => set("brandPrimary", v)} />
-            <ColourField label="Secondary" value={d.brandSecondary} fallback={shade(primaryShown, 0.75)} onChange={(v) => set("brandSecondary", v)} />
-            <ColourField label="Background" value={d.brandBackground} fallback="#f6f4f0" onChange={(v) => set("brandBackground", v)} />
-            <ColourField label="Text" value={d.brandText} fallback="#1a1a1a" onChange={(v) => set("brandText", v)} />
+            <div className="text-xs font-medium text-neutral-500 dark:text-neutral-400">
+              Brand colour
+              <div className="mt-1 flex items-center gap-2">
+                <input type="color" value={primaryShown} onChange={(e) => set("brandPrimary", e.target.value)} className="h-9 w-11 cursor-pointer rounded-md border border-black/10 bg-transparent p-0.5 dark:border-white/15" />
+                <input className={inputCls.replace("mt-1 ", "")} value={primaryShown} onChange={(e) => set("brandPrimary", e.target.value)} />
+              </div>
+              <span className="mt-1 block text-[11px] font-normal text-neutral-400">Your name, the review button and links. Also tints your booking widget.</span>
+            </div>
+            <Field label="Default language" hint="Used when we don't know the guest's language from their booking.">
+              <select className={inputCls} value={d.defaultLanguage} onChange={(e) => set("defaultLanguage", e.target.value)}>
+                {(Object.keys(LANGUAGES) as (keyof typeof LANGUAGES)[]).map((l) => <option key={l} value={l}>{LANGUAGES[l]}</option>)}
+              </select>
+            </Field>
           </div>
-          <p className="mt-2 text-[11px] text-neutral-400">The primary colour also tints your booking widget.</p>
-        </Card>
-
-        {/* ── Type & voice ── */}
-        <Card className="p-5">
-          <SectionTitle>Typography &amp; voice</SectionTitle>
-          <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400">Font style <span className="font-normal text-neutral-400">· email clients only allow built-in fonts, so these use safe fallbacks</span></p>
+          <p className="mt-4 text-xs font-medium text-neutral-500 dark:text-neutral-400">Font style <span className="font-normal text-neutral-400">· email clients only allow built-in fonts, so these use safe fallbacks</span></p>
           <div className="mt-1 grid grid-cols-1 gap-2 sm:grid-cols-3">
             {(Object.keys(FONT_STYLES) as (keyof typeof FONT_STYLES)[]).map((f) => (
               <button key={f} type="button" className={radio(d.brandFont === f)} onClick={() => set("brandFont", f)}>
@@ -331,19 +226,9 @@ export function BrandKitSettings({ initialSettings, premium, onUpgrade }: { init
               </button>
             ))}
           </div>
-          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="mt-4">
             <Field label="Sign-off" hint='e.g. "Maria & the team at The Colonial"'>
               <input className={inputCls} placeholder={`The team at ${venue?.name ?? "your venue"}`} value={d.brandSignOff ?? ""} onChange={(e) => set("brandSignOff", e.target.value)} />
-            </Field>
-            <Field label="Default language" hint="Used when we don't know the guest's language from their booking.">
-              <select className={inputCls} value={d.defaultLanguage} onChange={(e) => set("defaultLanguage", e.target.value)}>
-                {(Object.keys(LANGUAGES) as (keyof typeof LANGUAGES)[]).map((l) => <option key={l} value={l}>{LANGUAGES[l]}</option>)}
-              </select>
-            </Field>
-          </div>
-          <div className="mt-4">
-            <Field label="How we talk to guests (optional)" hint="Notes for whoever edits the message later — e.g. “we're on first-name terms with everyone, never formal”.">
-              <textarea className={inputCls} rows={2} value={d.brandVoiceNotes ?? ""} onChange={(e) => set("brandVoiceNotes", e.target.value)} />
             </Field>
           </div>
           <div className="mt-4 rounded-lg border border-black/10 p-3 dark:border-white/10">
@@ -405,7 +290,7 @@ export function BrandKitSettings({ initialSettings, premium, onUpgrade }: { init
         </Card>
 
         <div className="sticky bottom-3 z-10 flex flex-wrap items-center gap-3 rounded-xl border border-black/10 bg-white/90 p-3 backdrop-blur dark:border-white/10 dark:bg-neutral-900/90">
-          <Button variant="primary" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save brand kit"}</Button>
+          <Button variant="primary" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
           {saved && <span className="text-sm text-emerald-600 dark:text-emerald-400">Saved ✓</span>}
           {premium && (
             <div className="ml-auto flex items-center gap-2">
