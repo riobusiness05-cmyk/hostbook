@@ -10,7 +10,7 @@ import * as api from "@/lib/host/client";
 export function EmailStatsCard() {
   const [stats, setStats] = useState<api.EmailStats | null>(null);
   useEffect(() => {
-    api.fetchEmailStats().then(setStats).catch(() => setStats({ sent: 0, opened: 0, clicked: 0, bounced: 0, openRate: 0 }));
+    api.fetchEmailStats().then(setStats).catch(() => setStats({ sent: 0, opened: 0, clicked: 0, bounced: 0, openRate: 0, premium: false }));
   }, []);
   return (
     <Card className="p-4">
@@ -22,6 +22,11 @@ export function EmailStatsCard() {
       </div>
       {stats === null ? (
         <p className="mt-2 text-sm text-neutral-400">Loading…</p>
+      ) : !stats.premium ? (
+        <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-300">
+          Thank-you emails with your Google review link, sent when a table is finished —{" "}
+          <Link href="/host/settings" className="font-medium text-sky-600 hover:underline dark:text-sky-400">part of Premium</Link>.
+        </p>
       ) : (
         <div className="mt-2 grid grid-cols-3 gap-2">
           <div>

@@ -31,12 +31,14 @@ export function BillingSection({
   trialDays,
   blocked = false,
   checkoutResult = null,
+  onBillingChange,
 }: {
   initialBilling: BillingState;
   initialPlans: PlanDTO[];
   trialDays: number;
   blocked?: boolean;
   checkoutResult?: "success" | "cancelled" | null;
+  onBillingChange?: (b: BillingState) => void;
 }) {
   const [billing, setBilling] = useState(initialBilling);
   const [invoices, setInvoices] = useState<InvoiceSummary[]>([]);
@@ -70,6 +72,12 @@ export function BillingSection({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Let the settings shell know, so tabs gated on the plan update at once.
+  useEffect(() => {
+    onBillingChange?.(billing);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [billing]);
 
   const startCheckout = async (planKey: string) => {
     setBusy("checkout");

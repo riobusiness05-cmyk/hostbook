@@ -30,6 +30,8 @@ export function TablePanel({
   // After "Finish & release": the booked guest who just left, if a thank-you
   // email could go to them — staff are asked, nothing is sent on its own.
   const [thankYou, setThankYou] = useState<api.ThankYouCandidate | null>(null);
+  // "Not now" parks the guest here, so staff can still send once the rush passes.
+  const [thankYouLater, setThankYouLater] = useState<api.ThankYouCandidate | null>(null);
   const [thankYouNote, setThankYouNote] = useState<string | null>(null);
   const [toast, setToast] = useState<{ text: string; tone: "ok" | "error" } | null>(null);
 
@@ -38,6 +40,7 @@ export function TablePanel({
     setMode("idle");
     setError(null);
     setThankYou(null);
+    setThankYouLater(null);
     setThankYouNote(null);
   }, [table.id]);
 
@@ -46,6 +49,7 @@ export function TablePanel({
       const result = await api.tableAction(table.id, { action: "release" });
       setThankYouNote(null);
       const t = result.thankYou;
+      setThankYouLater(null);
       if (t?.ask) setThankYou(t.ask);
       else if (t?.scheduledFor) setThankYouNote(`Thank-you email scheduled for ${new Date(t.scheduledFor).toLocaleString(undefined, { weekday: "short", hour: "2-digit", minute: "2-digit" })}.`);
       else if (t?.sentNow) setToast({ text: "Thank-you email sent.", tone: "ok" });
@@ -59,6 +63,7 @@ export function TablePanel({
       const outcome = await api.sendVisitThankYou(thankYou.visitId, email);
       setToast(outcome.sent ? { text: `Thank-you sent to ${outcome.to}`, tone: "ok" } : { text: outcome.message, tone: "error" });
       setThankYou(null);
+      setThankYouLater(null);
     } catch (e) {
       setToast({ text: (e as Error).message, tone: "error" });
     } finally {
@@ -138,10 +143,29 @@ export function TablePanel({
   const mergedChildren = state.tables.filter((t) => t.mergedIntoId === table.id);
   const mergedIntoTable = table.mergedIntoId ? state.tables.find((t) => t.id === table.mergedIntoId) ?? null : null;
 
+  // The thank-you modal and toast belong to the panel as a whole, not to
+  // one branch of it — the table goes AVAILABLE on the next refresh and this
+  // component then renders a different branch, which must keep them alive.
+  const overlays = (
+    <>
+        {thankYou && (
+          <ThankYouModal
+            candidate={thankYou}
+            busy={busy}
+            onSend={sendThankYouNow}
+            onClose={() => {
+              setThankYouLater(thankYou);
+              setThankYou(null);
+            }}
+          />
+        )}
+        {toast && <Toast text={toast.text} tone={toast.tone} onDone={() => setToast(null)} />}
+    </>
+  );
+
   return (
     <aside className="flex h-full w-full flex-col bg-white dark:bg-neutral-950">
-      {thankYou && <ThankYouModal candidate={thankYou} busy={busy} onSend={sendThankYouNow} onClose={() => setThankYou(null)} />}
-      {toast && <Toast text={toast.text} tone={toast.tone} onDone={() => setToast(null)} />}
+      {overlays}
       {/* Header */}
       <div className="flex items-start justify-between border-b border-black/5 p-4 dark:border-white/10">
         <div className="min-w-0">
@@ -355,6 +379,16 @@ export function TablePanel({
       {mode === "idle" && !mergedIntoTable && (
         <div className="border-t border-black/5 p-3 dark:border-white/10">
           {thankYouNote && <p className="mb-2 text-xs text-emerald-600 dark:text-emerald-400">{thankYouNote}</p>}
+          {thankYouLater && !thankYou && (
+            <div className="mb-3 flex items-center justify-between gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/[0.07] p-2.5 text-xs">
+              <span className="text-neutral-700 dark:text-neutral-200">
+                {thankYouLater.customerName.trim().split(/\s+/)[0]} just left — thank-you not sent yet.
+              </span>
+              <Button size="sm" variant="primary" disabled={busy} onClick={() => setThankYou(thankYouLater)}>
+                Send thank-you
+              </Button>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-2">
             {!s && !r && table.status !== "BLOCKED" && (
               <>

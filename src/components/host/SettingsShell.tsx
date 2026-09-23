@@ -51,6 +51,8 @@ export function SettingsShell({
 }) {
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [tab, setTab] = useState<Tab>("billing");
+  // Kept up to date by the Billing tab, so an upgrade unlocks Premium tabs immediately.
+  const [billing, setBilling] = useState(initialBilling);
 
   useEffect(() => {
     setTheme((localStorage.getItem("hf-theme") as "dark" | "light" | null) ?? "dark");
@@ -101,6 +103,7 @@ export function SettingsShell({
           {tab === "billing" && (
             <BillingSection
               initialBilling={initialBilling}
+              onBillingChange={setBilling}
               initialPlans={initialPlans}
               trialDays={trialDays}
               blocked={blocked}
@@ -112,7 +115,7 @@ export function SettingsShell({
           {tab === "tables" && <TableAvailabilitySettings initialTables={initialTables} />}
           {tab === "website" && <WebsiteWidgetSettings restaurantSlug={restaurantSlug} />}
           {tab === "emails" && (
-            <BrandKitSettings initialSettings={initialSettings} premium={isPremium(initialBilling)} onUpgrade={() => setTab("billing")} />
+            <BrandKitSettings initialSettings={initialSettings} premium={isPremium(billing)} onUpgrade={() => setTab("billing")} />
           )}
         </main>
       </div>

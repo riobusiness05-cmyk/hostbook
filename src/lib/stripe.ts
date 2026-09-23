@@ -209,8 +209,8 @@ export async function cancelStripeSubscription(stripeSubscriptionId: string, atP
 }
 
 /** Moves a live subscription onto a different price (plan upgrade/downgrade).
- *  Prorated: an upgrade charges the difference for the rest of the period,
- *  a downgrade credits it against the next invoice. */
+ *  Prorated and invoiced right away: an upgrade charges the difference for
+ *  the rest of the period now, a downgrade leaves a credit on the account. */
 export async function changeStripeSubscriptionPrice(stripeSubscriptionId: string, priceId: string): Promise<void> {
   const stripe = getClient();
   const sub = await stripe.subscriptions.retrieve(stripeSubscriptionId);
@@ -219,7 +219,7 @@ export async function changeStripeSubscriptionPrice(stripeSubscriptionId: string
   if (item.price.id === priceId) return;
   await stripe.subscriptions.update(stripeSubscriptionId, {
     items: [{ id: item.id, price: priceId }],
-    proration_behavior: "create_prorations",
+    proration_behavior: "always_invoice",
     // A subscription scheduled to cancel that gets changed is clearly being
     // kept — don't leave it silently ending at period end.
     cancel_at_period_end: false,
