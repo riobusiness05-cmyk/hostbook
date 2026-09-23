@@ -6,7 +6,7 @@ import { HostFlowMark } from "@/components/HostFlowLogo";
 import { cx } from "@/lib/host/format";
 import { BillingSection } from "./BillingSection";
 import { GeneralSettings } from "./GeneralSettings";
-import { GuestEmailSettings } from "./GuestEmailSettings";
+import { BrandKitSettings } from "./BrandKitSettings";
 import { HoursSettings } from "./HoursSettings";
 import { TableAvailabilitySettings } from "./TableAvailabilitySettings";
 import { WebsiteWidgetSettings } from "./WebsiteWidgetSettings";
@@ -23,7 +23,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "hours", label: "Hours" },
   { id: "tables", label: "Tables" },
   { id: "website", label: "Website" },
-  { id: "emails", label: "Emails" },
+  { id: "emails", label: "Brand kit" },
 ];
 
 export function SettingsShell({
@@ -112,7 +112,7 @@ export function SettingsShell({
           {tab === "tables" && <TableAvailabilitySettings initialTables={initialTables} />}
           {tab === "website" && <WebsiteWidgetSettings restaurantSlug={restaurantSlug} />}
           {tab === "emails" && (
-            <GuestEmailSettings initialSettings={initialSettings} premium={isPremium(initialBilling)} onUpgrade={() => setTab("billing")} />
+            <BrandKitSettings initialSettings={initialSettings} premium={isPremium(initialBilling)} onUpgrade={() => setTab("billing")} />
           )}
         </main>
       </div>

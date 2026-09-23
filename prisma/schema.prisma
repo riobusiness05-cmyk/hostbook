@@ -60,6 +60,9 @@ model Restaurant {
   walkins             Walkin[]
   notifications       Notification[]
   emailLogs           EmailLog[]
+  brandAssets         BrandAsset[]
+  emailSuppressions   EmailSuppression[]
+  scheduledEmails     ScheduledEmail[]
   tableStatusHistory  TableStatusHistory[]
   settings            RestaurantSettings?
 
@@ -220,6 +223,7 @@ model Reservation {
   customerName     String
   customerEmail    String?
   customerPhone    String?
+  language         String?      // guest's browser language at booking ("en", "es") — the thank-you is written in it
   partySize        Int
   reservationTime  DateTime     // combined date + time, stored UTC
   durationMinutes  Int          @default(90)
@@ -337,6 +341,13 @@ model TableSession {
   occasion       String?
   notes          String?
   currentBill    Float?
+  // Post-visit thank-you: who to write to (copied from the booking, or typed
+  // by staff at release time for a walk-in), in which language, and when it
+  // went — the visit is the unit that can never be emailed twice.
+  guestEmail     String?
+  language       String?
+  thankYouEmailSentAt DateTime?
+  scheduledEmail ScheduledEmail?
   // Party is seated (typically at the bar) but waiting for an outdoor table
   // to free up so they can move outside to eat.
   waitingForOutdoor Boolean   @default(false)
@@ -466,6 +477,22 @@ model RestaurantSettings {
   // Restaurant.email).
   emailFromName         String?
   emailReplyTo          String?
+
+  // ── Brand kit + post-visit email behaviour (Settings → Brand kit) ──────
+  thankYouMode          String   @default("OFF")        // ASK (staff confirm) | AUTO (queued on release) | OFF
+  thankYouDelay         String   @default("IMMEDIATE")  // IMMEDIATE | MIN_30 | HOUR_2 | NEXT_MORNING (10:00 venue time)
+  brandPrimary          String?  // null = Restaurant.brandColor
+  brandSecondary        String?
+  brandBackground       String?
+  brandText             String?
+  brandFont             String   @default("MODERN_SANS")  // CLASSIC_SERIF | MODERN_SANS | ELEGANT_SCRIPT
+  brandTone             String   @default("WARM_FAMILY")  // WARM_FAMILY | UPSCALE | FUN_LIVELY | BEACH_BAR
+  brandVoiceNotes       String?  // "how we talk to guests", free text
+  brandSignOff          String?  // e.g. "Maria & the team at The Colonial"
+  googlePlaceId         String?  // builds https://search.google.com/local/writereview?placeid=…
+  instagramUrl          String?
+  websiteUrl            String?
+  defaultLanguage       String   @default("en")
 
   updatedAt             DateTime   @updatedAt
 }
@@ -650,7 +677,62 @@ model EmailLog {
   status       String
   error        String?
   providerId   String?     // Resend's message id — searchable in the Resend dashboard
+  tableSessionId String?   // the visit this thank-you was for
+  openedAt     DateTime?   // first open / first review-link click, from Resend's webhook
+  clickedAt    DateTime?
   createdAt    DateTime    @default(now())
 
   @@index([restaurantId, createdAt])
+}
+
+// A venue's uploaded logo and hero photos, processed for email (resized,
+// compressed) and stored publicly — see src/lib/storage.ts.
+model BrandAsset {
+  id           String     @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  kind         String     // LOGO | PHOTO
+  url          String
+  width        Int?
+  height       Int?
+  bytes        Int
+  alt          String?    // what's in the photo, for the email's alt text
+  sortOrder    Int        @default(0)
+  createdAt    DateTime   @default(now())
+
+  @@index([restaurantId, kind, sortOrder])
+}
+
+// Guests who unsubscribed from a venue's post-visit emails — honoured
+// forever for that venue. Transactional mail (booking confirmations) is
+// unaffected.
+model EmailSuppression {
+  id           String     @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  email        String     // lower-cased
+  reason       String     @default("UNSUBSCRIBED")
+  createdAt    DateTime   @default(now())
+
+  @@unique([restaurantId, email])
+}
+
+// Queue for automatic thank-yous sent after a delay — drained by
+// /api/cron/send-scheduled-emails. One row per visit, so a visit can't be
+// queued twice.
+model ScheduledEmail {
+  id             String       @id @default(cuid())
+  restaurantId   String
+  restaurant     Restaurant   @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  tableSessionId String       @unique
+  tableSession   TableSession @relation(fields: [tableSessionId], references: [id], onDelete: Cascade)
+  kind           String       @default("THANK_YOU")
+  sendAt         DateTime
+  status         String       @default("PENDING") // PENDING | SENT | SKIPPED | FAILED | CANCELLED
+  attempts       Int          @default(0)
+  lastError      String?
+  processedAt    DateTime?
+  createdAt      DateTime     @default(now())
+
+  @@index([status, sendAt])
 }

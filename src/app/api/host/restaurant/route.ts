@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
   if ("error" in ctx) return ctx.error;
   const restaurant = await prisma.restaurant.findUniqueOrThrow({
     where: { id: ctx.restaurantId },
-    select: { slug: true, name: true, timezone: true, onboardingCompletedAt: true, brandColor: true, logoUrl: true, email: true },
+    select: { slug: true, name: true, timezone: true, onboardingCompletedAt: true, brandColor: true, logoUrl: true, email: true, address: true, phone: true },
   });
   const { slug, ...rest } = restaurant;
   return NextResponse.json({ restaurant: { ...rest, senderAddress: senderAddressFor({ slug }) } });
@@ -39,6 +39,8 @@ const patchSchema = z.object({
   // sends its guests (see guestEmails.ts).
   brandColor: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Use a 6-digit hex colour like #c9611f").optional(),
   logoUrl: z.string().trim().url().max(500).nullable().optional(),
+  address: z.string().trim().max(300).nullable().optional(),
+  phone: z.string().trim().max(40).nullable().optional(),
 });
 
 export async function PATCH(req: NextRequest) {
@@ -56,6 +58,8 @@ export async function PATCH(req: NextRequest) {
       ...(parsed.data.onboardingCompletedAt ? { onboardingCompletedAt: new Date() } : {}),
       ...(parsed.data.brandColor ? { brandColor: parsed.data.brandColor } : {}),
       ...(parsed.data.logoUrl !== undefined ? { logoUrl: parsed.data.logoUrl } : {}),
+      ...(parsed.data.address !== undefined ? { address: parsed.data.address } : {}),
+      ...(parsed.data.phone !== undefined ? { phone: parsed.data.phone } : {}),
     },
   });
   return NextResponse.json({ ok: true });

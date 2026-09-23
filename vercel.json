@@ -1,6 +1,16 @@
 {
   "crons": [
-    { "path": "/api/cron/reset-tables", "schedule": "30 23 * * *" },
-    { "path": "/api/cron/reconcile-billing", "schedule": "0 6 * * *" }
+    {
+      "path": "/api/cron/reset-tables",
+      "schedule": "30 23 * * *"
+    },
+    {
+      "path": "/api/cron/reconcile-billing",
+      "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/send-scheduled-emails",
+      "schedule": "*/5 * * * *"
+    }
   ]
 }

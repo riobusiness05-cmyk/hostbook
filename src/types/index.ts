@@ -32,6 +32,9 @@ export const createReservationSchema = z.object({
   // restaurant's real sections rather than a hardcoded list.
   seatingPreference: z.string().trim().min(1).max(60).optional(),
   accessibilityNeeds: z.string().max(200).optional(),
+  // The guest's browser language ("en", "es") — post-visit emails are
+  // written in it. Optional; the venue's default language applies otherwise.
+  language: z.string().trim().toLowerCase().regex(/^[a-z]{2}$/).optional(),
   highChair: z.boolean().optional(),
   source: z.enum(["WEB_CHAT", "WEB_FORM", "PHONE", "ADMIN"]).default("WEB_FORM"),
   // Client-generated per-submission-attempt key so a network-level retry (or

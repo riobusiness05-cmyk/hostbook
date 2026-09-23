@@ -174,6 +174,7 @@ export async function createReservationForRestaurant(
           seatingPreference:
             input.seatingPreference && input.seatingPreference !== "No preference" ? input.seatingPreference : null,
           accessibilityNeeds: input.accessibilityNeeds?.trim() || null,
+          language: input.language ?? null,
           manageToken,
           idempotencyKey: input.idempotencyKey || null,
           stripeSetupIntentId: input.stripeSetupIntentId || null,

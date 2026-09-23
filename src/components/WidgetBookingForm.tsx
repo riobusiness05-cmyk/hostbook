@@ -113,6 +113,7 @@ export function WidgetBookingForm({
           customerPhone: phone,
           notes,
           seatingPreference: area || undefined,
+          language: typeof navigator !== "undefined" ? navigator.language.slice(0, 2).toLowerCase() : undefined,
           idempotencyKey: idempotencyKeyRef.current,
           stripeSetupIntentId,
         }),

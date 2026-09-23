@@ -21,13 +21,20 @@ export async function PATCH(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid settings", details: parsed.error.flatten() }, { status: 400 });
   }
-  if (parsed.data.thankYouEmailEnabled && !(await hasPremiumFeatures(ctx.restaurantId))) {
+  const wantsThankYou = parsed.data.thankYouEmailEnabled || (parsed.data.thankYouMode && parsed.data.thankYouMode !== "OFF");
+  if (wantsThankYou && !(await hasPremiumFeatures(ctx.restaurantId))) {
     return NextResponse.json({ error: "Guest thank-you emails are part of the Premium plan. Upgrade in Settings → Billing to switch them on." }, { status: 403 });
   }
+  // thankYouMode is the source of truth; the older boolean stays in step for
+  // anything still reading it.
+  const data = {
+    ...parsed.data,
+    ...(parsed.data.thankYouMode ? { thankYouEmailEnabled: parsed.data.thankYouMode !== "OFF" } : {}),
+  };
   await prisma.restaurantSettings.upsert({
     where: { restaurantId: ctx.restaurantId },
-    create: { restaurantId: ctx.restaurantId, ...parsed.data },
-    update: parsed.data,
+    create: { restaurantId: ctx.restaurantId, ...data },
+    update: data,
   });
   emitFloorChange(ctx.restaurantId, "settings");
   const settings = await getSettings(ctx.restaurantId);

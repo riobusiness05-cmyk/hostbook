@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { FONT_STYLES, contrastText, readableOn, type BrandKit, type Language } from "@/lib/brandKit";
 
 /**
  * Transactional email sender + templates. If RESEND_API_KEY is set, sends via
@@ -36,7 +37,10 @@ export async function sendEmail(params: {
   from?: { name: string; address: string };
   replyTo?: string;
   // What this email is and which venue it belongs to, for the email log.
-  meta?: { kind: EmailKind; restaurantId?: string | null };
+  meta?: { kind: EmailKind; restaurantId?: string | null; tableSessionId?: string | null };
+  // Plain-text alternative and extra headers (List-Unsubscribe) for guest mail.
+  text?: string;
+  headers?: Record<string, string>;
 }): Promise<{ ok: boolean; error?: string }> {
   const apiKey = process.env.RESEND_API_KEY;
   const from = params.from ? `${params.from.name.replace(/[<>"\r\n]/g, "").trim()} <${params.from.address}>` : defaultSender();
@@ -49,6 +53,7 @@ export async function sendEmail(params: {
         data: {
           restaurantId: params.meta?.restaurantId ?? null,
           kind: params.meta?.kind ?? "OTHER",
+          tableSessionId: params.meta?.tableSessionId ?? null,
           to: params.to,
           subject: params.subject,
           status,
@@ -78,6 +83,8 @@ export async function sendEmail(params: {
         to: params.to,
         subject: params.subject,
         html: params.html,
+        ...(params.text ? { text: params.text } : {}),
+        ...(params.headers ? { headers: params.headers } : {}),
         ...(params.replyTo ? { reply_to: params.replyTo } : {}),
       }),
     });
@@ -367,18 +374,6 @@ export function fillThankYouTemplate(text: string, vars: { name: string; restaur
   return text.replace(/\{name\}/gi, vars.name).replace(/\{restaurant\}/gi, vars.restaurant);
 }
 
-/** Darkens a hex colour enough for white text to stay legible on it. */
-function readableOn(hex: string): string {
-  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
-  if (!m) return "#c9611f";
-  const n = parseInt(m[1], 16);
-  const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  if (luminance < 0.6) return `#${m[1]}`;
-  const dim = (c: number) => Math.round(c * 0.6).toString(16).padStart(2, "0");
-  return `#${dim(r)}${dim(g)}${dim(b)}`;
-}
-
 const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif";
 
 function brandButton(url: string, label: string, accent: string): string {
@@ -482,4 +477,139 @@ export function thankYouEmailHtml(params: {
     previewText: fillThankYouTemplate(subject, vars),
     bodyHtml: paragraphs + reviewBlock,
   });
+}
+
+// ── The post-visit thank-you, brand-kit edition ──────────────────────────
+// Editorial, not a marketing blast: logo, one hero photo, a short personal
+// note, one button, a soft invitation back, a quiet footer. Table layout
+// with inline styles for Gmail/Outlook; a dark-mode block that keeps the
+// card readable when the client inverts backgrounds; a plain-text twin.
+
+const T = {
+  en: { review: "Leave us a Google review", takes: "It takes about a minute.", back: "Whenever you'd like to come back, your table is a tap away:", book: "Book a table", unsubscribe: "Unsubscribe from these emails", follow: "Instagram", site: "Website" },
+  es: { review: "Déjanos una reseña en Google", takes: "Lleva alrededor de un minuto.", back: "Cuando quieras volver, tu mesa está a un toque:", book: "Reservar mesa", unsubscribe: "Darse de baja de estos correos", follow: "Instagram", site: "Web" },
+} as const;
+
+export function guestThankYouEmail(
+  kit: BrandKit,
+  params: {
+    subject: string;
+    paragraphs: string[];
+    signOff: string;
+    heroPhoto: { url: string; alt: string } | null;
+    unsubscribeUrl: string;
+    language: Language;
+  }
+): { html: string; text: string } {
+  const t = T[params.language === "es" ? "es" : "en"];
+  const font = FONT_STYLES[kit.font];
+  const accent = readableOn(kit.primary);
+  const buttonInk = contrastText(accent);
+  const bg = kit.background;
+  const ink = kit.text;
+  const muted = "#6b6560";
+  const faint = "#9a9490";
+  const card = "#ffffff";
+
+  const header = kit.logoUrl
+    ? `<img src="${escapeHtml(kit.logoUrl)}" alt="${escapeHtml(kit.venueName)}" width="180" style="display:block; width:180px; max-width:60%; height:auto; margin:0 auto;" />`
+    : `<span style="font-family:${font.heading}; font-size:26px; letter-spacing:0.02em; color:${ink};">${escapeHtml(kit.venueName)}</span>`;
+
+  const hero = params.heroPhoto
+    ? `<tr><td style="padding:0;"><img src="${escapeHtml(params.heroPhoto.url)}" alt="${escapeHtml(params.heroPhoto.alt)}" width="600" style="display:block; width:100%; max-width:600px; height:auto; border:0;" /></td></tr>`
+    : "";
+
+  const body = params.paragraphs
+    .map(
+      (p, i) =>
+        `<p style="margin:0 0 ${i === 0 ? 18 : 16}px 0; font-family:${font.body}; font-size:16px; line-height:1.7; color:${ink};">${escapeHtml(p).replace(/\n/g, "<br/>")}</p>`
+    )
+    .join("");
+
+  const review = kit.reviewUrl
+    ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:28px auto 8px auto;">
+        <tr><td style="border-radius:6px; background:${accent};">
+          <a href="${escapeHtml(kit.reviewUrl)}" style="display:inline-block; padding:14px 30px; font-family:${font.body}; font-size:15px; font-weight:700; letter-spacing:0.02em; color:${buttonInk}; text-decoration:none; border-radius:6px;">${t.review}</a>
+        </td></tr>
+      </table>
+      <p style="margin:0 0 8px 0; font-family:${font.body}; font-size:12px; color:${faint}; text-align:center;">${t.takes}</p>`
+    : "";
+
+  const footerLinks = [
+    kit.instagramUrl ? `<a href="${escapeHtml(kit.instagramUrl)}" style="color:${muted}; text-decoration:underline;">${t.follow}</a>` : "",
+    kit.websiteUrl ? `<a href="${escapeHtml(kit.websiteUrl)}" style="color:${muted}; text-decoration:underline;">${t.site}</a>` : "",
+    kit.phone ? `<a href="tel:${escapeHtml(kit.phone.replace(/\s+/g, ""))}" style="color:${muted}; text-decoration:none;">${escapeHtml(kit.phone)}</a>` : "",
+  ].filter(Boolean);
+
+  const html = `<!DOCTYPE html>
+<html lang="${params.language}" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="light dark" />
+<meta name="supported-color-schemes" content="light dark" />
+<title>${escapeHtml(params.subject)}</title>
+<!--[if mso]><noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript><![endif]-->
+<style>
+  :root { color-scheme: light dark; supported-color-schemes: light dark; }
+  @media (max-width: 620px) { .hf-w { width: 100% !important; } .hf-pad { padding: 28px 22px !important; } }
+  @media (prefers-color-scheme: dark) {
+    .hf-page { background: #121110 !important; }
+    .hf-card { background: #1c1a18 !important; }
+    .hf-ink { color: #f1ede6 !important; }
+    .hf-muted { color: #b3aca4 !important; }
+    .hf-line { border-color: #2d2a26 !important; }
+  }
+  [data-ogsc] .hf-page { background: #121110 !important; }
+  [data-ogsc] .hf-card { background: #1c1a18 !important; }
+  [data-ogsc] .hf-ink { color: #f1ede6 !important; }
+  [data-ogsc] .hf-muted { color: #b3aca4 !important; }
+</style>
+</head>
+<body class="hf-page" style="margin:0; padding:0; background:${bg}; -webkit-text-size-adjust:100%;">
+  <div style="display:none; max-height:0; overflow:hidden; opacity:0; mso-hide:all;">${escapeHtml(params.paragraphs[1] ?? params.subject)}</div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="hf-page" style="background:${bg};">
+    <tr><td align="center" style="padding:36px 16px;">
+      <table role="presentation" class="hf-w" width="600" cellpadding="0" cellspacing="0" style="width:600px; max-width:100%;">
+        <tr><td align="center" style="padding:6px 0 26px 0;">${header}</td></tr>
+        <tr><td class="hf-card" style="background:${card}; border-radius:10px; overflow:hidden;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+            ${hero}
+            <tr><td class="hf-pad" style="padding:40px 48px 36px 48px;">
+              ${body}
+              <p class="hf-ink" style="margin:22px 0 0 0; font-family:${font.body}; font-size:16px; line-height:1.7; color:${ink};">${escapeHtml(params.signOff)}</p>
+              ${review}
+            </td></tr>
+            <tr><td class="hf-line" style="padding:22px 48px 30px 48px; border-top:1px solid #eee9e2;">
+              <p class="hf-muted" style="margin:0 0 10px 0; font-family:${font.body}; font-size:13px; line-height:1.6; color:${muted};">${t.back}</p>
+              <a href="${escapeHtml(kit.bookingUrl)}" style="font-family:${font.body}; font-size:14px; font-weight:700; color:${accent}; text-decoration:none;">${t.book} &rarr;</a>
+            </td></tr>
+          </table>
+        </td></tr>
+        <tr><td align="center" style="padding:26px 12px 0 12px; font-family:${font.body}; font-size:12px; line-height:1.7; color:${faint};">
+          <span class="hf-muted" style="color:${muted}; font-weight:700;">${escapeHtml(kit.venueName)}</span>${kit.address ? `<br/>${escapeHtml(kit.address)}` : ""}
+          ${footerLinks.length ? `<br/>${footerLinks.join(" &nbsp;·&nbsp; ")}` : ""}
+          <br/><a href="${escapeHtml(params.unsubscribeUrl)}" style="color:${faint}; text-decoration:underline;">${t.unsubscribe}</a>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+
+  const text = [
+    ...params.paragraphs,
+    params.signOff,
+    "",
+    ...(kit.reviewUrl ? [`${t.review}: ${kit.reviewUrl}`, ""] : []),
+    `${t.book}: ${kit.bookingUrl}`,
+    "",
+    kit.venueName,
+    ...(kit.address ? [kit.address] : []),
+    ...(kit.phone ? [kit.phone] : []),
+    "",
+    `${t.unsubscribe}: ${params.unsubscribeUrl}`,
+  ].join("\n");
+
+  return { html, text };
 }

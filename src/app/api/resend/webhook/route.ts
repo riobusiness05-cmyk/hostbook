@@ -12,12 +12,13 @@ export const runtime = "nodejs";
 
 // Later events never downgrade earlier, more definitive ones — a stray
 // "delivered" arriving after a bounce must not turn the bounce green.
-const RANK: Record<string, number> = { SENT: 0, DELAYED: 1, DELIVERED: 2, OPENED: 3, BOUNCED: 4, COMPLAINED: 4 };
+const RANK: Record<string, number> = { SENT: 0, DELAYED: 1, DELIVERED: 2, OPENED: 3, CLICKED: 3, BOUNCED: 4, COMPLAINED: 4 };
 
 const STATUS_FOR_EVENT: Record<string, string> = {
   "email.delivery_delayed": "DELAYED",
   "email.delivered": "DELIVERED",
   "email.opened": "OPENED",
+  "email.clicked": "CLICKED",
   "email.bounced": "BOUNCED",
   "email.complained": "COMPLAINED",
 };
@@ -66,7 +67,16 @@ export async function POST(req: NextRequest) {
 
   const row = await prisma.emailLog.findFirst({ where: { providerId } });
   if (!row) return NextResponse.json({ ok: true, unknown: true });
-  if ((RANK[row.status] ?? 0) > RANK[status]) return NextResponse.json({ ok: true, kept: row.status });
+  // First open / first click are kept as timestamps for the analytics card,
+  // whatever the status ends up as.
+  const stamps = {
+    ...(status === "OPENED" && !row.openedAt ? { openedAt: new Date() } : {}),
+    ...(status === "CLICKED" ? { ...(row.openedAt ? {} : { openedAt: new Date() }), ...(row.clickedAt ? {} : { clickedAt: new Date() }) } : {}),
+  };
+  if ((RANK[row.status] ?? 0) > RANK[status]) {
+    if (Object.keys(stamps).length) await prisma.emailLog.update({ where: { id: row.id }, data: stamps });
+    return NextResponse.json({ ok: true, kept: row.status });
+  }
 
   const bounce = event.data?.bounce;
   const error =
@@ -78,6 +88,7 @@ export async function POST(req: NextRequest) {
           ? "The receiving server is slow to accept it — Resend keeps retrying"
           : null;
 
-  await prisma.emailLog.update({ where: { id: row.id }, data: { status, error } });
+  // "Clicked" is a fact, not a delivery state — the row reads Opened.
+  await prisma.emailLog.update({ where: { id: row.id }, data: { status: status === "CLICKED" ? "OPENED" : status, error, ...stamps } });
   return NextResponse.json({ ok: true });
 }

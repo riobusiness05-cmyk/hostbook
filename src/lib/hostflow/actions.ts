@@ -3,7 +3,7 @@ import { emitFloorChange } from "./events";
 import { getSettings } from "./floor";
 import { TableStatus } from "./constants";
 import { chargeNoShowFee } from "@/lib/stripeConnect";
-import { thankYouCandidateFor, type ThankYouCandidate } from "./guestEmails";
+import { thankYouOnRelease, type ReleaseThankYou } from "./guestEmails";
 
 // Every function here is a small, auditable state transition. They all:
 //   1. mutate the DB,
@@ -95,12 +95,12 @@ export async function markClean(restaurantId: string, tableId: string) {
   emitFloorChange(restaurantId, "table");
 }
 
-export async function releaseTable(restaurantId: string, tableId: string): Promise<{ thankYou: ThankYouCandidate | null }> {
-  // Remember who was sitting here before the session closes — a booked
-  // party leaving is the cue to offer staff a thank-you email (below).
+export async function releaseTable(restaurantId: string, tableId: string): Promise<{ thankYou: ReleaseThankYou | null }> {
+  // Remember who was sitting here before the session closes — the party
+  // leaving is the cue for their thank-you email (below), booked or walk-in.
   const leaving = await prisma.tableSession.findFirst({
-    where: { tableId, status: "SEATED", reservationId: { not: null } },
-    select: { reservationId: true },
+    where: { tableId, status: "SEATED" },
+    select: { id: true },
   });
 
   // Free the table for new guests: close any lingering session, clear held
@@ -111,15 +111,15 @@ export async function releaseTable(restaurantId: string, tableId: string): Promi
   });
   await recordStatus(restaurantId, tableId, "AVAILABLE");
 
-  // Nothing is sent here: staff are asked first (see TablePanel), so the
-  // release only reports whether there's someone worth asking about. Never
-  // lets a lookup problem stop the table being freed.
-  let thankYou: ThankYouCandidate | null = null;
-  if (leaving?.reservationId) {
+  // Depending on the venue's setting this asks staff (returned to the UI),
+  // sends now, or queues for later. Awaited, never allowed to stop the table
+  // being freed.
+  let thankYou: ReleaseThankYou | null = null;
+  if (leaving) {
     try {
-      thankYou = await thankYouCandidateFor(restaurantId, leaving.reservationId);
+      thankYou = await thankYouOnRelease(restaurantId, leaving.id);
     } catch (err) {
-      console.error("[thank-you email]", leaving.reservationId, err);
+      console.error("[thank-you email]", leaving.id, err);
     }
   }
   const t = await prisma.diningTable.findUnique({ where: { id: tableId }, include: { section: true } });
@@ -302,6 +302,11 @@ export async function seatParty(
   const table = await prisma.diningTable.findUnique({ where: { id: params.tableId } });
   if (!table || table.restaurantId !== restaurantId) throw new HostFlowError("Table not found", 404);
   if (table.status === "OCCUPIED") throw new HostFlowError("Table is already occupied");
+  // The booking's email and language travel onto the visit, so the thank-you
+  // knows who to write to and in what language once they leave.
+  const booking = params.reservationId
+    ? await prisma.reservation.findUnique({ where: { id: params.reservationId }, select: { customerEmail: true, language: true } })
+    : null;
   if (table.status === "BLOCKED") throw new HostFlowError("Table is blocked");
 
   // A reservation booked for a party too big for one table (see
@@ -346,6 +351,8 @@ export async function seatParty(
         serverId: table.serverId,
         reservationId: params.reservationId,
         walkinId: params.walkinId,
+        guestEmail: booking?.customerEmail ?? null,
+        language: booking?.language ?? null,
       },
     });
     await tx.tableStatusHistory.create({

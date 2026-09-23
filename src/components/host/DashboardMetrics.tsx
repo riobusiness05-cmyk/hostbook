@@ -1,6 +1,7 @@
 "use client";
 
 import type { FloorState } from "@/lib/hostflow/floor";
+import { EmailStatsCard } from "./EmailStatsCard";
 import { Card, Gauge, Sparkline, StatCard } from "./ui";
 import { minutesLabel } from "@/lib/host/format";
 
@@ -72,6 +73,8 @@ export function DashboardMetrics({ state }: { state: FloorState }) {
             </p>
           </div>
         </Card>
+
+        <EmailStatsCard />
       </div>
     </div>
   );

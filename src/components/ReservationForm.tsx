@@ -104,6 +104,7 @@ export default function ReservationForm({
           customerPhone: phone,
           notes,
           seatingPreference: area || undefined,
+          language: typeof navigator !== "undefined" ? navigator.language.slice(0, 2).toLowerCase() : undefined,
           source: "WEB_FORM",
           idempotencyKey: idempotencyKeyRef.current,
           stripeSetupIntentId,

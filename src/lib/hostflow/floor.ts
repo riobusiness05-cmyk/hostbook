@@ -222,6 +222,20 @@ export type SettingsDTO = {
   googleReviewUrl: string | null;
   emailFromName: string | null;
   emailReplyTo: string | null;
+  thankYouMode: string;
+  thankYouDelay: string;
+  brandPrimary: string | null;
+  brandSecondary: string | null;
+  brandBackground: string | null;
+  brandText: string | null;
+  brandFont: string;
+  brandTone: string;
+  brandVoiceNotes: string | null;
+  brandSignOff: string | null;
+  googlePlaceId: string | null;
+  instagramUrl: string | null;
+  websiteUrl: string | null;
+  defaultLanguage: string;
 };
 
 const minutesBetween = (a: Date, b: Date) => Math.round((a.getTime() - b.getTime()) / 60000);
@@ -281,6 +295,20 @@ export async function getSettings(restaurantId: string): Promise<SettingsDTO> {
     googleReviewUrl: s.googleReviewUrl,
     emailFromName: s.emailFromName,
     emailReplyTo: s.emailReplyTo,
+    thankYouMode: s.thankYouMode,
+    thankYouDelay: s.thankYouDelay,
+    brandPrimary: s.brandPrimary,
+    brandSecondary: s.brandSecondary,
+    brandBackground: s.brandBackground,
+    brandText: s.brandText,
+    brandFont: s.brandFont,
+    brandTone: s.brandTone,
+    brandVoiceNotes: s.brandVoiceNotes,
+    brandSignOff: s.brandSignOff,
+    googlePlaceId: s.googlePlaceId,
+    instagramUrl: s.instagramUrl,
+    websiteUrl: s.websiteUrl,
+    defaultLanguage: s.defaultLanguage,
   };
 }
 

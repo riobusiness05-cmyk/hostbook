@@ -75,6 +75,8 @@ export const reservationStatusSchema = z.object({
   chargeNoShowFee: z.boolean().optional(),
 });
 
+const hexColour = z.string().regex(/^#[0-9a-fA-F]{6}$/, "Use a 6-digit hex colour like #c9611f");
+
 export const settingsSchema = z.object({
   maxBookingsPer15Min: z.number().int().min(1).max(50).optional(),
   bookingIntervalMinutes: z.number().int().min(5).max(120).optional(),
@@ -106,6 +108,20 @@ export const settingsSchema = z.object({
   googleReviewUrl: z.string().trim().url().max(500).nullable().optional(),
   emailFromName: z.string().trim().min(1).max(80).nullable().optional(),
   emailReplyTo: z.string().trim().email().max(200).nullable().optional(),
+  thankYouMode: z.enum(["ASK", "AUTO", "OFF"]).optional(),
+  thankYouDelay: z.enum(["IMMEDIATE", "MIN_30", "HOUR_2", "NEXT_MORNING"]).optional(),
+  brandPrimary: hexColour.nullable().optional(),
+  brandSecondary: hexColour.nullable().optional(),
+  brandBackground: hexColour.nullable().optional(),
+  brandText: hexColour.nullable().optional(),
+  brandFont: z.enum(["CLASSIC_SERIF", "MODERN_SANS", "ELEGANT_SCRIPT"]).optional(),
+  brandTone: z.enum(["WARM_FAMILY", "UPSCALE", "FUN_LIVELY", "BEACH_BAR"]).optional(),
+  brandVoiceNotes: z.string().trim().max(600).nullable().optional(),
+  brandSignOff: z.string().trim().max(120).nullable().optional(),
+  googlePlaceId: z.string().trim().max(200).nullable().optional(),
+  instagramUrl: z.string().trim().url().max(300).nullable().optional(),
+  websiteUrl: z.string().trim().url().max(300).nullable().optional(),
+  defaultLanguage: z.enum(["en", "es"]).optional(),
 });
 
 export const assistantSchema = z.object({

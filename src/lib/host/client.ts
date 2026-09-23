@@ -26,13 +26,14 @@ export async function fetchDayPlan(date: string, signal?: AbortSignal): Promise<
   return jsonOrThrow<DayPlan>(res);
 }
 
-export type ThankYouCandidate = { reservationId: string; customerName: string; customerEmail: string };
+export type ThankYouCandidate = { visitId: string; customerName: string; customerEmail: string | null };
+export type ReleaseThankYou = { ask: ThankYouCandidate | null; scheduledFor: string | null; sentNow: boolean };
 
 export type TableActionResult = {
   ok: true;
-  // Set by "release" when a booked guest with an email just left and the
-  // venue has thank-you emails on — the UI then asks staff whether to send.
-  thankYou?: ThankYouCandidate | null;
+  // Set by "release": who just left and what the venue's thank-you setting
+  // did about it — ask staff (`ask`), queued (`scheduledFor`) or sent (`sentNow`).
+  thankYou?: ReleaseThankYou | null;
 };
 
 export async function tableAction(tableId: string, action: TableAction): Promise<TableActionResult> {
@@ -44,14 +45,69 @@ export async function tableAction(tableId: string, action: TableAction): Promise
   return jsonOrThrow<TableActionResult>(res);
 }
 
-export type ThankYouOutcome = { sent: true; to: string } | { sent: false; reason: string };
+export type ThankYouOutcome = { sent: true; to: string } | { sent: false; reason: string; message: string };
 
-/** Sends the thank-you email for a booking whose party has left. */
-export async function sendThankYou(reservationId: string): Promise<ThankYouOutcome> {
-  const res = await fetch(`/api/host/reservations/${reservationId}/thank-you`, { method: "POST" });
+/** Sends the thank-you for a visit; `email` adds an address when the visit has none. */
+export async function sendVisitThankYou(visitId: string, email?: string): Promise<ThankYouOutcome> {
+  const res = await fetch(`/api/host/visits/${visitId}/thank-you`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(email ? { email } : {}),
+  });
   // 409 carries a plain reason ("already sent", "no email") — not an error to throw on.
   if (res.status === 409) return (await res.json()) as ThankYouOutcome;
   return jsonOrThrow<ThankYouOutcome>(res);
+}
+
+export function visitThankYouPreviewUrl(visitId: string, email?: string): string {
+  return `/api/host/visits/${visitId}/thank-you${email ? `?email=${encodeURIComponent(email)}` : ""}`;
+}
+
+// ── Brand kit ───────────────────────────────────────────────────────────
+
+export type BrandAsset = { id: string; kind: "LOGO" | "PHOTO"; url: string; width: number | null; height: number | null; bytes: number; alt: string | null; sortOrder: number };
+export type Palette = { primary: string | null; secondary: string | null; swatches: string[] };
+
+export async function fetchBrandAssets(): Promise<BrandAsset[]> {
+  const res = await fetch("/api/host/brand/assets", { cache: "no-store" });
+  return (await jsonOrThrow<{ assets: BrandAsset[] }>(res)).assets;
+}
+
+export async function uploadBrandAsset(kind: "LOGO" | "PHOTO", file: File): Promise<{ asset: BrandAsset; palette: Palette }> {
+  const form = new FormData();
+  form.append("kind", kind);
+  form.append("file", file);
+  const res = await fetch("/api/host/brand/assets", { method: "POST", body: form });
+  return jsonOrThrow<{ asset: BrandAsset; palette: Palette }>(res);
+}
+
+export async function updateBrandAsset(id: string, patch: { alt?: string | null; sortOrder?: number }): Promise<void> {
+  const res = await fetch(`/api/host/brand/assets/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
+  await jsonOrThrow(res);
+}
+
+export async function deleteBrandAsset(id: string): Promise<void> {
+  const res = await fetch(`/api/host/brand/assets/${id}`, { method: "DELETE" });
+  await jsonOrThrow(res);
+}
+
+/** Renders the first sample with UNSAVED settings — the live preview while editing. */
+export async function previewThankYou(draft: Partial<SettingsDTO>): Promise<string> {
+  const res = await fetch("/api/host/brand/preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(draft) });
+  if (!res.ok) throw new Error("preview failed");
+  return res.text();
+}
+
+export type ThankYouSample = { label: string; subject: string; html: string };
+export async function fetchThankYouSamples(): Promise<ThankYouSample[]> {
+  const res = await fetch("/api/host/brand/samples", { cache: "no-store" });
+  return (await jsonOrThrow<{ samples: ThankYouSample[] }>(res)).samples;
+}
+
+export type EmailStats = { sent: number; opened: number; clicked: number; bounced: number; openRate: number };
+export async function fetchEmailStats(): Promise<EmailStats> {
+  const res = await fetch("/api/host/emails/stats", { cache: "no-store" });
+  return jsonOrThrow<EmailStats>(res);
 }
 
 export async function addWalkin(input: {
@@ -306,6 +362,8 @@ export type RestaurantRow = {
   brandColor: string;
   logoUrl: string | null;
   email: string | null;
+  address: string | null;
+  phone: string | null;
   // The address guest emails are sent from — fixed per venue, shown in
   // Settings → Emails so hosts know what their guests will see.
   senderAddress: string;
@@ -322,6 +380,8 @@ export async function updateRestaurant(patch: {
   onboardingCompletedAt?: true;
   brandColor?: string;
   logoUrl?: string | null;
+  address?: string | null;
+  phone?: string | null;
 }): Promise<void> {
   const res = await fetch("/api/host/restaurant", {
     method: "PATCH",
