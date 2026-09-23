@@ -14,6 +14,11 @@ export async function storePublicFile(relativePath: string, data: Buffer, conten
     const blob = await put(relativePath, data, { access: "public", contentType, addRandomSuffix: true });
     return { url: blob.url, bytes: data.length, contentType };
   }
+  // On Vercel the filesystem is read-only, so without a Blob token there is
+  // nowhere to put the file — say so plainly instead of failing deep inside.
+  if (process.env.VERCEL) {
+    throw new Error("Image storage isn't set up yet — add BLOB_READ_WRITE_TOKEN (Vercel → Storage → Blob) and redeploy.");
+  }
   const local = path.join(process.cwd(), "public", "uploads", relativePath);
   await fs.mkdir(path.dirname(local), { recursive: true });
   await fs.writeFile(local, data);

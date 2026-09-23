@@ -47,7 +47,12 @@ export async function POST(req: NextRequest) {
   } catch {
     return NextResponse.json({ error: "That image couldn't be read — try a different file." }, { status: 422 });
   }
-  const stored = await storePublicFile(`brand/${ctx.restaurantId}/${kind.toLowerCase()}-${Date.now()}.${processed.ext}`, processed.buffer, processed.contentType);
+  let stored;
+  try {
+    stored = await storePublicFile(`brand/${ctx.restaurantId}/${kind.toLowerCase()}-${Date.now()}.${processed.ext}`, processed.buffer, processed.contentType);
+  } catch (err) {
+    return NextResponse.json({ error: (err as Error).message }, { status: 503 });
+  }
   const palette = await extractPalette(processed.buffer).catch(() => ({ primary: null, secondary: null, swatches: [] }));
 
   if (kind === "LOGO") {
