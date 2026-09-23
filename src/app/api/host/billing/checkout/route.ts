@@ -5,7 +5,7 @@ import { checkoutSchema } from "@/lib/billing/schemas";
 import { getOrCreateSubscriptionRow, reconcileSubscriptionFromStripe, TRIAL_DAYS } from "@/lib/billing/subscription";
 import { createCheckoutSession, getOrCreateStripeCustomer, hasLiveStripeSubscription, isStripeConfigured } from "@/lib/stripe";
 import { HostFlowError } from "@/lib/hostflow/actions";
-import { stripePriceIdFor } from "@/lib/billing/plans";
+import { resolveMonthlyPriceId } from "@/lib/billing/plans";
 
 // Starts (or resumes) a Stripe Checkout session for the logged-in venue.
 // Ensures a Stripe customer exists first so the resulting subscription is
@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
     // so a tier works the moment that var is set, no DB backfill needed.
     const planWithPrice = {
       ...plan,
-      stripeMonthlyPriceId: stripePriceIdFor(plan, "MONTH"),
+      stripeMonthlyPriceId: await resolveMonthlyPriceId(plan),
     };
 
     const url = await createCheckoutSession({

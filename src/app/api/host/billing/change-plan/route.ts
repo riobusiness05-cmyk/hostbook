@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { hostContext, handleActionError } from "@/lib/hostflow/apiContext";
 import { changePlanSchema } from "@/lib/billing/schemas";
 import { getOrCreateSubscriptionRow, getBillingState, logBillingEvent } from "@/lib/billing/subscription";
-import { ensurePlanCatalogue, stripePriceIdFor } from "@/lib/billing/plans";
+import { ensurePlanCatalogue, resolveMonthlyPriceId } from "@/lib/billing/plans";
 import { changeStripeSubscriptionPrice, isStripeConfigured } from "@/lib/stripe";
 import { HostFlowError } from "@/lib/hostflow/actions";
 import { prisma } from "@/lib/prisma";
@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
     }
     if (sub.planId === plan.id) throw new HostFlowError(`You're already on ${plan.name}.`, 409);
 
-    const priceId = stripePriceIdFor(plan, "MONTH");
+    const priceId = await resolveMonthlyPriceId(plan);
     if (!priceId) throw new HostFlowError(`${plan.name} isn't available for purchase yet.`, 503);
 
     await changeStripeSubscriptionPrice(sub.stripeSubscriptionId, priceId);

@@ -100,7 +100,7 @@ async function handleSubscriptionUpsert(event: Stripe.Event) {
 
   const item = stripeSub.items.data[0];
   const status = mapStripeStatus(stripeSub.status);
-  const boughtPlan = await planForStripePrice(item?.price?.id);
+  const boughtPlan = await planForStripePrice(item?.price);
 
   const updated = await prisma.subscription.update({
     where: { id: existing.id },

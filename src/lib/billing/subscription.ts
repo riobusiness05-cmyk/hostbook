@@ -86,8 +86,8 @@ export async function hasPremiumFeatures(restaurantId: string): Promise<boolean>
 
 /** `{ planId }` for the plan a Stripe price belongs to, or nothing if the
  *  price is unknown — so an unrecognised price never clears the plan. */
-async function planIdForPrice(priceId: string | null | undefined): Promise<{ planId?: string }> {
-  const plan = await planForStripePrice(priceId);
+async function planIdForPrice(price: Parameters<typeof planForStripePrice>[0]): Promise<{ planId?: string }> {
+  const plan = await planForStripePrice(price);
   return plan ? { planId: plan.id } : {};
 }
 
@@ -397,7 +397,7 @@ export async function reconcileSubscriptionFromStripe(restaurantId: string): Pro
       stripeCustomerId: customerId,
       stripeSubscriptionId: stripeSub.id,
       stripePriceId: item?.price?.id ?? null,
-      ...(await planIdForPrice(item?.price?.id)),
+      ...(await planIdForPrice(item?.price)),
       currentPeriodStart: item ? new Date(item.current_period_start * 1000) : sub.currentPeriodStart,
       currentPeriodEnd: item ? new Date(item.current_period_end * 1000) : sub.currentPeriodEnd,
       cancelAtPeriodEnd: stripeSub.cancel_at_period_end,
