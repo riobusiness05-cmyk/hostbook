@@ -3,26 +3,32 @@ import sharp from "sharp";
 import fs from "fs/promises";
 import path from "path";
 
-// Public file storage for brand assets. Production uses Vercel Blob
-// (BLOB_READ_WRITE_TOKEN); without a token — local dev — files land in
-// public/uploads so the whole flow still works end to end offline.
+// Public file storage for brand assets. Production uses Vercel Blob: either
+// a classic BLOB_READ_WRITE_TOKEN, or (newer stores) BLOB_STORE_ID plus the
+// VERCEL_OIDC_TOKEN Vercel injects into functions — the SDK works out which.
+// Without either — local dev — files land in public/uploads so the whole
+// flow still works end to end offline.
+
+function blobConfigured(): boolean {
+  return !!(process.env.BLOB_READ_WRITE_TOKEN || process.env.BLOB_STORE_ID);
+}
 
 export type StoredFile = { url: string; bytes: number; contentType: string };
 
 export async function storePublicFile(relativePath: string, data: Buffer, contentType: string): Promise<StoredFile> {
-  if (process.env.BLOB_READ_WRITE_TOKEN) {
+  if (blobConfigured()) {
     const blob = await put(relativePath, data, { access: "public", contentType, addRandomSuffix: true });
     return { url: blob.url, bytes: data.length, contentType };
   }
   // On Vercel the filesystem is read-only, so without a Blob token there is
   // nowhere to put the file — say so plainly instead of failing deep inside.
   if (process.env.VERCEL) {
-    throw new Error("Image storage isn't set up yet — add BLOB_READ_WRITE_TOKEN (Vercel → Storage → Blob) and redeploy.");
+    throw new Error("Image storage isn't set up yet — connect a Blob store to this project (Vercel → Storage → Blob) and redeploy.");
   }
   const local = path.join(process.cwd(), "public", "uploads", relativePath);
   await fs.mkdir(path.dirname(local), { recursive: true });
   await fs.writeFile(local, data);
-  console.log(`[storage:local] wrote ${local} (set BLOB_READ_WRITE_TOKEN to use Vercel Blob)`);
+  console.log(`[storage:local] wrote ${local} (connect a Vercel Blob store to use it instead)`);
   // Absolute, because these URLs end up inside emails, where a relative
   // path means nothing.
   const base = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
@@ -35,7 +41,7 @@ export async function deletePublicFile(url: string): Promise<void> {
     await fs.rm(path.join(process.cwd(), "public", "uploads", local[1]), { force: true });
     return;
   }
-  if (process.env.BLOB_READ_WRITE_TOKEN) await del(url).catch(() => {});
+  if (blobConfigured()) await del(url).catch(() => {});
 }
 
 // ── Image processing for email ───────────────────────────────────────────
