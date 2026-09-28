@@ -8,6 +8,11 @@ import { EmailDesignEditor } from "./EmailDesignEditor";
 import { STATUS_META, formatCents, formatDate, formatDateTime } from "./format";
 import type { RestaurantDetail as RestaurantDetailData } from "@/lib/platformAdmin";
 import type { StripeCustomerSummary } from "@/lib/billing/subscription";
+import type { UpgradePreview } from "@/lib/billing/upgradePreview";
+
+function money(cents: number, currency: string): string {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: currency.toUpperCase() }).format(cents / 100);
+}
 
 export function RestaurantDetail({ restaurant }: { restaurant: RestaurantDetailData }) {
   const [busy, setBusy] = useState(false);
@@ -15,6 +20,23 @@ export function RestaurantDetail({ restaurant }: { restaurant: RestaurantDetailD
   const [extendDays, setExtendDays] = useState(7);
   const [stripeCustomers, setStripeCustomers] = useState<StripeCustomerSummary[] | null>(null);
   const [stripeLoading, setStripeLoading] = useState(false);
+  const [upgrade, setUpgrade] = useState<UpgradePreview | null>(null);
+  const [upgradeLoading, setUpgradeLoading] = useState(false);
+
+  async function loadUpgradePreview() {
+    setUpgradeLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/platform/upgrade-preview?restaurantId=${restaurant.id}&planKey=premium`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Preview failed");
+      setUpgrade(data.preview);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setUpgradeLoading(false);
+    }
+  }
 
   async function loadStripeCustomers() {
     setStripeLoading(true);
@@ -192,7 +214,18 @@ export function RestaurantDetail({ restaurant }: { restaurant: RestaurantDetailD
             >
               {stripeLoading ? "Looking up…" : "Show Stripe customers"}
             </Button>
+            <Button
+              size="sm"
+              variant="primary"
+              disabled={upgradeLoading}
+              title="Dry run of this venue clicking Upgrade to Premium: what Stripe would charge today, when the new price starts, and anything that would block it — read-only, changes nothing"
+              onClick={loadUpgradePreview}
+            >
+              {upgradeLoading ? "Asking Stripe…" : "Preview upgrade to Premium"}
+            </Button>
           </div>
+
+          {upgrade && <UpgradePreviewCard preview={upgrade} />}
 
           {stripeCustomers && (
             <div className="mt-4 space-y-3 border-t border-white/10 pt-4">
@@ -282,6 +315,121 @@ export function RestaurantDetail({ restaurant }: { restaurant: RestaurantDetailD
           </div>
         </Card>
       </main>
+    </div>
+  );
+}
+
+const PATH_META: Record<UpgradePreview["path"], { label: string; color: string }> = {
+  CHANGE_IN_PLACE: { label: "Ready — upgrades in place, prorated", color: "#22c55e" },
+  CHECKOUT: { label: "Would open a new Checkout", color: "#f59e0b" },
+  ALREADY_ON_PLAN: { label: "Already on this plan", color: "#3b82f6" },
+  COMPLIMENTARY: { label: "Complimentary", color: "#a855f7" },
+};
+
+function UpgradePreviewCard({ preview }: { preview: UpgradePreview }) {
+  const ok = preview.blockers.length === 0 && preview.path === "CHANGE_IN_PLACE";
+  const path = PATH_META[preview.path];
+  const cur = preview.target.currency ?? preview.stripe?.currency ?? "usd";
+  return (
+    <div className="mt-4 space-y-3 border-t border-white/10 pt-4">
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <span className="font-semibold text-white">Upgrade to {preview.target.name}</span>
+        <Chip color={preview.blockers.length ? "#ef4444" : path.color}>{preview.blockers.length ? "Blocked" : path.label}</Chip>
+      </div>
+
+      {ok && preview.charge && (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3">
+            <p className="text-xs text-emerald-300/80">Charged today</p>
+            <p className="text-xl font-bold text-white">{money(preview.charge.dueNowCents, preview.charge.currency)}</p>
+            <p className="text-[11px] text-neutral-400">the rest of this period at the new price, minus what was already paid</p>
+          </div>
+          <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+            <p className="text-xs text-neutral-500">Then every month</p>
+            <p className="text-xl font-bold text-white">{money(preview.charge.nextInvoiceCents, preview.charge.currency)}</p>
+            <p className="text-[11px] text-neutral-400">
+              first full charge {preview.charge.nextInvoiceDate ? formatDate(preview.charge.nextInvoiceDate) : "at next renewal"}
+            </p>
+          </div>
+          <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+            <p className="text-xs text-neutral-500">Paid with</p>
+            <p className="text-sm text-white">{preview.stripe?.paymentMethod ?? "—"}</p>
+            <p className="text-[11px] text-neutral-400">Premium features switch on the moment they click Upgrade</p>
+          </div>
+        </div>
+      )}
+
+      {preview.blockers.map((b) => (
+        <div key={b} className="rounded-lg border border-red-500/30 bg-red-500/10 p-2.5 text-xs text-red-200">
+          ✕ {b}
+        </div>
+      ))}
+      {preview.warnings.map((w) => (
+        <div key={w} className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs text-amber-100">
+          ⚠ {w}
+        </div>
+      ))}
+
+      <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
+        <div>
+          <p className="text-neutral-500">Host Flow says</p>
+          <p className="text-white">
+            {preview.local.status} · {preview.local.planName ?? "no plan"}
+          </p>
+          <p className="font-mono text-[10px] text-neutral-500">{preview.local.stripeSubscriptionId ?? "no subscription id"}</p>
+        </div>
+        <div>
+          <p className="text-neutral-500">Stripe says</p>
+          <p className="text-white">
+            {preview.stripe ? `${preview.stripe.status}${preview.stripe.cancelAtPeriodEnd ? " (cancels at period end)" : ""}` : "—"}
+          </p>
+          <p className="text-[10px] text-neutral-500">
+            {preview.stripe?.amountCents != null && preview.stripe.currency
+              ? `${money(preview.stripe.amountCents, preview.stripe.currency)}/${preview.stripe.interval ?? "period"} · renews ${preview.stripe.currentPeriodEnd ? formatDate(preview.stripe.currentPeriodEnd) : "—"}`
+              : ""}
+          </p>
+        </div>
+        <div>
+          <p className="text-neutral-500">Latest invoice</p>
+          {preview.stripe?.latestInvoice ? (
+            <>
+              <p className="text-white">
+                {preview.stripe.latestInvoice.status} · {money(preview.stripe.latestInvoice.amountDueCents, preview.stripe.latestInvoice.currency)}
+              </p>
+              {preview.stripe.latestInvoice.hostedUrl && (
+                <a className="text-[10px] text-blue-300 underline" href={preview.stripe.latestInvoice.hostedUrl} target="_blank" rel="noreferrer">
+                  open in Stripe
+                </a>
+              )}
+            </>
+          ) : (
+            <p className="text-white">—</p>
+          )}
+        </div>
+        <div>
+          <p className="text-neutral-500">{preview.target.name} price</p>
+          <p className="text-white">
+            {preview.target.amountCents != null ? `${money(preview.target.amountCents, cur)}/${preview.target.interval ?? "month"}` : "not found"}
+          </p>
+          <p className="font-mono text-[10px] text-neutral-500">{preview.target.priceId ?? ""}</p>
+        </div>
+      </div>
+
+      {preview.charge && preview.charge.lines.length > 0 && (
+        <details className="text-xs">
+          <summary className="cursor-pointer text-neutral-400">Stripe&apos;s line items</summary>
+          <div className="mt-2 space-y-1">
+            {preview.charge.lines.map((l, i) => (
+              <div key={i} className="flex justify-between gap-3 rounded-md bg-black/20 px-2 py-1.5">
+                <span className="text-neutral-300">
+                  {l.description || "(no description)"} {l.proration && <span className="text-neutral-500">· charged now</span>}
+                </span>
+                <span className={l.amountCents < 0 ? "text-emerald-300" : "text-white"}>{money(l.amountCents, preview.charge!.currency)}</span>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
     </div>
   );
 }
