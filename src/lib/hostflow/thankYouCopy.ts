@@ -118,10 +118,10 @@ const EN: Record<Tone, Pools> = {
     opening: [
       "Thank you for dining with us {when}. It was a pleasure to have you at {venue}.",
       "It was our pleasure to welcome you to {venue} {when}.",
-      "Thank you for choosing {venue} {when}; we hope the evening was to your liking.",
+      "Thank you for choosing {venue} {when}; we hope it was to your liking.",
     ],
     regular: ["It is always a pleasure to welcome you back.", "Your continued visits are appreciated more than you know."],
-    first: ["We hope your first visit gave you a sense of what we do here.", "We hope this first evening with us was the beginning of many."],
+    first: ["We hope your first visit gave you a sense of what we do here.", "We hope this first visit was the beginning of many."],
     group: ["It was a pleasure to look after your party."],
     occasion: ["Our warmest wishes again on your {occasion}.", "It was a privilege to host your {occasion}."],
     plain: ["We trust everything was as it should be."],
@@ -131,7 +131,7 @@ const EN: Record<Tone, Pools> = {
       "If you enjoyed your time with us, a short Google review would mean a great deal.",
     ],
     closing: ["We look forward to welcoming you back.", "Until we see you again.", "With our thanks."],
-    extra: ["Evenings such as this are what we are here for.", "It was our privilege to have you.", "We hope everything was to your satisfaction."],
+    extra: ["Occasions such as this are what we are here for.", "It was our privilege to have you.", "We hope everything was to your satisfaction."],
   },
   FUN_LIVELY: {
     opening: [
@@ -142,7 +142,7 @@ const EN: Record<Tone, Pools> = {
     regular: ["Back again — we love that. Thanks for sticking with us.", "A familiar face is the best kind; thanks for coming back."],
     first: ["First time? Welcome to the club.", "If that was your first visit, we hope it won't be your last."],
     group: ["Big table, big energy — thanks for bringing the crew."],
-    occasion: ["Happy {occasion} again! Hope it was a proper one.", "Celebrating your {occasion} with us? Best kind of night."],
+    occasion: ["Happy {occasion} again! Hope it was a proper one.", "Celebrating your {occasion} with us? Best kind of day."],
     plain: ["Hope the food hit the spot and the drinks kept coming."],
     ask: [
       "Got a minute? A quick Google review would make our day (and help more people find the party).",
@@ -150,7 +150,7 @@ const EN: Record<Tone, Pools> = {
       "Fancy giving us a shout on Google? A couple of lines is plenty.",
     ],
     closing: ["See you next time!", "Come back soon!", "Same time again?"],
-    extra: ["Nights like that are why we open the doors.", "The team were buzzing after your table left.", "You brought the good energy."],
+    extra: ["Times like that are why we open the doors.", "The team were buzzing after your table left.", "You brought the good energy."],
   },
   BEACH_BAR: {
     opening: [
@@ -200,7 +200,7 @@ const ES: Record<Tone, Pools> = {
       "Gracias por elegir {venue} {when}; esperamos que fuera de su agrado.",
     ],
     regular: ["Siempre es un placer volver a recibirle.", "Sus visitas se aprecian más de lo que imagina."],
-    first: ["Esperamos que su primera visita le haya dado una idea de lo que hacemos aquí.", "Esperamos que esta primera velada sea el comienzo de muchas."],
+    first: ["Esperamos que su primera visita le haya dado una idea de lo que hacemos aquí.", "Esperamos que esta primera visita sea el comienzo de muchas."],
     group: ["Fue un placer atender a su grupo."],
     occasion: ["Reciba de nuevo nuestros mejores deseos por su {occasion}.", "Fue un privilegio acoger su {occasion}."],
     plain: ["Confiamos en que todo estuviera como debía."],
@@ -210,7 +210,7 @@ const ES: Record<Tone, Pools> = {
       "Si disfrutó de su tiempo con nosotros, una breve reseña en Google significaría mucho.",
     ],
     closing: ["Esperamos volver a recibirle pronto.", "Hasta la próxima ocasión.", "Con nuestro agradecimiento."],
-    extra: ["Veladas como esta son nuestra razón de ser.", "Fue un privilegio contar con su presencia.", "Confiamos en que todo estuviera a la altura."],
+    extra: ["Ocasiones como esta son nuestra razón de ser.", "Fue un privilegio contar con su presencia.", "Confiamos en que todo estuviera a la altura."],
   },
   FUN_LIVELY: {
     opening: [
@@ -221,7 +221,7 @@ const ES: Record<Tone, Pools> = {
     regular: ["Otra vez por aquí, nos encanta. Gracias por seguir con nosotros.", "Una cara conocida es la mejor; gracias por volver."],
     first: ["¿Primera vez? Bienvenido al club.", "Si fue tu primera visita, esperamos que no sea la última."],
     group: ["Mesa grande, energía grande: gracias por traer a la tropa."],
-    occasion: ["¡Feliz {occasion} otra vez! Esperamos que fuera como se merece.", "¿Celebrar tu {occasion} con nosotros? La mejor clase de noche."],
+    occasion: ["¡Feliz {occasion} otra vez! Esperamos que fuera como se merece.", "¿Celebrar tu {occasion} con nosotros? La mejor clase de plan."],
     plain: ["Esperamos que la comida diera en el clavo y las bebidas no pararan."],
     ask: [
       "¿Tienes un minuto? Una reseña rápida en Google nos alegraría el día (y ayuda a que más gente encuentre la fiesta).",
@@ -229,7 +229,7 @@ const ES: Record<Tone, Pools> = {
       "¿Nos dejas unas líneas en Google? Con un par de frases basta.",
     ],
     closing: ["¡Hasta la próxima!", "¡Vuelve pronto!", "¿Repetimos?"],
-    extra: ["Noches así son el motivo por el que abrimos.", "El equipo se quedó con muy buen sabor de boca.", "Trajiste la energía buena."],
+    extra: ["Momentos así son el motivo por el que abrimos.", "El equipo se quedó con muy buen sabor de boca.", "Trajiste la energía buena."],
   },
   BEACH_BAR: {
     opening: [

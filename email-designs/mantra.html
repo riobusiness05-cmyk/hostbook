@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="{{language}}" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="dark" />
+<meta name="supported-color-schemes" content="dark" />
+<title>{{subject}}</title>
+<!--[if mso]><noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript><![endif]-->
+<style>
+  @media (max-width: 620px) {
+    .w { width: 100% !important; }
+    .pad { padding-left: 22px !important; padding-right: 22px !important; }
+  }
+</style>
+</head>
+<body style="margin:0; padding:0; background:#0a0908; -webkit-text-size-adjust:100%;">
+  <div style="display:none; max-height:0; overflow:hidden; opacity:0; mso-hide:all;">{{message_text}}</div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0a0908;">
+    <tr><td align="center" style="padding:0;">
+
+      <table role="presentation" class="w" width="600" cellpadding="0" cellspacing="0" style="width:600px; max-width:100%; background:#0e0c0a;">
+
+        <!-- lantern header: lotus, MANTRA, "Thank You" -->
+        <tr><td style="padding:0; font-size:0; line-height:0;">
+          <img src="https://hostflow.space/email/mantra/top.jpg" width="600" alt="Mantra — Thank you for visiting us" style="display:block; width:100%; max-width:600px; height:auto; border:0;" />
+        </td></tr>
+
+        <!-- the note -->
+        <tr><td class="pad" align="center" style="padding:18px 64px 0 64px; font-family:Georgia,'Times New Roman',serif; font-size:16px; line-height:1.8; color:#efe6d3;">
+          <style>.note p{margin:0 0 14px 0;}</style>
+          <div class="note">{{{message}}}</div>
+          <p style="margin:16px 0 0 0; font-family:'Snell Roundhand','Apple Chancery','Brush Script MT',cursive,Georgia,serif; font-size:24px; line-height:1.3; color:#d4a85a;">{{sign_off}}</p>
+          <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px auto 0 auto;"><tr>
+            <td style="width:40px; height:1px; background:#7a6237; font-size:0; line-height:0;">&nbsp;</td>
+            <td style="padding:0 10px; font-family:Georgia,serif; font-size:14px; color:#d4a85a; line-height:1;">&#10047;</td>
+            <td style="width:40px; height:1px; background:#7a6237; font-size:0; line-height:0;">&nbsp;</td>
+          </tr></table>
+        </td></tr>
+
+        {{#review_url}}
+        <tr><td align="center" class="pad" style="padding:26px 64px 0 64px;">
+          <table role="presentation" cellpadding="0" cellspacing="0">
+            <tr><td style="border:1px solid #d4a85a; background:#d4a85a;">
+              <a href="{{review_url}}" style="display:inline-block; padding:15px 36px; font-family:Georgia,'Times New Roman',serif; font-size:14px; letter-spacing:0.14em; text-transform:uppercase; color:#0e0c0a; font-weight:700; text-decoration:none;">{{review_label}}</a>
+            </td></tr>
+          </table>
+          <p style="margin:10px 0 0 0; font-family:Georgia,'Times New Roman',serif; font-size:12px; color:#8a7f6a;">It takes about a minute.</p>
+        </td></tr>
+        {{/review_url}}
+
+        <tr><td align="center" class="pad" style="padding:24px 64px 30px 64px; font-family:Georgia,'Times New Roman',serif; font-size:14px; line-height:1.6; color:#b5aa95;">
+          {{book_line}}<br/>
+          <a href="{{booking_url}}" style="color:#d4a85a; text-decoration:none; font-weight:700; letter-spacing:0.06em;">{{book_label}} &rarr;</a>
+        </td></tr>
+
+        <!-- the table -->
+        <tr><td style="padding:0; font-size:0; line-height:0;">
+          <img src="https://hostflow.space/email/mantra/food.jpg" width="600" alt="Dinner at Mantra" style="display:block; width:100%; max-width:600px; height:auto; border:0;" />
+        </td></tr>
+
+        <!-- follow -->
+        <tr><td align="center" style="padding:26px 44px 6px 44px; font-family:Georgia,'Times New Roman',serif; font-size:11px; letter-spacing:0.3em; text-transform:uppercase; color:#d4a85a;">
+          Follow our journey
+        </td></tr>
+        <tr><td align="center" style="padding:0 44px 22px 44px; font-family:Georgia,'Times New Roman',serif; font-size:14px; letter-spacing:0.06em; color:#d4a85a;">
+          {{#instagram_url}}<a href="{{instagram_url}}" style="color:#d4a85a; text-decoration:none;">Instagram</a>{{/instagram_url}}
+          &nbsp;&middot;&nbsp; <a href="https://www.facebook.com/mantratenerife" style="color:#d4a85a; text-decoration:none;">Facebook</a>
+          &nbsp;&middot;&nbsp; <a href="https://www.tiktok.com/@mantratenerife" style="color:#d4a85a; text-decoration:none;">TikTok</a>
+        </td></tr>
+
+        <!-- gold filigree border -->
+        <tr><td style="padding:0; font-size:0; line-height:0;">
+          <img src="https://hostflow.space/email/mantra/border.jpg" width="600" alt="" style="display:block; width:100%; max-width:600px; height:auto; border:0;" />
+        </td></tr>
+
+        <tr><td align="center" style="padding:14px 44px 28px 44px; font-family:Georgia,'Times New Roman',serif; font-size:11px; line-height:1.7; color:#6f6553;">
+          {{#address}}{{address}}<br/>{{/address}}
+          <a href="{{unsubscribe_url}}" style="color:#6f6553; text-decoration:underline;">{{unsubscribe_label}}</a>
+        </td></tr>
+      </table>
+
+    </td></tr>
+  </table>
+</body>
+</html>
