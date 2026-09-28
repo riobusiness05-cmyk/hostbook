@@ -1,7 +1,7 @@
 import type { MetadataRoute } from "next";
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const base = process.env.NEXT_PUBLIC_APP_URL || "https://hostflow-booking.vercel.app";
+  const base = process.env.NEXT_PUBLIC_APP_URL || "https://hostflow.space";
   const now = new Date();
   return [
     { url: `${base}/hostflow`, lastModified: now, changeFrequency: "weekly", priority: 1 },

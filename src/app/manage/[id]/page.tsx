@@ -145,11 +145,11 @@ export default function ManageBookingPage() {
 
       <p className="mt-4 text-center text-xs text-neutral-400">
         Powered by{" "}
-        <a href="https://hostflow-booking.vercel.app/hostflow" target="_blank" rel="noopener noreferrer" className="hover:text-neutral-500">
+        <a href="https://hostflow.space/hostflow" target="_blank" rel="noopener noreferrer" className="hover:text-neutral-500">
           Host Flow
         </a>{" "}
         ·{" "}
-        <a href="https://hostflow-booking.vercel.app/hostflow/privacy" target="_blank" rel="noopener noreferrer" className="hover:text-neutral-500">
+        <a href="https://hostflow.space/hostflow/privacy" target="_blank" rel="noopener noreferrer" className="hover:text-neutral-500">
           Privacy
         </a>
       </p>

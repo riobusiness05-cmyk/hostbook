@@ -13,7 +13,7 @@
  */
 (function () {
   var thisScript = document.currentScript;
-  var origin = "https://hostflow-booking.vercel.app";
+  var origin = "https://hostflow.space";
   if (thisScript && thisScript.src) {
     try {
       origin = new URL(thisScript.src).origin;

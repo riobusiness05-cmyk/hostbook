@@ -302,11 +302,11 @@ export function WidgetBookingForm({
 
       <p className="mt-4 text-center text-[10px] text-neutral-300">
         Powered by{" "}
-        <a href="https://hostflow-booking.vercel.app/hostflow" target="_blank" rel="noopener noreferrer" className="hover:text-neutral-400">
+        <a href="https://hostflow.space/hostflow" target="_blank" rel="noopener noreferrer" className="hover:text-neutral-400">
           Host Flow
         </a>{" "}
         ·{" "}
-        <a href="https://hostflow-booking.vercel.app/hostflow/privacy" target="_blank" rel="noopener noreferrer" className="hover:text-neutral-400">
+        <a href="https://hostflow.space/hostflow/privacy" target="_blank" rel="noopener noreferrer" className="hover:text-neutral-400">
           Privacy
         </a>
       </p>
