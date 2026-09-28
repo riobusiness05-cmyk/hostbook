@@ -359,6 +359,7 @@ export function TablePanel({
                   partySize: input.partySize,
                   customerName: input.customerName,
                   customerPhone: input.customerPhone || undefined,
+                  customerEmail: input.customerEmail || undefined,
                   occasion: input.occasion || undefined,
                 })
               )
@@ -701,6 +702,7 @@ function ReserveForm({
     partySize: number;
     customerName: string;
     customerPhone: string;
+    customerEmail: string;
     occasion: string;
   }) => void;
   onCancel: () => void;
@@ -722,6 +724,7 @@ function ReserveForm({
   const [partySize, setPartySize] = useState(Math.min(2, table.seatsMax));
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
+  const [customerEmail, setCustomerEmail] = useState("");
   const [occasion, setOccasion] = useState("");
 
   return (
@@ -767,6 +770,9 @@ function ReserveForm({
         <Field label="Phone (optional)">
           <input className={inputCls} value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="For a confirmation call/text" />
         </Field>
+        <Field label="Email (optional — confirmation now, thank-you after)">
+          <input className={inputCls} type="email" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} placeholder="guest@example.com" />
+        </Field>
         <Field label="Occasion (optional)">
           <input className={inputCls} value={occasion} onChange={(e) => setOccasion(e.target.value)} placeholder="Birthday, anniversary…" />
         </Field>
@@ -781,7 +787,7 @@ function ReserveForm({
           variant="primary"
           className="flex-1"
           disabled={busy || !customerName.trim() || !time || partySize < table.seatsMin}
-          onClick={() => onSubmit({ date, time, partySize, customerName: customerName.trim(), customerPhone: customerPhone.trim(), occasion })}
+          onClick={() => onSubmit({ date, time, partySize, customerName: customerName.trim(), customerPhone: customerPhone.trim(), customerEmail: customerEmail.trim(), occasion })}
         >
           Reserve
         </Button>

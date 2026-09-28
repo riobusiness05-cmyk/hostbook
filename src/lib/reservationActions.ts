@@ -330,6 +330,7 @@ export async function bookSpecificTable(
     partySize: number;
     customerName: string;
     customerPhone?: string;
+    customerEmail?: string;
     occasion?: string;
   }
 ): Promise<ActionResult<{ id: string; tableNumber: number; date: string; time: string }>> {
@@ -380,6 +381,7 @@ export async function bookSpecificTable(
           tableId: params.tableId,
           customerName: params.customerName,
           customerPhone: params.customerPhone || null,
+          customerEmail: params.customerEmail?.trim().toLowerCase() || null,
           partySize: params.partySize,
           reservationTime: combineDateAndTime(params.date, params.time, restaurant.timezone),
           durationMinutes: duration,
@@ -399,6 +401,40 @@ export async function bookSpecificTable(
       tableId: table.id,
     });
     emitFloorChange(restaurant.id, "reservation");
+
+    // Same best-effort, awaited confirmation as a guest-made booking — a
+    // booking taken at the host stand with an email should confirm too.
+    const customerEmail = params.customerEmail?.trim().toLowerCase();
+    if (customerEmail) {
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+      const manageUrl = `${appUrl}/manage/${reservation.id}?t=${manageToken}`;
+      try {
+        const emailSettings = await getSettings(restaurant.id);
+        const result = await sendEmail({
+          to: customerEmail,
+          subject: `You're booked at ${restaurant.name}`,
+          ...senderIdentityFor(restaurant, emailSettings),
+          meta: { kind: "BOOKING_CONFIRMATION", restaurantId: restaurant.id },
+          html: reservationConfirmationHtml({
+            restaurantName: restaurant.name,
+            brandColor: restaurant.brandColor,
+            address: restaurant.address,
+            customerName: params.customerName,
+            date: params.date,
+            time: params.time,
+            partySize: params.partySize,
+            manageUrl,
+          }),
+        });
+        if (result.ok) {
+          await prisma.reservation.update({ where: { id: reservation.id }, data: { confirmationSentAt: new Date() } });
+        } else {
+          console.error("[reservation] confirmation email failed", result.error);
+        }
+      } catch (err) {
+        console.error("[reservation] confirmation email failed", err);
+      }
+    }
 
     return {
       ok: true,

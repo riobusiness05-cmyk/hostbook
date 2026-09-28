@@ -94,6 +94,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           partySize: a.partySize,
           customerName: a.customerName,
           customerPhone: a.customerPhone,
+          customerEmail: a.customerEmail || undefined,
           occasion: a.occasion,
         });
         if (!result.ok) throw new HostFlowError(result.error, 409);

@@ -36,6 +36,7 @@ export const tableActionSchema = z.discriminatedUnion("action", [
     partySize: z.number().int().min(1).max(30),
     customerName: z.string().trim().min(1).max(120),
     customerPhone: z.string().max(40).optional(),
+    customerEmail: z.string().trim().email().max(200).optional().or(z.literal("")),
     occasion: z.string().max(60).optional(),
   }),
 ]);
