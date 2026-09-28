@@ -37,7 +37,9 @@ export async function sendEmail(params: {
   from?: { name: string; address: string };
   replyTo?: string;
   // What this email is and which venue it belongs to, for the email log.
-  meta?: { kind: EmailKind; restaurantId?: string | null; tableSessionId?: string | null };
+  // `logId`: a row created before rendering (so the email can link back to
+  // itself for click tracking) — updated instead of a new row being made.
+  meta?: { kind: EmailKind; restaurantId?: string | null; tableSessionId?: string | null; logId?: string | null };
   // Plain-text alternative and extra headers (List-Unsubscribe) for guest mail.
   text?: string;
   headers?: Record<string, string>;
@@ -49,6 +51,13 @@ export async function sendEmail(params: {
   // the reason an email doesn't go, so a logging failure is swallowed.
   const record = async (status: "SENT" | "FAILED" | "SKIPPED", extra: { error?: string; providerId?: string } = {}) => {
     try {
+      if (params.meta?.logId) {
+        await prisma.emailLog.update({
+          where: { id: params.meta.logId },
+          data: { to: params.to, subject: params.subject, status, error: extra.error ?? null, providerId: extra.providerId ?? null },
+        });
+        return;
+      }
       await prisma.emailLog.create({
         data: {
           restaurantId: params.meta?.restaurantId ?? null,
@@ -451,7 +460,7 @@ const T = {
 
 export function guestThankYouEmail(
   kit: BrandKit,
-  params: { subject: string; paragraphs: string[]; signOff: string; unsubscribeUrl: string; language: Language }
+  params: { subject: string; paragraphs: string[]; signOff: string; unsubscribeUrl: string; language: Language; reviewHref: string | null }
 ): { html: string; text: string } {
   const t = T[params.language === "es" ? "es" : "en"];
   const font = FONT_STYLES[kit.font];
@@ -470,10 +479,10 @@ export function guestThankYouEmail(
     )
     .join("");
 
-  const review = kit.reviewUrl
+  const review = params.reviewHref
     ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:30px auto 8px auto;">
         <tr><td style="border-radius:6px; background:${accent};">
-          <a href="${escapeHtml(kit.reviewUrl)}" style="display:inline-block; padding:14px 30px; font-family:${font.body}; font-size:15px; font-weight:700; letter-spacing:0.02em; color:${buttonInk}; text-decoration:none; border-radius:6px;">${t.review}</a>
+          <a href="${escapeHtml(params.reviewHref)}" style="display:inline-block; padding:14px 30px; font-family:${font.body}; font-size:15px; font-weight:700; letter-spacing:0.02em; color:${buttonInk}; text-decoration:none; border-radius:6px;">${t.review}</a>
         </td></tr>
       </table>
       <p style="margin:0; font-family:${font.body}; font-size:12px; color:${faint}; text-align:center;">${t.takes}</p>`
@@ -546,7 +555,7 @@ export function guestThankYouEmail(
     ...params.paragraphs,
     params.signOff,
     "",
-    ...(kit.reviewUrl ? [`${t.review}: ${kit.reviewUrl}`, ""] : []),
+    ...(params.reviewHref ? [`${t.review}: ${params.reviewHref}`, ""] : []),
     `${t.book}: ${kit.bookingUrl}`,
     "",
     kit.venueName,

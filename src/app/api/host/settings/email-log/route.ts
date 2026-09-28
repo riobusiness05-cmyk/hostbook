@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
     where: { restaurantId: ctx.restaurantId },
     orderBy: { createdAt: "desc" },
     take: 40,
-    select: { id: true, kind: true, to: true, subject: true, status: true, error: true, providerId: true, createdAt: true },
+    select: { id: true, kind: true, to: true, subject: true, status: true, error: true, providerId: true, createdAt: true, openedAt: true, clickedAt: true },
   });
   return NextResponse.json({ emails: rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })) });
 }

@@ -24,6 +24,7 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
 }
 
 const STATUS_META: Record<string, { label: string; cls: string }> = {
+  PENDING: { label: "Sending", cls: "bg-neutral-500/15 text-neutral-500 dark:text-neutral-400" },
   SENT: { label: "Sent", cls: "bg-sky-500/15 text-sky-600 dark:text-sky-400" },
   DELAYED: { label: "Delayed", cls: "bg-amber-500/15 text-amber-600 dark:text-amber-400" },
   DELIVERED: { label: "Delivered", cls: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" },
@@ -325,6 +326,7 @@ export function BrandKitSettings({ initialSettings, premium, onUpgrade }: { init
                   <span className="min-w-0 flex-1">
                     <span className="font-medium text-neutral-800 dark:text-neutral-100">{KIND_LABEL[e.kind] ?? e.kind}</span>
                     <span className="text-neutral-500 dark:text-neutral-400"> → {e.to}</span>
+                    {e.clickedAt && <span className="ml-2 rounded-md bg-emerald-500/15 px-1.5 py-0.5 font-semibold text-emerald-600 dark:text-emerald-400">Review link clicked ✓</span>}
                     {e.error && <span className="block text-red-600 dark:text-red-400">{e.error}</span>}
                   </span>
                 </li>

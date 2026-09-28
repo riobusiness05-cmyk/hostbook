@@ -5,12 +5,12 @@ import Link from "next/link";
 import { Card } from "./ui";
 import * as api from "@/lib/host/client";
 
-// This month's post-visit emails at a glance. Review clicks need click
-// tracking switched on for the sending domain in Resend.
+// This month's post-visit emails at a glance. Delivered comes from Resend's
+// webhook; review clicks from our own /r/… redirect on the button.
 export function EmailStatsCard() {
   const [stats, setStats] = useState<api.EmailStats | null>(null);
   useEffect(() => {
-    api.fetchEmailStats().then(setStats).catch(() => setStats({ sent: 0, opened: 0, clicked: 0, bounced: 0, openRate: 0, premium: false }));
+    api.fetchEmailStats().then(setStats).catch(() => setStats({ sent: 0, delivered: 0, opened: 0, clicked: 0, bounced: 0, openRate: 0, premium: false }));
   }, []);
   return (
     <Card className="p-4">
@@ -34,8 +34,8 @@ export function EmailStatsCard() {
             <p className="text-[11px] text-neutral-500 dark:text-neutral-400">sent</p>
           </div>
           <div>
-            <p className="text-2xl font-bold text-neutral-900 dark:text-white">{stats.openRate}%</p>
-            <p className="text-[11px] text-neutral-500 dark:text-neutral-400">opened</p>
+            <p className="text-2xl font-bold text-neutral-900 dark:text-white">{stats.delivered}</p>
+            <p className="text-[11px] text-neutral-500 dark:text-neutral-400">delivered</p>
           </div>
           <div>
             <p className="text-2xl font-bold text-neutral-900 dark:text-white">{stats.clicked}</p>

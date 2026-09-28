@@ -97,6 +97,11 @@ describe("renderThankYou", () => {
     expect(r.html).not.toMatch(/writereview|g\.page/); // no review link configured → no button
     expect(r.text).toContain("Sam");
     expect(r.html).toContain("/widget/bare-bar"); // the "book again" link
+    const tracked = renderThankYou({ ...kit, reviewUrl: "https://g.page/r/x/review" }, { thankYouEmailSubject: null, thankYouEmailBody: null, thankYouEmailHtml: null }, "venue1", "UTC", {
+      firstName: "Sam", email: "sam@example.com", partySize: 2, visitAt: new Date("2026-09-22T20:00:00Z"), occasion: null, visitCount: 1, language: "en", seed: "v", trackRef: "v:visit-1",
+    });
+    expect(tracked.html).toMatch(/href="https?:\/\/[^"]+\/r\/v%3Avisit-1\/[a-f0-9]{24}"/); // button goes via our redirect, not straight to Google
+    expect(tracked.html).not.toContain("g.page/r/x/review");
     expect(r.headers["List-Unsubscribe"]).toMatch(/^<https?:\/\/[^/]+\/api\/email\/unsubscribe\?/);
     expect(r.headers["List-Unsubscribe-Post"]).toBe("List-Unsubscribe=One-Click");
   });

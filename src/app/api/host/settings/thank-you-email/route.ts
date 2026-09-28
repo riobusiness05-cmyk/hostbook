@@ -29,18 +29,23 @@ export async function POST(req: NextRequest) {
   const parsed = testSchema.safeParse((await req.json().catch(() => ({}))) ?? {});
   if (!parsed.success) return NextResponse.json({ error: "Enter a valid email address to send the test to." }, { status: 400 });
 
-  const [{ restaurant, settings }, account, [sample]] = await Promise.all([
+  const [{ restaurant, settings }, account] = await Promise.all([
     loadBrandKit(ctx.restaurantId),
     prisma.account.findUniqueOrThrow({ where: { id: ctx.accountId }, select: { email: true } }),
-    renderSampleThankYous(ctx.restaurantId),
   ]);
   const to = parsed.data.to || account.email;
+  // The log row exists before the email is rendered, so its review button
+  // can carry a link back to this exact row for click tracking.
+  const log = await prisma.emailLog.create({
+    data: { restaurantId: ctx.restaurantId, kind: "THANK_YOU_TEST", to, subject: "(rendering)", status: "PENDING" },
+  });
+  const [sample] = await renderSampleThankYous(ctx.restaurantId, {}, `l:${log.id}`);
   const result = await sendEmail({
     to,
     subject: `[Test] ${sample.subject}`,
     html: sample.html,
     ...senderIdentityFor(restaurant, settings),
-    meta: { kind: "THANK_YOU_TEST", restaurantId: ctx.restaurantId },
+    meta: { kind: "THANK_YOU_TEST", restaurantId: ctx.restaurantId, logId: log.id },
   });
   if (!result.ok) return NextResponse.json({ error: `Couldn't send — ${result.error}` }, { status: 502 });
   return NextResponse.json({ ok: true, to });

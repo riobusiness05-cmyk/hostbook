@@ -5,6 +5,7 @@ import { resolveBrandKit, type BrandKit, type Language, THANK_YOU_DELAYS, type T
 import { composeThankYou } from "./thankYouCopy";
 import { unsubscribeUrl } from "@/lib/unsubscribe";
 import { renderTemplate } from "@/lib/emailTemplate";
+import { reviewRedirectUrl } from "@/lib/trackedLinks";
 import { FONT_STYLES, readableOn } from "@/lib/brandKit";
 import { hasPremiumFeatures } from "@/lib/billing/subscription";
 import { combineDateAndTime, toLocalDateStr } from "@/lib/availability";
@@ -70,6 +71,8 @@ export type VisitFacts = {
   visitCount: number;
   language: Language;
   seed: string;
+  /** What the review button's click is attributed to: "v:<visitId>" or "l:<emailLogId>". */
+  trackRef?: string;
 };
 
 export type RenderedThankYou = { subject: string; html: string; text: string; language: Language; headers: Record<string, string> };
@@ -93,12 +96,16 @@ export function renderThankYou(kit: BrandKit, settings: Pick<SettingsDTO, "thank
     customSubject: settings.thankYouEmailSubject,
   });
   const unsub = unsubscribeUrl(appUrl(), restaurantId, facts.email);
+  // The button goes through our own /r/… redirect so the click is counted
+  // on this email's log row before the guest lands on Google.
+  const reviewHref = kit.reviewUrl ? (facts.trackRef ? reviewRedirectUrl(appUrl(), facts.trackRef) : kit.reviewUrl) : null;
   const builtIn = guestThankYouEmail(kit, {
     subject: composed.subject,
     paragraphs: composed.paragraphs,
     signOff: composed.signOff,
     unsubscribeUrl: unsub,
     language: facts.language,
+    reviewHref,
   });
   const text = builtIn.text;
   // A hand-designed template (set by the platform admin) replaces the
@@ -114,7 +121,7 @@ export function renderThankYou(kit: BrandKit, settings: Pick<SettingsDTO, "thank
         message: composed.paragraphs.map((p) => `<p>${p.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p>`).join("\n"),
         message_text: composed.paragraphs.join("\n\n"),
         sign_off: composed.signOff,
-        review_url: kit.reviewUrl,
+        review_url: reviewHref,
         review_label: es ? "Déjanos una reseña en Google" : "Leave us a Google review",
         booking_url: kit.bookingUrl,
         book_label: es ? "Reservar mesa" : "Book a table",
@@ -145,13 +152,13 @@ export function renderThankYou(kit: BrandKit, settings: Pick<SettingsDTO, "thank
 /** Three representative emails — first-timer at dinner, a regular's birthday
  *  with a big table, a lunch — so an owner can judge the tone before it goes
  *  to a real guest. */
-export async function renderSampleThankYous(restaurantId: string, overrides: Partial<SettingsDTO> = {}): Promise<{ label: string; subject: string; html: string }[]> {
+export async function renderSampleThankYous(restaurantId: string, overrides: Partial<SettingsDTO> = {}, trackRef?: string): Promise<{ label: string; subject: string; html: string }[]> {
   const { kit, restaurant, settings } = await loadBrandKit(restaurantId, overrides);
   const now = new Date();
   const at = (hoursAgo: number) => new Date(now.getTime() - hoursAgo * 3600000);
   const lang = kit.defaultLanguage;
   const samples: { label: string; facts: VisitFacts }[] = [
-    { label: "First visit, dinner for two", facts: { firstName: lang === "es" ? "Lucía" : "Sarah", email: "guest@example.com", partySize: 2, visitAt: at(2), occasion: null, visitCount: 1, language: lang, seed: "sample-1" } },
+    { label: "First visit, dinner for two", facts: { firstName: lang === "es" ? "Lucía" : "Sarah", email: "guest@example.com", partySize: 2, visitAt: at(2), occasion: null, visitCount: 1, language: lang, seed: "sample-1", trackRef } },
     { label: "Regular, birthday, table of six", facts: { firstName: lang === "es" ? "Javier" : "James", email: "guest@example.com", partySize: 6, visitAt: at(3), occasion: "Birthday", visitCount: 4, language: lang, seed: "sample-2" } },
     { label: "Lunch, second visit", facts: { firstName: lang === "es" ? "Marta" : "Emma", email: "guest@example.com", partySize: 3, visitAt: at(20), occasion: null, visitCount: 2, language: lang, seed: "sample-3" } },
   ];
@@ -222,6 +229,7 @@ export async function factsForVisit(visit: VisitForEmail, email: string, default
     visitCount: await visitCountFor(visit.restaurantId, email, visit.seatedAt, visit.reservationId),
     language: normalizeLanguage(visit.language ?? visit.reservation?.language, defaultLanguage),
     seed: visit.id,
+    trackRef: `v:${visit.id}`,
   };
 }
 
@@ -424,9 +432,10 @@ export async function emailStatsForMonth(restaurantId: string, now = new Date())
     where: { restaurantId, kind: "THANK_YOU", createdAt: { gte: monthStart } },
     select: { status: true, openedAt: true, clickedAt: true },
   });
-  const sent = rows.filter((r) => r.status !== "FAILED" && r.status !== "SKIPPED").length;
+  const sent = rows.filter((r) => r.status !== "FAILED" && r.status !== "SKIPPED" && r.status !== "PENDING").length;
+  const delivered = rows.filter((r) => r.status === "DELIVERED" || r.status === "OPENED" || r.openedAt || r.clickedAt).length;
   const opened = rows.filter((r) => r.openedAt).length;
   const clicked = rows.filter((r) => r.clickedAt).length;
   const bounced = rows.filter((r) => r.status === "BOUNCED").length;
-  return { sent, opened, clicked, bounced, openRate: sent ? Math.round((opened / sent) * 100) : 0 };
+  return { sent, delivered, opened, clicked, bounced, openRate: sent ? Math.round((opened / sent) * 100) : 0 };
 }

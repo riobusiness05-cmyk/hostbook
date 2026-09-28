@@ -78,7 +78,7 @@ export async function fetchThankYouSamples(): Promise<ThankYouSample[]> {
   return (await jsonOrThrow<{ samples: ThankYouSample[] }>(res)).samples;
 }
 
-export type EmailStats = { sent: number; opened: number; clicked: number; bounced: number; openRate: number; premium: boolean };
+export type EmailStats = { sent: number; delivered: number; opened: number; clicked: number; bounced: number; openRate: number; premium: boolean };
 export async function fetchEmailStats(): Promise<EmailStats> {
   const res = await fetch("/api/host/emails/stats", { cache: "no-store" });
   return jsonOrThrow<EmailStats>(res);
@@ -447,6 +447,8 @@ export type EmailLogRow = {
   error: string | null;
   providerId: string | null;
   createdAt: string;
+  openedAt: string | null;
+  clickedAt: string | null;
 };
 
 export async function fetchEmailLog(): Promise<EmailLogRow[]> {
