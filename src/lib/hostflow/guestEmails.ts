@@ -152,13 +152,13 @@ export function renderThankYou(kit: BrandKit, settings: Pick<SettingsDTO, "thank
 /** Three representative emails — first-timer at dinner, a regular's birthday
  *  with a big table, a lunch — so an owner can judge the tone before it goes
  *  to a real guest. */
-export async function renderSampleThankYous(restaurantId: string, overrides: Partial<SettingsDTO> = {}, trackRef?: string): Promise<{ label: string; subject: string; html: string }[]> {
+export async function renderSampleThankYous(restaurantId: string, overrides: Partial<SettingsDTO> = {}, trackRef?: string, firstSampleName?: string): Promise<{ label: string; subject: string; html: string }[]> {
   const { kit, restaurant, settings } = await loadBrandKit(restaurantId, overrides);
   const now = new Date();
   const at = (hoursAgo: number) => new Date(now.getTime() - hoursAgo * 3600000);
   const lang = kit.defaultLanguage;
   const samples: { label: string; facts: VisitFacts }[] = [
-    { label: "First visit, dinner for two", facts: { firstName: lang === "es" ? "Lucía" : "Sarah", email: "guest@example.com", partySize: 2, visitAt: at(2), occasion: null, visitCount: 1, language: lang, seed: "sample-1", trackRef } },
+    { label: "First visit, dinner for two", facts: { firstName: firstSampleName || (lang === "es" ? "Lucía" : "Sarah"), email: "guest@example.com", partySize: 2, visitAt: at(2), occasion: null, visitCount: 1, language: lang, seed: "sample-1", trackRef } },
     { label: "Regular, birthday, table of six", facts: { firstName: lang === "es" ? "Javier" : "James", email: "guest@example.com", partySize: 6, visitAt: at(3), occasion: "Birthday", visitCount: 4, language: lang, seed: "sample-2" } },
     { label: "Lunch, second visit", facts: { firstName: lang === "es" ? "Marta" : "Emma", email: "guest@example.com", partySize: 3, visitAt: at(20), occasion: null, visitCount: 2, language: lang, seed: "sample-3" } },
   ];

@@ -31,15 +31,18 @@ export async function POST(req: NextRequest) {
 
   const [{ restaurant, settings }, account] = await Promise.all([
     loadBrandKit(ctx.restaurantId),
-    prisma.account.findUniqueOrThrow({ where: { id: ctx.accountId }, select: { email: true } }),
+    prisma.account.findUniqueOrThrow({ where: { id: ctx.accountId }, select: { email: true, name: true } }),
   ]);
   const to = parsed.data.to || account.email;
+  // A test that greets the person sending it reads as proof; real sends use
+  // the first name on the booking or whatever staff typed at the door.
+  const testName = account.name?.trim().split(/\s+/)[0] || undefined;
   // The log row exists before the email is rendered, so its review button
   // can carry a link back to this exact row for click tracking.
   const log = await prisma.emailLog.create({
     data: { restaurantId: ctx.restaurantId, kind: "THANK_YOU_TEST", to, subject: "(rendering)", status: "PENDING" },
   });
-  const [sample] = await renderSampleThankYous(ctx.restaurantId, {}, `l:${log.id}`);
+  const [sample] = await renderSampleThankYous(ctx.restaurantId, {}, `l:${log.id}`, testName);
   const result = await sendEmail({
     to,
     subject: `[Test] ${sample.subject}`,
