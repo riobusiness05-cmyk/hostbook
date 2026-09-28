@@ -131,6 +131,14 @@ async function handleSubscriptionDeleted(event: Stripe.Event) {
   const existing = await findSubOrFallback(event, customerId, stripeSub.metadata?.restaurantId);
   if (!existing) return;
 
+  // Only the subscription we actually track can cancel the venue. A venue
+  // can have an old duplicate (see the 2026-08-24 incident) whose deletion
+  // must not take down the live one.
+  if (existing.stripeSubscriptionId && existing.stripeSubscriptionId !== stripeSub.id) {
+    await logBillingEvent(existing.restaurantId, existing.id, "IGNORED_OTHER_SUBSCRIPTION_DELETED", `Stripe deleted ${stripeSub.id}; we track ${existing.stripeSubscriptionId}`, event.id);
+    return;
+  }
+
   const updated = await prisma.subscription.update({
     where: { id: existing.id },
     data: { status: "CANCELLED", cancelledAt: new Date(), cancelAtPeriodEnd: false },

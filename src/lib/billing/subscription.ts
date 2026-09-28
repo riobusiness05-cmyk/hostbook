@@ -1,3 +1,4 @@
+import type Stripe from "stripe";
 import { prisma } from "@/lib/prisma";
 import { ensurePlanCatalogue, isPremium, planForStripePrice } from "./plans";
 import { getClient, isStripeConfigured, mapStripeStatus } from "@/lib/stripe";
@@ -374,11 +375,33 @@ export async function reconcileSubscriptionFromStripe(restaurantId: string): Pro
     return { matched: false, source: "none", before, after: null };
   }
 
-  // Most recent subscription for this customer, any status — a cancelled or
-  // past_due one still tells us the truth, which matters more than only
-  // ever looking at "active" ones.
-  const stripeSubs = await stripe.subscriptions.list({ customer: customerId, status: "all", limit: 1 });
-  const stripeSub = stripeSubs.data[0];
+  // A restaurant can have more than one Stripe customer (a second one was
+  // created during the 2026-08-24 double-charge incident) and a customer
+  // can hold a cancelled duplicate that is NEWER than the live subscription.
+  // So: gather every subscription across every customer that belongs to
+  // this restaurant, and trust a live one over a cancelled one. Only if
+  // nothing is live does the most recent cancelled/expired one count.
+  const customerIds = new Set<string>([customerId]);
+  const owner = await prisma.account.findFirst({ where: { restaurantId, role: "OWNER" }, orderBy: { createdAt: "asc" } });
+  for (const email of [sub.restaurant.email, owner?.email].filter((e): e is string => !!e)) {
+    const found = await stripe.customers.list({ email, limit: 10 });
+    for (const c of found.data) customerIds.add(c.id);
+  }
+  const candidates: Stripe.Subscription[] = [];
+  for (const id of customerIds) {
+    const list = await stripe.subscriptions.list({ customer: id, status: "all", limit: 20 });
+    candidates.push(...list.data);
+  }
+  const LIVE_RANK: Record<string, number> = { active: 4, trialing: 3, past_due: 2, unpaid: 1 };
+  candidates.sort((a, b) => (LIVE_RANK[b.status] ?? 0) - (LIVE_RANK[a.status] ?? 0) || b.created - a.created);
+  const stripeSub = candidates[0];
+  if (stripeSub) {
+    const owning = typeof stripeSub.customer === "string" ? stripeSub.customer : stripeSub.customer.id;
+    if (owning !== customerId) {
+      source = "email_search";
+      customerId = owning;
+    }
+  }
 
   if (!stripeSub) {
     if (customerId !== sub.stripeCustomerId) {
