@@ -36,7 +36,7 @@ export function ReservationsPanel({
   setPaused,
 }: {
   state: FloorState;
-  refresh: () => Promise<void>;
+  refresh: (opts?: { force?: boolean }) => Promise<void>;
   onSelectTable: (id: string) => void;
   setPaused?: (v: boolean) => void;
 }) {
@@ -101,7 +101,7 @@ export function ReservationsPanel({
       else if (noShowCharge?.outcome === "waived") setNoShowNote("Marked no-show — no fee charged.");
       else if (noShowCharge?.outcome === "failed") setNoShowNote(`Marked no-show, but the fee wasn't charged — ${noShowCharge.reason}`);
       setConfirmingNoShow(null);
-      await refresh();
+      await refresh({ force: true });
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -125,7 +125,7 @@ export function ReservationsPanel({
         reservationId: r.id,
         occasion: r.occasion ?? undefined,
       });
-      await refresh();
+      await refresh({ force: true });
     } catch (e) {
       const msg = (e as Error).message;
       const tableNo = tableNumberById.get(r.tableId);
@@ -189,7 +189,7 @@ export function ReservationsPanel({
             onDone={() => {
               setPaused?.(false);
               setAdding(false);
-              refresh();
+              refresh({ force: true });
             }}
             onCancel={() => setAdding(false)}
           />

@@ -12,7 +12,7 @@ const PRIORITY_COLOR: Record<string, string> = {
   NORMAL: "#64748b",
 };
 
-export function WaitlistPanel({ state, refresh }: { state: FloorState; refresh: () => Promise<void> }) {
+export function WaitlistPanel({ state, refresh }: { state: FloorState; refresh: (opts?: { force?: boolean }) => Promise<void> }) {
   const [adding, setAdding] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -64,7 +64,7 @@ export function WaitlistPanel({ state, refresh }: { state: FloorState; refresh: 
         <p className="mb-2 text-xs text-neutral-400">Walk-ins are turned off in Settings.</p>
       )}
 
-      {adding && walkinsEnabled && <AddWalkinForm onDone={() => { setAdding(false); refresh(); }} />}
+      {adding && walkinsEnabled && <AddWalkinForm onDone={() => { setAdding(false); refresh({ force: true }); }} />}
 
       <div className="-mx-1 flex-1 space-y-2 overflow-y-auto px-1">
         {state.walkins.length === 0 && !adding && (

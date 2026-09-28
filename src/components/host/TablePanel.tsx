@@ -21,7 +21,7 @@ export function TablePanel({
   table: TableDTO;
   state: FloorState;
   onClose: () => void;
-  refresh: () => Promise<void>;
+  refresh: (opts?: { force?: boolean }) => Promise<void>;
   setPaused: (v: boolean) => void;
 }) {
   const [mode, setMode] = useState<Mode>("idle");
@@ -88,7 +88,10 @@ export function TablePanel({
     setError(null);
     try {
       await fn();
-      await refresh();
+      // The panel is still "paused" while a form is open, which would make a
+      // plain refresh a no-op and leave the floor stale until the next
+      // heartbeat — force it so what was just done shows up at once.
+      await refresh({ force: true });
       setMode("idle");
     } catch (e) {
       setError((e as Error).message);
