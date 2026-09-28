@@ -61,7 +61,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         await splitTable(ctx.restaurantId, tableId);
         break;
       case "markDirty":
-        await markDirty(ctx.restaurantId, tableId);
+        extra = await markDirty(ctx.restaurantId, tableId);
         break;
       case "markClean":
         await markClean(ctx.restaurantId, tableId);

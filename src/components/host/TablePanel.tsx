@@ -44,9 +44,11 @@ export function TablePanel({
     setThankYouNote(null);
   }, [table.id]);
 
-  const release = () =>
+  // Both ways a party leaves — "Finish & release" and "Mark dirty" — offer
+  // the thank-you the same way.
+  const release = (action: "release" | "markDirty" = "release") =>
     run(async () => {
-      const result = await api.tableAction(table.id, { action: "release" });
+      const result = await api.tableAction(table.id, { action });
       setThankYouNote(null);
       const t = result.thankYou;
       setThankYouLater(null);
@@ -427,7 +429,7 @@ export function TablePanel({
             {s && (
               <>
                 <Button onClick={() => setMode("move")} disabled={busy}>Move guests</Button>
-                <Button variant="danger" onClick={release} disabled={busy}>
+                <Button variant="danger" onClick={() => release("release")} disabled={busy}>
                   Finish & release
                 </Button>
                 <Button
@@ -503,7 +505,7 @@ export function TablePanel({
                 Mark clean
               </Button>
             ) : (
-              <Button onClick={() => run(() => api.tableAction(table.id, { action: "markDirty" }))} disabled={busy}>
+              <Button onClick={() => release("markDirty")} disabled={busy}>
                 Mark dirty
               </Button>
             )}

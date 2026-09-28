@@ -79,7 +79,12 @@ export async function setTableStatus(
   emitFloorChange(restaurantId, "table");
 }
 
-export async function markDirty(restaurantId: string, tableId: string) {
+export async function markDirty(restaurantId: string, tableId: string): Promise<{ thankYou: ReleaseThankYou | null }> {
+  // Marking a table dirty is how staff most often say "they've left" — so
+  // the seated visit ends here too, and the thank-you is offered exactly
+  // as it is on Finish & release.
+  const leaving = await prisma.tableSession.findFirst({ where: { tableId, status: "SEATED" }, select: { id: true } });
+  await prisma.tableSession.updateMany({ where: { tableId, status: "SEATED" }, data: { status: "FINISHED", finishedAt: new Date() } });
   await recordStatus(restaurantId, tableId, "DIRTY");
   const t = await prisma.diningTable.findUnique({ where: { id: tableId } });
   await notify(restaurantId, {
@@ -88,6 +93,15 @@ export async function markDirty(restaurantId: string, tableId: string) {
     tableId,
   });
   emitFloorChange(restaurantId, "table");
+  let thankYou: ReleaseThankYou | null = null;
+  if (leaving) {
+    try {
+      thankYou = await thankYouOnRelease(restaurantId, leaving.id);
+    } catch (err) {
+      console.error("[thank-you email]", leaving.id, err);
+    }
+  }
+  return { thankYou };
 }
 
 export async function markClean(restaurantId: string, tableId: string) {
