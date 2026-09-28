@@ -12,6 +12,8 @@ export function EmailStatsCard() {
   useEffect(() => {
     api.fetchEmailStats().then(setStats).catch(() => setStats({ sent: 0, delivered: 0, opened: 0, clicked: 0, bounced: 0, openRate: 0, premium: false }));
   }, []);
+  // Not part of the Professional plan — the card simply doesn't exist for them.
+  if (stats && !stats.premium) return null;
   return (
     <Card className="p-4">
       <div className="flex items-start justify-between gap-2">
@@ -22,11 +24,6 @@ export function EmailStatsCard() {
       </div>
       {stats === null ? (
         <p className="mt-2 text-sm text-neutral-400">Loading…</p>
-      ) : !stats.premium ? (
-        <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-300">
-          Thank-you emails with your Google review link, sent when a table is finished —{" "}
-          <Link href="/host/settings" className="font-medium text-sky-600 hover:underline dark:text-sky-400">part of Premium</Link>.
-        </p>
       ) : (
         <div className="mt-2 grid grid-cols-3 gap-2">
           <div>

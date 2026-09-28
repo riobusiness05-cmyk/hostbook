@@ -293,6 +293,7 @@ export async function seatParty(
     source?: "WALKIN" | "RESERVATION";
     reservationId?: string;
     walkinId?: string;
+    guestEmail?: string;
     isVip?: boolean;
     occasion?: string;
     durationMinutes?: number;
@@ -307,6 +308,7 @@ export async function seatParty(
   const booking = params.reservationId
     ? await prisma.reservation.findUnique({ where: { id: params.reservationId }, select: { customerEmail: true, language: true } })
     : null;
+  const walkin = params.walkinId ? await prisma.walkin.findUnique({ where: { id: params.walkinId }, select: { email: true } }) : null;
   if (table.status === "BLOCKED") throw new HostFlowError("Table is blocked");
 
   // A reservation booked for a party too big for one table (see
@@ -351,7 +353,7 @@ export async function seatParty(
         serverId: table.serverId,
         reservationId: params.reservationId,
         walkinId: params.walkinId,
-        guestEmail: booking?.customerEmail ?? null,
+        guestEmail: params.guestEmail?.trim().toLowerCase() || booking?.customerEmail || walkin?.email || null,
         language: booking?.language ?? null,
       },
     });
@@ -604,6 +606,7 @@ export async function addWalkin(
   data: {
     name: string;
     phone?: string;
+    email?: string;
     partySize: number;
     priority?: string;
     quotedWaitMinutes?: number;
@@ -618,6 +621,7 @@ export async function addWalkin(
       restaurantId,
       name: data.name,
       phone: data.phone,
+      email: data.email?.trim().toLowerCase() || null,
       partySize: data.partySize,
       priority: data.priority ?? "NORMAL",
       quotedWaitMinutes: data.quotedWaitMinutes ?? 15,

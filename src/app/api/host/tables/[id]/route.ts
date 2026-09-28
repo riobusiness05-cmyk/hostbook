@@ -42,6 +42,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         await seatParty(ctx.restaurantId, {
           tableId,
           guestName: a.guestName,
+          guestEmail: a.guestEmail || undefined,
           partySize: a.partySize,
           source: a.source,
           reservationId: a.reservationId,

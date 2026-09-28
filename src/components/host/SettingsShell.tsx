@@ -82,7 +82,7 @@ export function SettingsShell({
             </Link>
           </div>
           <div className="mx-auto flex max-w-[900px] gap-1 overflow-x-auto px-4 pb-2">
-            {TABS.map((t) => (
+            {TABS.filter((t) => t.id !== "emails" || isPremium(billing)).map((t) => (
               <button
                 key={t.id}
                 onClick={() => setTab(t.id)}

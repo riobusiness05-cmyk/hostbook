@@ -374,6 +374,7 @@ model Walkin {
   restaurant         Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   name               String
   phone              String?
+  email              String?      // so a walk-in can get the post-visit thank-you too
   partySize          Int
   priority           String    @default("NORMAL")
   quotedWaitMinutes  Int       @default(15)

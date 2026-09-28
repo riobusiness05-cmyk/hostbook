@@ -281,6 +281,7 @@ export function TablePanel({
                 api.tableAction(activeReservation?.tableId ?? table.id, {
                   action: "seat",
                   guestName: input.guestName,
+                  guestEmail: input.guestEmail || undefined,
                   partySize: input.partySize,
                   source: activeReservation ? "RESERVATION" : "WALKIN",
                   reservationId: activeReservation?.id,
@@ -624,10 +625,11 @@ function SeatForm({
   seatsMax: number;
   otherComboTableNumbers: number[];
   busy: boolean;
-  onSubmit: (v: { guestName: string; partySize: number; occasion: string }) => void;
+  onSubmit: (v: { guestName: string; partySize: number; occasion: string; guestEmail: string }) => void;
   onCancel: () => void;
 }) {
   const [guestName, setGuestName] = useState(reservation?.customerName ?? "");
+  const [guestEmail, setGuestEmail] = useState("");
   const [partySize, setPartySize] = useState(reservation?.partySize ?? Math.min(2, seatsMax));
   const [occasion, setOccasion] = useState(reservation?.occasion ?? "");
 
@@ -656,6 +658,9 @@ function SeatForm({
         <Field label="Occasion (optional)">
           <input className={inputCls} value={occasion} onChange={(e) => setOccasion(e.target.value)} placeholder="Birthday, anniversary…" />
         </Field>
+        <Field label="Email (optional — for the thank-you after)">
+          <input className={inputCls} type="email" value={guestEmail} onChange={(e) => setGuestEmail(e.target.value)} placeholder="guest@example.com" />
+        </Field>
       </div>
       {!busy && !guestName.trim() && (
         <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">Enter a guest name to seat this party.</p>
@@ -665,7 +670,7 @@ function SeatForm({
           variant="primary"
           className="flex-1"
           disabled={busy || !guestName.trim() || partySize < 1}
-          onClick={() => onSubmit({ guestName: guestName.trim(), partySize, occasion })}
+          onClick={() => onSubmit({ guestName: guestName.trim(), partySize, occasion, guestEmail: guestEmail.trim() })}
         >
           Seat
         </Button>

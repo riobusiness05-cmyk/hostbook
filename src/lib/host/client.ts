@@ -87,6 +87,7 @@ export async function fetchEmailStats(): Promise<EmailStats> {
 export async function addWalkin(input: {
   name: string;
   phone?: string;
+  email?: string;
   partySize: number;
   priority?: string;
   quotedWaitMinutes?: number;

@@ -40,6 +40,7 @@ export function NewReservationForm({
   // Guest details
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [occasion, setOccasion] = useState("None");
   const [seating, setSeating] = useState(NO_PREFERENCE);
   const [highChair, setHighChair] = useState(false);
@@ -85,6 +86,7 @@ export function NewReservationForm({
         partySize,
         customerName: name.trim(),
         customerPhone: phone || undefined,
+        customerEmail: email.trim() || undefined,
         occasion: occasion !== "None" ? occasion : undefined,
         seatingPreference: seating !== NO_PREFERENCE ? seating : undefined,
         highChair: highChair || undefined,
@@ -119,6 +121,7 @@ export function NewReservationForm({
               setDone(null);
               setName("");
               setPhone("");
+              setEmail("");
               setNotes("");
               setTime(null);
               setSlots(null);
@@ -181,6 +184,7 @@ export function NewReservationForm({
         <div className="space-y-2 border-t border-black/5 pt-3 dark:border-white/10">
           <input className={input} placeholder="Guest name" value={name} onChange={(e) => setName(e.target.value)} />
           <input className={input} placeholder="Phone (optional)" value={phone} onChange={(e) => setPhone(e.target.value)} />
+          <input className={input} type="email" placeholder="Email (optional — confirmation now, thank-you after)" value={email} onChange={(e) => setEmail(e.target.value)} />
           <div className="grid grid-cols-2 gap-2">
             <select className={input} value={occasion} onChange={(e) => setOccasion(e.target.value)}>
               {OCCASIONS.map((o) => <option key={o} value={o}>{o === "None" ? "Occasion" : o}</option>)}

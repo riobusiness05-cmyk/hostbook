@@ -115,6 +115,7 @@ function AddWalkinForm({ onDone }: { onDone: () => void }) {
   const [priority, setPriority] = useState("NORMAL");
   const [quotedWaitMinutes, setQuoted] = useState(15);
   const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -123,7 +124,7 @@ function AddWalkinForm({ onDone }: { onDone: () => void }) {
     setBusy(true);
     setError(null);
     try {
-      await api.addWalkin({ name: name.trim(), partySize, priority, quotedWaitMinutes, phone: phone || undefined, notes: notes || undefined });
+      await api.addWalkin({ name: name.trim(), partySize, priority, quotedWaitMinutes, phone: phone || undefined, email: email.trim() || undefined, notes: notes || undefined });
       onDone();
     } catch (e) {
       setError((e as Error).message);
@@ -157,6 +158,10 @@ function AddWalkinForm({ onDone }: { onDone: () => void }) {
         <label className="text-xs text-neutral-500">
           Phone (optional)
           <input className={inputCls} value={phone} onChange={(e) => setPhone(e.target.value)} />
+        </label>
+        <label className="text-xs text-neutral-500 dark:text-neutral-400">
+          Email <span className="font-normal text-neutral-400">(for the thank-you after)</span>
+          <input className={inputCls} type="email" placeholder="guest@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
         </label>
       </div>
       <input className={inputCls} placeholder="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} />
