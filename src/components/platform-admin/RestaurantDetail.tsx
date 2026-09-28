@@ -31,6 +31,9 @@ export function RestaurantDetail({ restaurant }: { restaurant: RestaurantDetailD
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Preview failed");
       setUpgrade(data.preview);
+      // The preview already fetched every Stripe customer for the venue —
+      // show them in the same place "Show Stripe customers" would.
+      if (Array.isArray(data.preview?.stripeCustomers)) setStripeCustomers(data.preview.stripeCustomers);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -335,6 +338,7 @@ function UpgradePreviewCard({ preview }: { preview: UpgradePreview }) {
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <span className="font-semibold text-white">Upgrade to {preview.target.name}</span>
         <Chip color={preview.blockers.length ? "#ef4444" : path.color}>{preview.blockers.length ? "Blocked" : path.label}</Chip>
+        {preview.relinked && <Chip color="#3b82f6">relinked to Stripe&apos;s live subscription</Chip>}
       </div>
 
       {ok && preview.charge && (

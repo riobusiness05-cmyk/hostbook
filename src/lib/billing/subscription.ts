@@ -392,6 +392,15 @@ export async function reconcileSubscriptionFromStripe(restaurantId: string): Pro
     const list = await stripe.subscriptions.list({ customer: id, status: "all", limit: 20 });
     candidates.push(...list.data);
   }
+  // Checkout stamps restaurantId onto the subscription itself, so a live
+  // subscription is still found even if it sits on a customer whose email
+  // no longer matches the venue (owner changed address, typo at checkout).
+  try {
+    const tagged = await stripe.subscriptions.search({ query: `metadata['restaurantId']:'${restaurantId}'`, limit: 20 });
+    for (const t of tagged.data) if (!candidates.some((c) => c.id === t.id)) candidates.push(t);
+  } catch (err) {
+    console.warn("[reconcile] subscription metadata search failed", (err as Error).message);
+  }
   const LIVE_RANK: Record<string, number> = { active: 4, trialing: 3, past_due: 2, unpaid: 1 };
   candidates.sort((a, b) => (LIVE_RANK[b.status] ?? 0) - (LIVE_RANK[a.status] ?? 0) || b.created - a.created);
   const stripeSub = candidates[0];

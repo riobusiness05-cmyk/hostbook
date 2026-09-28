@@ -226,6 +226,18 @@ export async function changeStripeSubscriptionPrice(stripeSubscriptionId: string
   });
 }
 
+const LIVE_STATUSES = new Set<Stripe.Subscription.Status>(["active", "trialing", "past_due", "unpaid"]);
+
+/** Whether a Stripe subscription can still be changed (not cancelled/expired). */
+export async function isStripeSubscriptionLive(stripeSubscriptionId: string): Promise<boolean> {
+  try {
+    const sub = await getClient().subscriptions.retrieve(stripeSubscriptionId);
+    return LIVE_STATUSES.has(sub.status);
+  } catch {
+    return false;
+  }
+}
+
 export async function reactivateStripeSubscription(stripeSubscriptionId: string): Promise<void> {
   const stripe = getClient();
   await stripe.subscriptions.update(stripeSubscriptionId, { cancel_at_period_end: false });

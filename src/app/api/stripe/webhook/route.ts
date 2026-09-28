@@ -98,6 +98,22 @@ async function handleSubscriptionUpsert(event: Stripe.Event) {
   const existing = await findSubOrFallback(event, customerId, stripeSub.metadata?.restaurantId);
   if (!existing) return;
 
+  // A venue can have an old cancelled duplicate next to its live
+  // subscription. Stripe still emits events for the dead one (a final
+  // update as it cancels, a metadata edit in the dashboard); those must
+  // never overwrite the link to the live subscription we track.
+  const DEAD = new Set(["canceled", "incomplete_expired"]);
+  if (existing.stripeSubscriptionId && existing.stripeSubscriptionId !== stripeSub.id && DEAD.has(stripeSub.status)) {
+    await logBillingEvent(
+      existing.restaurantId,
+      existing.id,
+      "IGNORED_OTHER_SUBSCRIPTION_UPDATED",
+      `Stripe ${event.type} for ${stripeSub.status} ${stripeSub.id}; we track ${existing.stripeSubscriptionId}`,
+      event.id
+    );
+    return;
+  }
+
   const item = stripeSub.items.data[0];
   const status = mapStripeStatus(stripeSub.status);
   const boughtPlan = await planForStripePrice(item?.price);

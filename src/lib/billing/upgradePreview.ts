@@ -2,13 +2,17 @@ import type Stripe from "stripe";
 import { prisma } from "@/lib/prisma";
 import { getClient, isStripeConfigured } from "@/lib/stripe";
 import { ensurePlanCatalogue, resolveMonthlyPriceId } from "@/lib/billing/plans";
-import { getOrCreateSubscriptionRow } from "@/lib/billing/subscription";
+import { getOrCreateSubscriptionRow, listStripeCustomersForRestaurant, reconcileSubscriptionFromStripe } from "@/lib/billing/subscription";
+import type { StripeCustomerSummary } from "@/lib/billing/subscription";
 
 /**
  * A read-only dry run of "this venue upgrades to plan X" — what the billing
  * page would do, what Stripe would charge today, and anything that would
  * make it go wrong. Nothing here writes to Stripe or the database, so it's
- * safe to run as many times as you like before a sales call.
+ * safe to run as many times as you like before a sales call. The one
+ * thing it does change: if the Host Flow row points at a subscription that
+ * Stripe says is dead, it relinks the row to the venue's live subscription
+ * (the same thing "Reconcile from Stripe" does) and reports that it did.
  */
 
 export type UpgradePreview = {
@@ -63,6 +67,10 @@ export type UpgradePreview = {
   path: "CHANGE_IN_PLACE" | "CHECKOUT" | "ALREADY_ON_PLAN" | "COMPLIMENTARY";
   blockers: string[];
   warnings: string[];
+  /** Set when the row was relinked to a different subscription during this preview. */
+  relinked: { from: string | null; to: string | null } | null;
+  /** Every Stripe customer + subscription found for this venue, for the full picture. */
+  stripeCustomers: StripeCustomerSummary[];
 };
 
 const LIVE_LOCAL = new Set(["ACTIVE", "PAST_DUE", "TRIAL"]);
@@ -74,7 +82,7 @@ function lineIsProration(line: Stripe.InvoiceLineItem): boolean {
   return !!(p.subscription_item_details?.proration || p.invoice_item_details?.proration);
 }
 
-export async function previewPlanChange(restaurantId: string, planKey: string): Promise<UpgradePreview> {
+export async function previewPlanChange(restaurantId: string, planKey: string, healed = false): Promise<UpgradePreview> {
   await ensurePlanCatalogue();
   const [restaurant, sub, target] = await Promise.all([
     prisma.restaurant.findUniqueOrThrow({ where: { id: restaurantId }, select: { id: true, name: true } }),
@@ -104,6 +112,8 @@ export async function previewPlanChange(restaurantId: string, planKey: string): 
     path: "CHANGE_IN_PLACE",
     blockers,
     warnings,
+    relinked: null,
+    stripeCustomers: [],
   };
 
   if (!target.isActive) blockers.push(`${target.name} is not marked active in the plan catalogue.`);
@@ -211,8 +221,37 @@ export async function previewPlanChange(restaurantId: string, planKey: string): 
         : null,
     };
 
+    // Stripe says the linked subscription is alive but Host Flow's row has
+    // it as cancelled/expired (a missed webhook, or the old reconcile bug).
+    // Relink once and look again.
+    if (LIVE_STRIPE.has(s.status) && !LIVE_LOCAL.has(sub.status) && !healed) {
+      await reconcileSubscriptionFromStripe(restaurantId);
+      const healedPreview = await previewPlanChange(restaurantId, planKey, true);
+      healedPreview.relinked = { from: s.id, to: healedPreview.local.stripeSubscriptionId };
+      healedPreview.warnings.unshift(
+        `Host Flow had this venue as ${sub.status} while Stripe's subscription ${s.id} is ${s.status}; brought the row back in line with Stripe. Fixed — nothing else to do.`
+      );
+      return healedPreview;
+    }
+
     if (!LIVE_STRIPE.has(s.status)) {
-      blockers.push(`Stripe subscription ${s.id} is "${s.status}" — a price change can't be applied to it. The venue would need a fresh Checkout.`);
+      // Dead link. Relink to whatever Stripe says is live and look again —
+      // once, so a venue with nothing live doesn't loop.
+      if (!healed) {
+        await reconcileSubscriptionFromStripe(restaurantId);
+        const again = await getOrCreateSubscriptionRow(restaurantId);
+        if (again.stripeSubscriptionId && again.stripeSubscriptionId !== s.id) {
+          const healedPreview = await previewPlanChange(restaurantId, planKey, true);
+          healedPreview.relinked = { from: s.id, to: again.stripeSubscriptionId };
+          healedPreview.warnings.unshift(
+            `Host Flow was linked to ${s.status} subscription ${s.id}; relinked it to ${again.stripeSubscriptionId}, which is what Stripe says is current. Fixed — nothing else to do.`
+          );
+          return healedPreview;
+        }
+      }
+      blockers.push(
+        `Stripe subscription ${s.id} is "${s.status}" and Stripe has no live subscription for this venue on any of its customers (searched by customer id, email and restaurant tag). A price change can't be applied — the venue would need a fresh Checkout.`
+      );
     }
     if (s.status === "past_due" || s.status === "unpaid") {
       warnings.push("The current subscription is past due in Stripe — the upgrade will go through, but the unpaid invoice stays owed and Stripe keeps retrying it.");
@@ -271,8 +310,25 @@ export async function previewPlanChange(restaurantId: string, planKey: string): 
         warnings.push(`Couldn't preview the proration invoice: ${(err as Error).message}`);
       }
     }
+  } else if (!healed) {
+    // No subscription linked at all — Stripe may still have one (by email
+    // or restaurant tag). Look once.
+    await reconcileSubscriptionFromStripe(restaurantId);
+    const again = await getOrCreateSubscriptionRow(restaurantId);
+    if (again.stripeSubscriptionId) {
+      const healedPreview = await previewPlanChange(restaurantId, planKey, true);
+      healedPreview.relinked = { from: null, to: again.stripeSubscriptionId };
+      healedPreview.warnings.unshift(`Host Flow had no Stripe subscription linked; found ${again.stripeSubscriptionId} in Stripe and linked it. Fixed — nothing else to do.`);
+      return healedPreview;
+    }
   } else if (preview.path === "CHANGE_IN_PLACE") {
     blockers.push("No Stripe subscription id on the Host Flow row.");
+  }
+
+  try {
+    preview.stripeCustomers = await listStripeCustomersForRestaurant(restaurantId);
+  } catch (err) {
+    warnings.push(`Couldn't list this venue's Stripe customers: ${(err as Error).message}`);
   }
 
   return preview;
