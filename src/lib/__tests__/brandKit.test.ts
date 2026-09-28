@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildReviewUrl, contrastText, extractPlaceId, isReviewLink, resolveBrandKit, readableOn } from "@/lib/brandKit";
+import { buildReviewUrl, contrastText, extractPlaceId, isReviewLink, normalizeReviewLink, resolveBrandKit, readableOn } from "@/lib/brandKit";
 
 const bare = {
   restaurant: { name: "The Harbour", slug: "the-harbour", brandColor: "#0ea5e9", address: null, phone: null, email: null },
@@ -43,6 +43,12 @@ describe("Google review links", () => {
     expect(extractPlaceId("https://www.google.com/maps/place/?q=place_id:ChIJN1t_tDeuEmsRUsoyG83frY4")).toBeNull();
     expect(extractPlaceId("https://search.google.com/local/writereview?placeid=ChIJN1t_tDeuEmsRUsoyG83frY4")).toBe("ChIJN1t_tDeuEmsRUsoyG83frY4");
     expect(extractPlaceId("not a place")).toBeNull();
+  });
+  it("accepts a Google search link that opens the review panel, and strips the tracking off it", () => {
+    const pasted = "https://www.google.com/search?q=the+colonial%C2%A0&client=safari&hs=c62V&sca_esv=080dae&ei=vlu6&ved=2ahUK#lrd=0xc6a9751b331db3d:0x57f5044353321bc2,3,,,,";
+    expect(isReviewLink(pasted)).toBe(true);
+    expect(normalizeReviewLink(pasted)).toBe("https://www.google.com/search?q=the+colonial#lrd=0xc6a9751b331db3d:0x57f5044353321bc2,3");
+    expect(isReviewLink("https://www.google.com/search?q=the+colonial#lrd=0xc6a9751b331db3d:0x57f5044353321bc2,1")).toBe(false); // ,1 = reviews list, not the write panel
   });
   it("accepts a pasted review link as-is", () => {
     expect(isReviewLink("https://g.page/r/CTESTcolonial/review")).toBe(true);

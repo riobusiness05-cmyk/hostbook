@@ -91,9 +91,27 @@ export function extractPlaceId(input: string): string | null {
   return m ? m[1] : null;
 }
 
-/** A pasted g.page/…/review or Google short link is already a review link. */
+/** A pasted g.page/…/review or Google short link is already a review link,
+ *  and so is a Google search URL whose fragment opens the review panel
+ *  ("#lrd=<id>,3") — what you get by copying the address while the panel is
+ *  open. */
 export function isReviewLink(input: string): boolean {
-  return /^https?:\/\/(g\.page\/r\/[\w-]+\/review|search\.google\.com\/local\/writereview|maps\.app\.goo\.gl\/)/i.test(input.trim());
+  const s = input.trim();
+  return /^https?:\/\/(g\.page\/r\/[\w-]+\/review|search\.google\.com\/local\/writereview|maps\.app\.goo\.gl\/)/i.test(s) || !!lrdReviewId(s);
+}
+
+function lrdReviewId(input: string): string | null {
+  const m = /#lrd=(0x[0-9a-f]+:0x[0-9a-f]+),3/i.exec(input);
+  return m ? m[1] : null;
+}
+
+/** Strips search tracking off a "#lrd=…,3" link, keeping only what opens the
+ *  review panel; other links come back untouched. */
+export function normalizeReviewLink(input: string): string {
+  const id = lrdReviewId(input);
+  if (!id) return input.trim();
+  const q = /[?&]q=([^&#]+)/.exec(input)?.[1] ?? "";
+  return `https://www.google.com/search?q=${q.replace(/%C2%A0|\+$/g, "")}#lrd=${id},3`;
 }
 
 export function buildReviewUrl(placeId: string | null | undefined, fallbackUrl: string | null | undefined): string | null {

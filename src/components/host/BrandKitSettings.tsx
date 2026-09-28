@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, Card, SectionTitle } from "./ui";
 import * as api from "@/lib/host/client";
 import type { SettingsDTO } from "@/lib/hostflow/floor";
-import { FONT_STYLES, LANGUAGES, THANK_YOU_DELAYS, THANK_YOU_MODES, TONES, buildReviewUrl, extractPlaceId, isReviewLink } from "@/lib/brandKit";
+import { FONT_STYLES, LANGUAGES, THANK_YOU_DELAYS, THANK_YOU_MODES, TONES, buildReviewUrl, extractPlaceId, isReviewLink, normalizeReviewLink } from "@/lib/brandKit";
 
 // A venue's post-visit email, on one page: what gets sent, when, how it
 // looks, how it sounds — with the real email rendering live on the right
@@ -105,7 +105,7 @@ export function BrandKitSettings({ initialSettings, premium, onUpgrade }: { init
     setReviewInput(raw);
     const placeId = extractPlaceId(raw);
     if (placeId) { set("googlePlaceId", placeId); set("googleReviewUrl", null); return; }
-    if (isReviewLink(raw)) { set("googlePlaceId", null); set("googleReviewUrl", raw.trim()); return; }
+    if (isReviewLink(raw)) { set("googlePlaceId", null); set("googleReviewUrl", normalizeReviewLink(raw)); return; }
     if (!raw.trim()) { set("googlePlaceId", null); set("googleReviewUrl", null); }
   };
   const reviewUrl = buildReviewUrl(d.googlePlaceId, d.googleReviewUrl);
