@@ -16,6 +16,10 @@ export function EmailDesignEditor({ restaurantId, restaurantName }: { restaurant
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showKeys, setShowKeys] = useState(false);
+  const [sampleTo, setSampleTo] = useState("");
+  const [sampleName, setSampleName] = useState("");
+  const [sampleReview, setSampleReview] = useState("");
+  const [sending, setSending] = useState(false);
 
   useEffect(() => {
     fetch(`/api/platform/email-design?restaurantId=${restaurantId}`)
@@ -60,6 +64,23 @@ export function EmailDesignEditor({ restaurantId, restaurantName }: { restaurant
       setHtml(""); setSavedHtml(null);
       setNote("Removed — back to the built-in design.");
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+  };
+
+  // One real email with the design in the box (saved or not) — for showing
+  // an owner what their guests would get, in an actual inbox.
+  const sendSample = async () => {
+    if (html === null) return;
+    setSending(true); setError(null); setNote(null);
+    try {
+      const res = await fetch("/api/platform/email-design/send-test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ restaurantId, html, to: sampleTo.trim(), guestName: sampleName.trim() || undefined, reviewUrl: sampleReview.trim() || undefined }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.problems ? d.problems.join("\n") : d.error ?? "Couldn't send");
+      setNote(`Sample sent to ${d.to} — "${d.subject}". Check the inbox (and spam, the first time).`);
+    } catch (e) { setError((e as Error).message); } finally { setSending(false); }
   };
 
   const dirty = html !== null && (html || null) !== savedHtml;
@@ -117,6 +138,38 @@ export function EmailDesignEditor({ restaurantId, restaurantName }: { restaurant
       <div className="mt-3 flex flex-wrap gap-2">
         <Button variant="primary" disabled={busy || !dirty || !(html ?? "").trim()} onClick={save}>{busy ? "Saving…" : "Save design"}</Button>
         {savedHtml && <Button variant="danger" disabled={busy} onClick={clear}>Remove custom design</Button>}
+      </div>
+      <div className="mt-4 border-t border-white/10 pt-3">
+        <p className="mb-2 text-xs text-neutral-500">
+          Send a sample of the design above to any inbox — works before it&apos;s saved and before the venue is on Premium. Comes from {restaurantName}, exactly as a guest would get it.
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            type="email"
+            aria-label="Send sample to"
+            placeholder="send to — you@example.com"
+            value={sampleTo}
+            onChange={(e) => setSampleTo(e.target.value)}
+            className="w-64 rounded-md border border-white/15 bg-white/5 px-2 py-1.5 text-xs text-white outline-none focus:border-sky-500"
+          />
+          <input
+            type="text"
+            aria-label="Guest first name"
+            placeholder="guest first name (optional)"
+            value={sampleName}
+            onChange={(e) => setSampleName(e.target.value)}
+            className="w-48 rounded-md border border-white/15 bg-white/5 px-2 py-1.5 text-xs text-white outline-none focus:border-sky-500"
+          />
+          <input
+            type="url"
+            aria-label="Review link for the sample"
+            placeholder="review link (optional — if the venue hasn't set one)"
+            value={sampleReview}
+            onChange={(e) => setSampleReview(e.target.value)}
+            className="w-80 rounded-md border border-white/15 bg-white/5 px-2 py-1.5 text-xs text-white outline-none focus:border-sky-500"
+          />
+          <Button disabled={sending || !sampleTo.trim()} onClick={sendSample}>{sending ? "Sending…" : "Send sample"}</Button>
+        </div>
       </div>
     </Card>
   );
