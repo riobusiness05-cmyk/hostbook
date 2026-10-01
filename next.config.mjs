@@ -1,6 +1,13 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // The prepared per-venue email designs live outside src/ and are read
+  // from disk by one admin route — tell the bundler to ship them with it.
+  experimental: {
+    outputFileTracingIncludes: {
+      "/api/platform/email-design/prepared": ["./email-designs/**/*"],
+    },
+  },
   // Scoped to just the widget's own public endpoints — the only surface
   // actually designed for cross-origin use (a restaurant's own website
   // embedding the booking widget). This used to blanket-apply to every

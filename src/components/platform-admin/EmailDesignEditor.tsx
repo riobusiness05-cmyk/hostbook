@@ -19,6 +19,26 @@ export function EmailDesignEditor({ restaurantId, restaurantName }: { restaurant
   const [sampleTo, setSampleTo] = useState("");
   const [sampleName, setSampleName] = useState("");
   const [sampleReview, setSampleReview] = useState("");
+  const [prepared, setPrepared] = useState<string[]>([]);
+
+  useEffect(() => {
+    fetch("/api/platform/email-design/prepared")
+      .then((r) => r.json())
+      .then((d) => setPrepared(Array.isArray(d.names) ? d.names : []))
+      .catch(() => setPrepared([]));
+  }, []);
+
+  const loadPrepared = async (name: string) => {
+    if ((html ?? "").trim() && !window.confirm(`Replace what's in the editor with the prepared "${name}" design? Nothing is saved until you click Save design.`)) return;
+    setError(null); setNote(null);
+    try {
+      const res = await fetch(`/api/platform/email-design/prepared?name=${encodeURIComponent(name)}`);
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error ?? "Couldn't load that design");
+      setHtml(d.html);
+      setNote(`Loaded the prepared "${name}" design into the editor — not saved yet.`);
+    } catch (e) { setError((e as Error).message); }
+  };
   const [sending, setSending] = useState(false);
 
   useEffect(() => {
@@ -102,6 +122,16 @@ export function EmailDesignEditor({ restaurantId, restaurantName }: { restaurant
         Paste a full HTML email. The venue&apos;s words and links drop in through placeholders; the preview shows it with their real sample emails.
         Leave it empty to use the built-in design.
       </p>
+      {prepared.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-1.5 text-xs">
+          <span className="text-neutral-500">Prepared designs:</span>
+          {prepared.map((n) => (
+            <button key={n} type="button" onClick={() => loadPrepared(n)} className="rounded-md border border-white/15 bg-white/5 px-2 py-0.5 text-neutral-200 hover:border-sky-500 hover:text-white">
+              Load {n}
+            </button>
+          ))}
+        </div>
+      )}
       {showKeys && (
         <div className="mb-3 grid grid-cols-1 gap-x-4 gap-y-1 rounded-lg border border-white/10 bg-white/[0.03] p-3 text-[11px] sm:grid-cols-2">
           {THANK_YOU_PLACEHOLDERS.map((p) => (
