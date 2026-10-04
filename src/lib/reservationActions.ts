@@ -118,6 +118,7 @@ export async function createReservationForRestaurant(
   // Stripe account is connected — never trust the client's word that a card
   // was saved, always re-verify the SetupIntent server-side.
   let stripePaymentMethodId: string | null = null;
+  let noShowFeeQuotedCents: number | null = null;
   if (input.source !== "ADMIN") {
     const settings = await getSettings(restaurant.id);
     const requiresCard =
@@ -138,6 +139,7 @@ export async function createReservationForRestaurant(
       try {
         const verified = await verifyGuestCardSetup(restaurant, input.stripeSetupIntentId);
         stripePaymentMethodId = verified.paymentMethodId;
+        noShowFeeQuotedCents = settings.noShowFeeCents ?? null;
       } catch (err) {
         return { ok: false, error: (err as Error).message };
       }
@@ -179,6 +181,7 @@ export async function createReservationForRestaurant(
           idempotencyKey: input.idempotencyKey || null,
           stripeSetupIntentId: input.stripeSetupIntentId || null,
           stripePaymentMethodId,
+          noShowFeeQuotedCents,
           comboTables:
             comboTables.length > 0 ? { create: comboTables.map((ct) => ({ tableId: ct.id })) } : undefined,
         },

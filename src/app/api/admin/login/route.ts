@@ -6,6 +6,7 @@ import {
   checkAdminCredentials,
   createSessionToken,
 } from "@/lib/auth";
+import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -13,6 +14,22 @@ const loginSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  // This one password is the master key over every venue, so it gets the
+  // tightest throttle in the app: per source address AND a global ceiling,
+  // so a distributed guesser is capped too.
+  const ip = getClientIp(req);
+  const [perIp, global] = await Promise.all([
+    checkRateLimit(`admin-login:${ip}`, 15 * 60 * 1000, 5),
+    checkRateLimit("admin-login:all", 60 * 60 * 1000, 30),
+  ]);
+  if (perIp.limited || global.limited) {
+    const retry = Math.max(perIp.retryAfterSeconds, global.retryAfterSeconds);
+    return NextResponse.json(
+      { error: "Too many sign-in attempts. Please try again later." },
+      { status: 429, headers: { "Retry-After": String(retry) } }
+    );
+  }
+
   const body = await req.json().catch(() => null);
   const parsed = loginSchema.safeParse(body);
 
@@ -25,7 +42,7 @@ export async function POST(req: NextRequest) {
     valid = checkAdminCredentials(parsed.data.email, parsed.data.password);
   } catch {
     return NextResponse.json(
-      { error: "Admin login isn't configured yet — set ADMIN_EMAIL/ADMIN_PASSWORD in .env" },
+      { error: "Admin login isn't configured on this deployment." },
       { status: 500 }
     );
   }

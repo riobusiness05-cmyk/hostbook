@@ -66,7 +66,19 @@ export function checkAdminCredentials(email: string, password: string): boolean 
   if (!expectedEmail || !expectedPassword) {
     throw new Error("ADMIN_EMAIL / ADMIN_PASSWORD not set. Add them to your .env file.");
   }
-  return email.trim().toLowerCase() === expectedEmail.trim().toLowerCase() && password === expectedPassword;
+  // Constant-time on both halves: hash first so lengths always match, then
+  // compare the digests, and don't short-circuit on the email.
+  const digest = (v: string) => crypto.createHash("sha256").update(v).digest();
+  const emailOk = crypto.timingSafeEqual(digest(email.trim().toLowerCase()), digest(expectedEmail.trim().toLowerCase()));
+  const passwordOk = crypto.timingSafeEqual(digest(password), digest(expectedPassword));
+  return emailOk && passwordOk;
+}
+
+/** Constant-time check of a shared-secret bearer header (cron, maintenance). */
+export function bearerMatches(authorizationHeader: string | null, secret: string | undefined): boolean {
+  if (!secret || !authorizationHeader) return false;
+  const digest = (v: string) => crypto.createHash("sha256").update(v).digest();
+  return crypto.timingSafeEqual(digest(authorizationHeader), digest(`Bearer ${secret}`));
 }
 
 export const ADMIN_COOKIE_NAME = COOKIE_NAME;

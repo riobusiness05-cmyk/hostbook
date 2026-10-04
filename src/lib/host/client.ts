@@ -165,7 +165,7 @@ export async function createReservation(input: NewReservationInput): Promise<Cre
   return data.reservation;
 }
 
-export type NoShowChargeOutcome = { outcome: "charged" | "failed" | "waived"; reason?: string } | null;
+export type NoShowChargeOutcome = { outcome: "charged" | "failed" | "waived" | "already_charged"; reason?: string } | null;
 
 export async function setReservationStatus(
   id: string,

@@ -12,6 +12,7 @@ import {
 import type { Metadata } from "next";
 import { prisma } from "@/lib/prisma";
 import { AdminDashboard, type RestaurantRow } from "@/components/platform-admin/AdminDashboard";
+import { requireAdminPage } from "@/lib/requireAdminPage";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +22,7 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Platform admin — Host Flow" };
 
 export default async function PlatformAdminPage() {
+  requireAdminPage();
   const [restaurants, metrics, growthSeries, bookingSeries, mrrSeries, recentRestaurants, mostActive, recentBookings, recentFailedPayments] =
     await Promise.all([
       prisma.restaurant.findMany({

@@ -109,6 +109,7 @@ export function TablePanel({
       const { noShowCharge } = await api.setReservationStatus(reservationId, "NO_SHOW", { chargeNoShowFee: chargeFee });
       if (noShowCharge?.outcome === "charged") setNoShowNote("Marked no-show — fee charged to their card.");
       else if (noShowCharge?.outcome === "waived") setNoShowNote("Marked no-show — no fee charged.");
+      else if (noShowCharge?.outcome === "already_charged") setNoShowNote("Marked no-show — the fee was already charged earlier, not charged again.");
       else if (noShowCharge?.outcome === "failed") setNoShowNote(`Marked no-show, but the fee wasn't charged — ${noShowCharge.reason}`);
       await refresh();
       setMode("idle");

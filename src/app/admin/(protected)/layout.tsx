@@ -11,6 +11,8 @@ import LogoutButton from "@/components/admin/LogoutButton";
 // happy place.") — fine for that restaurant's public site, wrong for this
 // admin tool, which isn't that restaurant's own page.
 export async function generateMetadata(): Promise<Metadata> {
+  const token = cookies().get(ADMIN_COOKIE_NAME)?.value;
+  if (!verifySessionToken(token)) return { title: "Admin" };
   const restaurant = await getActiveRestaurant();
   return { title: `${restaurant.name} — Admin` };
 }

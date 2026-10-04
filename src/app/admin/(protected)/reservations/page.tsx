@@ -2,12 +2,14 @@ import { prisma } from "@/lib/prisma";
 import { getActiveRestaurant } from "@/lib/restaurant";
 import { combineDateAndTime, toLocalDateStr, toLocalTimeStr } from "@/lib/availability";
 import ReservationsTable from "@/components/admin/ReservationsTable";
+import { requireAdminPage } from "@/lib/requireAdminPage";
 
 export default async function AdminReservationsPage({
   searchParams,
 }: {
   searchParams: { date?: string };
 }) {
+  requireAdminPage();
   const restaurant = await getActiveRestaurant();
   const date = searchParams.date;
 

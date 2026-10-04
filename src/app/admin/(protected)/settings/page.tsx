@@ -7,8 +7,10 @@ import TablesSettings from "@/components/admin/TablesSettings";
 import BlackoutSettings from "@/components/admin/BlackoutSettings";
 import FaqSettings from "@/components/admin/FaqSettings";
 import MenuSettings from "@/components/admin/MenuSettings";
+import { requireAdminPage } from "@/lib/requireAdminPage";
 
 export default async function AdminSettingsPage() {
+  requireAdminPage();
   const restaurant = await getActiveRestaurant();
 
   const [hours, tables, blackouts, faqs, menuItems] = await Promise.all([

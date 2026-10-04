@@ -2,12 +2,14 @@ import { prisma } from "@/lib/prisma";
 import { getActiveRestaurant } from "@/lib/restaurant";
 import { combineDateAndTime, toLocalTimeStr } from "@/lib/availability";
 import Link from "next/link";
+import { requireAdminPage } from "@/lib/requireAdminPage";
 
 function todayStr() {
   return new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD in local time
 }
 
 export default async function AdminOverviewPage() {
+  requireAdminPage();
   const restaurant = await getActiveRestaurant();
   const today = todayStr();
   const dayStart = combineDateAndTime(today, "00:00");

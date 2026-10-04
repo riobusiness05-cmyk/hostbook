@@ -256,6 +256,9 @@ model Reservation {
   //    booking time (staff-entered bookings are always exempt).
   stripeSetupIntentId   String?
   stripePaymentMethodId String?
+  // Per-person fee shown to the guest when they saved the card. Charged at
+  // no-show time instead of whatever the setting is by then.
+  noShowFeeQuotedCents  Int?
   // noShowChargeStatus: null | PENDING | CHARGED | FAILED
   noShowChargeStatus    String?
   noShowChargeId        String?

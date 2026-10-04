@@ -130,7 +130,8 @@ export async function chargeNoShowFee(
   restaurant: Pick<Restaurant, "stripeConnectAccountId">,
   reservation: Pick<Reservation, "stripePaymentMethodId" | "customerName">,
   feeCents: number,
-  currency: string
+  currency: string,
+  idempotencyKey?: string
 ): Promise<NoShowChargeResult> {
   if (!restaurant.stripeConnectAccountId || !reservation.stripePaymentMethodId) {
     return { outcome: "failed", reason: "No card on file for this reservation." };
@@ -146,7 +147,7 @@ export async function chargeNoShowFee(
         off_session: true,
         description: `No-show fee — ${reservation.customerName}`,
       },
-      { stripeAccount: restaurant.stripeConnectAccountId }
+      { stripeAccount: restaurant.stripeConnectAccountId, ...(idempotencyKey ? { idempotencyKey } : {}) }
     );
     if (intent.status === "succeeded") return { outcome: "charged", chargeId: intent.id };
     return { outcome: "failed", reason: `Card declined (${intent.status}) — the guest may need to verify the card themselves.` };

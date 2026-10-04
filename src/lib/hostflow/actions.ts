@@ -13,6 +13,14 @@ import { thankYouOnRelease, type ReleaseThankYou } from "./guestEmails";
 // Keeping this in one module means the API routes stay thin and the AI
 // assistant can call exactly the same primitives the UI buttons do.
 
+/** The table, if it belongs to this venue — every per-table action starts
+ *  here so no side effect can land on another venue's table. */
+async function ownTable(restaurantId: string, tableId: string) {
+  const table = await prisma.diningTable.findFirst({ where: { id: tableId, restaurantId } });
+  if (!table) throw new HostFlowError("Table not found", 404);
+  return table;
+}
+
 async function recordStatus(
   restaurantId: string,
   tableId: string,
@@ -83,10 +91,10 @@ export async function markDirty(restaurantId: string, tableId: string): Promise<
   // Marking a table dirty is how staff most often say "they've left" — so
   // the seated visit ends here too, and the thank-you is offered exactly
   // as it is on Finish & release.
-  const leaving = await prisma.tableSession.findFirst({ where: { tableId, status: "SEATED" }, select: { id: true } });
-  await prisma.tableSession.updateMany({ where: { tableId, status: "SEATED" }, data: { status: "FINISHED", finishedAt: new Date() } });
+  const t = await ownTable(restaurantId, tableId);
+  const leaving = await prisma.tableSession.findFirst({ where: { tableId, restaurantId, status: "SEATED" }, select: { id: true } });
+  await prisma.tableSession.updateMany({ where: { tableId, restaurantId, status: "SEATED" }, data: { status: "FINISHED", finishedAt: new Date() } });
   await recordStatus(restaurantId, tableId, "DIRTY");
-  const t = await prisma.diningTable.findUnique({ where: { id: tableId } });
   await notify(restaurantId, {
     type: "TABLE_DIRTY",
     title: `Table ${t?.tableNumber} needs cleaning`,
@@ -112,15 +120,16 @@ export async function markClean(restaurantId: string, tableId: string) {
 export async function releaseTable(restaurantId: string, tableId: string): Promise<{ thankYou: ReleaseThankYou | null }> {
   // Remember who was sitting here before the session closes — the party
   // leaving is the cue for their thank-you email (below), booked or walk-in.
+  await ownTable(restaurantId, tableId);
   const leaving = await prisma.tableSession.findFirst({
-    where: { tableId, status: "SEATED" },
+    where: { tableId, restaurantId, status: "SEATED" },
     select: { id: true },
   });
 
   // Free the table for new guests: close any lingering session, clear held
   // reservation link and set AVAILABLE.
   await prisma.tableSession.updateMany({
-    where: { tableId, status: "SEATED" },
+    where: { tableId, restaurantId, status: "SEATED" },
     data: { status: "FINISHED", finishedAt: new Date() },
   });
   await recordStatus(restaurantId, tableId, "AVAILABLE");
@@ -319,10 +328,14 @@ export async function seatParty(
   if (table.status === "OCCUPIED") throw new HostFlowError("Table is already occupied");
   // The booking's email and language travel onto the visit, so the thank-you
   // knows who to write to and in what language once they leave.
+  // Scoped to this venue: a reservation or walk-in id from another venue
+  // must be unknown here, never seated, never read.
   const booking = params.reservationId
-    ? await prisma.reservation.findUnique({ where: { id: params.reservationId }, select: { customerEmail: true, language: true } })
+    ? await prisma.reservation.findFirst({ where: { id: params.reservationId, restaurantId }, select: { customerEmail: true, language: true } })
     : null;
-  const walkin = params.walkinId ? await prisma.walkin.findUnique({ where: { id: params.walkinId }, select: { email: true } }) : null;
+  if (params.reservationId && !booking) throw new HostFlowError("Reservation not found", 404);
+  const walkin = params.walkinId ? await prisma.walkin.findFirst({ where: { id: params.walkinId, restaurantId }, select: { email: true } }) : null;
+  if (params.walkinId && !walkin) throw new HostFlowError("Walk-in not found", 404);
   if (table.status === "BLOCKED") throw new HostFlowError("Table is blocked");
 
   // A reservation booked for a party too big for one table (see
@@ -377,14 +390,14 @@ export async function seatParty(
   });
 
   if (params.reservationId) {
-    await prisma.reservation.update({
-      where: { id: params.reservationId },
+    await prisma.reservation.updateMany({
+      where: { id: params.reservationId, restaurantId },
       data: { status: "SEATED" },
     });
   }
   if (params.walkinId) {
-    await prisma.walkin.update({
-      where: { id: params.walkinId },
+    await prisma.walkin.updateMany({
+      where: { id: params.walkinId, restaurantId },
       data: { status: "SEATED", seatedAt },
     });
   }
@@ -696,36 +709,73 @@ export async function updateReservationStatus(
   // no-show status itself from being recorded (same discipline as the
   // email side effects in reservationActions.ts). Only attempted when the
   // guest actually saved a card at booking time.
-  let noShowCharge: { outcome: "charged" | "failed" | "waived"; reason?: string } | undefined;
+  let noShowCharge: { outcome: "charged" | "failed" | "waived" | "already_charged"; reason?: string } | undefined;
+  // A card is charged at most once per booking. Whatever happened before —
+  // a double-tap, a retry, the status flipped away and back — the first
+  // successful charge (or a waiver) is final. The claim below is a
+  // compare-and-swap so two concurrent requests can't both get through.
+  const claimCharge = () =>
+    prisma.reservation.updateMany({
+      where: {
+        id: reservationId,
+        restaurantId,
+        OR: [{ noShowChargeStatus: null }, { noShowChargeStatus: "FAILED" }],
+      },
+      data: { noShowChargeStatus: "PENDING" },
+    });
   if (status === "NO_SHOW" && r.stripePaymentMethodId && opts.chargeNoShowFee === false) {
     // Staff chose to let this one go. Recorded so the booking's history says
     // the fee was waived rather than looking like the charge never ran.
-    await prisma.reservation.update({ where: { id: reservationId }, data: { noShowChargeStatus: "WAIVED" } });
-    noShowCharge = { outcome: "waived" };
+    const claimed = await claimCharge();
+    if (claimed.count > 0) {
+      await prisma.reservation.update({ where: { id: reservationId }, data: { noShowChargeStatus: "WAIVED" } });
+      noShowCharge = { outcome: "waived" };
+    } else if (r.noShowChargeStatus === "CHARGED") {
+      noShowCharge = { outcome: "already_charged", reason: "This booking's no-show fee was already charged." };
+    }
   } else if (status === "NO_SHOW" && r.stripePaymentMethodId) {
-    try {
-      const [restaurant, settings] = await Promise.all([
-        prisma.restaurant.findUniqueOrThrow({ where: { id: restaurantId } }),
-        getSettings(restaurantId),
-      ]);
-      if (restaurant.stripeConnectAccountId && settings.noShowFeeCents) {
-        // The fee is set per person (e.g. "€10/guest"), not a flat amount —
-        // a no-show party of 4 owes 4x the configured rate.
-        const feeCents = settings.noShowFeeCents * r.partySize;
-        const result = await chargeNoShowFee(restaurant, r, feeCents, "eur");
-        noShowCharge = result.outcome === "charged" ? { outcome: "charged" } : { outcome: "failed", reason: result.reason };
-        await prisma.reservation.update({
-          where: { id: reservationId },
-          data: {
-            noShowChargeStatus: result.outcome === "charged" ? "CHARGED" : "FAILED",
-            noShowChargeId: result.outcome === "charged" ? result.chargeId : null,
-            noShowChargedAt: result.outcome === "charged" ? new Date() : null,
-          },
-        });
+    const claimed = await claimCharge();
+    if (claimed.count === 0) {
+      noShowCharge =
+        r.noShowChargeStatus === "CHARGED"
+          ? { outcome: "already_charged", reason: "This booking's no-show fee was already charged." }
+          : r.noShowChargeStatus === "WAIVED"
+            ? { outcome: "waived", reason: "The fee was waived for this booking earlier." }
+            : { outcome: "failed", reason: "A charge for this booking is already in progress." };
+    } else {
+      try {
+        const [restaurant, settings] = await Promise.all([
+          prisma.restaurant.findUniqueOrThrow({ where: { id: restaurantId } }),
+          getSettings(restaurantId),
+        ]);
+        // The fee the guest was shown when they saved their card, per person
+        // (e.g. "€10/guest") — a no-show party of 4 owes 4x. Older bookings
+        // made before the quote was stored fall back to the current setting.
+        const perPerson = r.noShowFeeQuotedCents ?? settings.noShowFeeCents;
+        if (restaurant.stripeConnectAccountId && perPerson) {
+          const feeCents = perPerson * r.partySize;
+          // Same key for a retry of the same attempt, so a network blip
+          // between us and Stripe can't produce two charges.
+          const idempotencyKey = `noshow:${reservationId}:${r.noShowChargeStatus ?? "first"}`;
+          const result = await chargeNoShowFee(restaurant, r, feeCents, "eur", idempotencyKey);
+          noShowCharge = result.outcome === "charged" ? { outcome: "charged" } : { outcome: "failed", reason: result.reason };
+          await prisma.reservation.update({
+            where: { id: reservationId },
+            data: {
+              noShowChargeStatus: result.outcome === "charged" ? "CHARGED" : "FAILED",
+              noShowChargeId: result.outcome === "charged" ? result.chargeId : null,
+              noShowChargedAt: result.outcome === "charged" ? new Date() : null,
+            },
+          });
+        } else {
+          // Nothing to charge (protection off, or no fee configured) — release the claim.
+          await prisma.reservation.update({ where: { id: reservationId }, data: { noShowChargeStatus: r.noShowChargeStatus } });
+        }
+      } catch (err) {
+        console.error("[no-show charge]", reservationId, err);
+        await prisma.reservation.update({ where: { id: reservationId }, data: { noShowChargeStatus: "FAILED" } }).catch(() => undefined);
+        noShowCharge = { outcome: "failed", reason: "Unexpected error while charging the card." };
       }
-    } catch (err) {
-      console.error("[no-show charge]", reservationId, err);
-      noShowCharge = { outcome: "failed", reason: "Unexpected error while charging the card." };
     }
   }
 

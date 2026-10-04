@@ -1,3 +1,4 @@
+import { bearerMatches } from "@/lib/auth";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { minutesOfDayInTz } from "@/lib/availability";
@@ -27,7 +28,7 @@ async function reset(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "CRON_SECRET is not set. Add it to .env to enable this endpoint." }, { status: 500 });
   }
   const auth = req.headers.get("authorization");
-  if (auth !== `Bearer ${secret}`) {
+  if (!bearerMatches(auth, secret)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
