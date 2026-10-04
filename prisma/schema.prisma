@@ -86,6 +86,9 @@ model Account {
   // unrecognized login for the security-alert email (see hostAuth.ts's
   // authenticate()); not full device fingerprinting, just a low-cost signal.
   lastLoginIp  String?
+  // Bumped on password reset so every session issued before it stops
+  // working. Session tokens carry the version they were issued with.
+  sessionVersion Int      @default(0)
 
   // ── Email verification (self-serve registration) ──────────────────────
   emailVerified        Boolean   @default(false)

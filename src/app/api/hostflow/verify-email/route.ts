@@ -1,9 +1,13 @@
+import { hashOneTimeToken } from "@/lib/hostAuth";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyEmailSchema } from "@/lib/billing/schemas";
 
 async function verify(token: string): Promise<{ ok: boolean; error?: string }> {
-  const account = await prisma.account.findUnique({ where: { emailVerifyToken: token } });
+  // Links sent before tokens were hashed still work for their 48 hours.
+  const account =
+    (await prisma.account.findUnique({ where: { emailVerifyToken: hashOneTimeToken(token) } })) ??
+    (await prisma.account.findUnique({ where: { emailVerifyToken: token } }));
   if (!account) return { ok: false, error: "That verification link is invalid." };
   if (account.emailVerifyExpiresAt && account.emailVerifyExpiresAt.getTime() < Date.now()) {
     return { ok: false, error: "That verification link has expired." };

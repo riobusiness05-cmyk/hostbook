@@ -15,7 +15,7 @@ export default async function HostSettingsPage({
 }: {
   searchParams: { blocked?: string; checkout?: string };
 }) {
-  const session = getServerHostSession();
+  const session = await getServerHostSession();
   if (!session) redirect("/hostflow/login");
 
   const restaurant = await prisma.restaurant.findUnique({ where: { id: session.restaurantId } });

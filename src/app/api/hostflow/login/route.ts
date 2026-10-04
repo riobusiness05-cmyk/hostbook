@@ -32,6 +32,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Enter a valid email and password" }, { status: 400 });
   }
 
+  // Per-account too, so a guesser rotating addresses against one owner's
+  // email is still capped. Same 429 either way (no enumeration signal).
+  const perAccount = await checkRateLimit(`login:acct:${parsed.data.email.trim().toLowerCase()}`, 15 * 60 * 1000, 10);
+  if (perAccount.limited) {
+    return NextResponse.json(
+      { error: "Too many sign-in attempts. Please try again in a few minutes." },
+      { status: 429, headers: { "Retry-After": String(perAccount.retryAfterSeconds) } }
+    );
+  }
+
   let session: Awaited<ReturnType<typeof authenticate>>;
   try {
     session = await authenticate(parsed.data.email, parsed.data.password, ip);
@@ -63,7 +73,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const token = createHostSessionToken(session.restaurantId, session.accountId);
+  const token = createHostSessionToken(session.restaurantId, session.accountId, session.sessionVersion);
   const res = NextResponse.json({ ok: true });
   res.cookies.set(HOST_COOKIE_NAME, token, {
     httpOnly: true,

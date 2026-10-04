@@ -33,6 +33,6 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     });
   } catch (err) {
     console.error("[widget setup-intent]", params.slug, err);
-    return NextResponse.json({ error: (err as Error).message || "Couldn't start card verification." }, { status: 500 });
+    return NextResponse.json({ error: "Couldn't start card verification. Please try again." }, { status: 500 });
   }
 }

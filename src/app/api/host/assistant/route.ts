@@ -3,12 +3,16 @@ import { hostContext, handleActionError } from "@/lib/hostflow/apiContext";
 import { assistantSchema } from "@/lib/hostflow/schemas";
 import { runAssistant } from "@/lib/hostflow/assistant";
 import { getSettings } from "@/lib/hostflow/floor";
+import { venueQuota } from "@/lib/hostflow/quota";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   const ctx = await hostContext(req);
   if ("error" in ctx) return ctx.error;
+
+  const over = await venueQuota(ctx.restaurantId, "ai-assistant");
+  if (over) return over;
 
   const settings = await getSettings(ctx.restaurantId);
   if (!settings.aiAssistantEnabled) {

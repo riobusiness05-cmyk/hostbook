@@ -240,6 +240,14 @@ const BAR: Record<string, Item[]> = {
 };
 
 async function main() {
+  // Demo data with well-known passwords must never land in a real database.
+  const url = process.env.DATABASE_URL ?? "";
+  if (!/^file:/.test(url) && process.env.SEED_ALLOW_REMOTE !== "yes") {
+    throw new Error(
+      `Refusing to seed: DATABASE_URL is not a local SQLite file (${url.split("@").pop()?.slice(0, 40) ?? "unset"}). ` +
+        "The demo accounts use public passwords. Set SEED_ALLOW_REMOTE=yes only if you really mean it."
+    );
+  }
   await seedPlans();
 
   const restaurant = await prisma.restaurant.upsert({
@@ -364,7 +372,7 @@ async function main() {
   await prisma.menuItem.createMany({ data: menuRows });
 
   await seedHostFlow(restaurant.id);
-  await upsertAccount(restaurant.id, "colonial@hostflow.app", "colonial123", "Colonial Front Desk", "OWNER");
+  await upsertAccount(restaurant.id, "colonial@hostflow.app", process.env.SEED_COLONIAL_PASSWORD || "colonial123", "Colonial Front Desk", "OWNER");
   // The Colonial is an early partner restaurant — complimentary via the same
   // reusable grantComplimentary() any admin/registration flow can call.
   await seedBilling(restaurant.id, { complimentary: true, reason: "Early partner restaurant" });
@@ -397,7 +405,7 @@ async function main() {
     })),
   });
   await seedHostFlow(harbour.id);
-  await upsertAccount(harbour.id, "harbour@hostflow.app", "harbour123", "Harbour Host Stand", "OWNER");
+  await upsertAccount(harbour.id, "harbour@hostflow.app", process.env.SEED_HARBOUR_PASSWORD || "harbour123", "Harbour Host Stand", "OWNER");
   // Ordinary paying customer: a real 30-day trial, proving the non-comp path.
   await seedBilling(harbour.id, { complimentary: false });
 

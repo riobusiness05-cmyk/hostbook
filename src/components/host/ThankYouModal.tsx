@@ -71,6 +71,7 @@ export function ThankYouModal({
         {preview && (
           <div className="border-t border-black/5 bg-[#f6f4f0] dark:border-white/10">
             <iframe
+              sandbox=""
               title="Email preview"
               src={api.visitThankYouPreviewUrl(candidate.visitId, hasEmail ? undefined : validTyped ? typed : undefined)}
               className="h-[520px] w-full"

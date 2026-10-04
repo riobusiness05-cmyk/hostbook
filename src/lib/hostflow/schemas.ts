@@ -80,6 +80,16 @@ export const reservationStatusSchema = z.object({
 
 const hexColour = z.string().regex(/^#[0-9a-fA-F]{6}$/, "Use a 6-digit hex colour like #c9611f");
 
+/** A link that ends up in an href or a redirect: only http(s), never
+ *  javascript:, data: or anything else a browser would run. */
+export const webUrl = (max: number) =>
+  z
+    .string()
+    .trim()
+    .max(max)
+    .url()
+    .refine((u) => /^https?:\/\//i.test(u), "Use a full web address starting with https://");
+
 export const settingsSchema = z.object({
   maxBookingsPer15Min: z.number().int().min(1).max(50).optional(),
   bookingIntervalMinutes: z.number().int().min(5).max(120).optional(),
@@ -108,7 +118,7 @@ export const settingsSchema = z.object({
   thankYouEmailEnabled: z.boolean().optional(),
   thankYouEmailSubject: z.string().trim().max(150).nullable().optional(),
   thankYouEmailBody: z.string().trim().max(2000).nullable().optional(),
-  googleReviewUrl: z.string().trim().url().max(500).nullable().optional(),
+  googleReviewUrl: webUrl(500).nullable().optional(),
   emailFromName: z.string().trim().min(1).max(80).nullable().optional(),
   emailReplyTo: z.string().trim().email().max(200).nullable().optional(),
   thankYouMode: z.enum(["ASK", "AUTO", "OFF"]).optional(),
@@ -119,8 +129,8 @@ export const settingsSchema = z.object({
   brandVoiceNotes: z.string().trim().max(600).nullable().optional(),
   brandSignOff: z.string().trim().max(120).nullable().optional(),
   googlePlaceId: z.string().trim().max(200).nullable().optional(),
-  instagramUrl: z.string().trim().url().max(300).nullable().optional(),
-  websiteUrl: z.string().trim().url().max(300).nullable().optional(),
+  instagramUrl: webUrl(300).nullable().optional(),
+  websiteUrl: webUrl(300).nullable().optional(),
   defaultLanguage: z.enum(["en", "es"]).optional(),
 });
 

@@ -76,9 +76,8 @@ export async function sendEmail(params: {
   };
 
   if (!apiKey) {
-    console.log(
-      `[email:not-configured] Would send to ${params.to} from ${from}${params.replyTo ? ` (reply-to ${params.replyTo})` : ""}: "${params.subject}"\n${params.html}`
-    );
+    // Subject and recipient only — the body can carry a reset or verify link.
+    console.log(`[email:not-configured] Would send to ${params.to} from ${from}: "${params.subject}"`);
     await record("SKIPPED", { error: "RESEND_API_KEY is not set — email only logged, not sent" });
     return { ok: true };
   }
@@ -146,7 +145,7 @@ const ACCENT_BLUE = "#2b5cff";
 const ACCENT_BUTTON = "#e17f3c";
 
 function escapeHtml(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
 function emailLayout(params: { previewText: string; bodyHtml: string; footerNote?: string }): string {

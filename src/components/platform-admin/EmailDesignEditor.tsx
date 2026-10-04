@@ -160,7 +160,7 @@ export function EmailDesignEditor({ restaurantId, restaurantName }: { restaurant
             ))}
             {samples?.[sampleIdx] && <span className="ml-auto truncate text-neutral-500">Subject: {samples[sampleIdx].subject}</span>}
           </div>
-          <iframe title="Email preview" srcDoc={samples?.[sampleIdx]?.html ?? ""} className="h-[520px] w-full" />
+          <iframe sandbox="" title="Email preview" srcDoc={samples?.[sampleIdx]?.html ?? ""} className="h-[520px] w-full" />
         </div>
       </div>
       {error && <pre className="mt-3 whitespace-pre-wrap rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">{error}</pre>}

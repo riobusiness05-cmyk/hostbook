@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { hostContext } from "@/lib/hostflow/apiContext";
 import { OUTCOME_TEXT, renderThankYouForVisit, sendThankYouForVisit } from "@/lib/hostflow/guestEmails";
+import { venueQuota } from "@/lib/hostflow/quota";
 
 // The thank-you for one visit. GET = the exact email as it would go
 // (Preview in the release modal); POST = staff said yes, send it. `email`
@@ -23,6 +24,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   if ("error" in ctx) return ctx.error;
   const parsed = bodySchema.safeParse((await req.json().catch(() => ({}))) ?? {});
   if (!parsed.success) return NextResponse.json({ error: "That doesn't look like an email address." }, { status: 400 });
+  const over = await venueQuota(ctx.restaurantId, "email-visit");
+  if (over) return over;
   const outcome = await sendThankYouForVisit(ctx.restaurantId, params.id, { email: parsed.data.email });
   if (outcome.sent) return NextResponse.json(outcome);
   return NextResponse.json({ ...outcome, message: outcome.detail ?? OUTCOME_TEXT[outcome.reason] }, { status: 409 });

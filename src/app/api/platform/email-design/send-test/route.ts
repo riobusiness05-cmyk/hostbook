@@ -6,6 +6,7 @@ import { sendEmail } from "@/lib/email";
 import { loadBrandKit, renderSampleThankYous, senderIdentityFor } from "@/lib/hostflow/guestEmails";
 import { validateTemplate } from "@/lib/emailTemplate";
 import { normalizeReviewLink } from "@/lib/brandKit";
+import { venueQuota } from "@/lib/hostflow/quota";
 
 // Sends one real thank-you, rendered with the design in the editor (saved
 // or not), to an address the platform admin picks — so a design can be
@@ -26,6 +27,8 @@ export async function POST(req: NextRequest) {
   const parsed = schema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Enter a valid email address to send the sample to." }, { status: 400 });
   const { restaurantId, html, to, guestName, reviewUrl } = parsed.data;
+  const over = await venueQuota(restaurantId, "email-test");
+  if (over) return over;
 
   if (html.trim()) {
     const problems = validateTemplate(html);

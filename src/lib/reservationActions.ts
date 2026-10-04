@@ -141,7 +141,11 @@ export async function createReservationForRestaurant(
         stripePaymentMethodId = verified.paymentMethodId;
         noShowFeeQuotedCents = settings.noShowFeeCents ?? null;
       } catch (err) {
-        return { ok: false, error: (err as Error).message };
+        // Our own messages are written for guests; anything else (a raw
+        // Stripe error naming accounts or keys) stays in the log.
+        const msg = err instanceof Error && /please try|hasn't connected Stripe/.test(err.message) ? err.message : "Card verification failed — please try adding your card again.";
+        if (msg !== (err as Error).message) console.error("[reservation] card verification", err);
+        return { ok: false, error: msg };
       }
     }
   }
@@ -514,6 +518,21 @@ export async function rescheduleReservationById(
   }
 
   const partySize = newPartySize ?? reservation.partySize;
+
+  // A guest-made booking that grows into the no-show-protected range must
+  // not slip past the card step by starting small. Growing it is only
+  // allowed if a card is already on file; otherwise they rebook properly.
+  if (partySize > reservation.partySize && reservation.source !== "ADMIN" && !reservation.stripePaymentMethodId) {
+    const settings = await getSettings(restaurant.id);
+    const needsCard =
+      settings.noShowProtectionEnabled && !!restaurant.stripeConnectAccountId && partySize >= (settings.noShowMinPartySize ?? 1);
+    if (needsCard) {
+      return {
+        ok: false,
+        error: `A party of ${partySize} needs a card on file to hold the table. Please make a new booking for the larger group.`,
+      };
+    }
+  }
 
   try {
     await withSerializableRetry(async (tx) => {

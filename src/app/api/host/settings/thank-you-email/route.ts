@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { venueQuota } from "@/lib/hostflow/quota";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { hostContext } from "@/lib/hostflow/apiContext";
@@ -26,6 +27,8 @@ export async function POST(req: NextRequest) {
   if (!(await hasPremiumFeatures(ctx.restaurantId))) {
     return NextResponse.json({ error: "Guest thank-you emails are part of the Premium plan." }, { status: 403 });
   }
+  const over = await venueQuota(ctx.restaurantId, "email-test");
+  if (over) return over;
   const parsed = testSchema.safeParse((await req.json().catch(() => ({}))) ?? {});
   if (!parsed.success) return NextResponse.json({ error: "Enter a valid email address to send the test to." }, { status: 400 });
 

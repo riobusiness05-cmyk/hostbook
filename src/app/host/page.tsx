@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
 // layout only checks the session; this page is what redirects away when
 // there's genuinely no access.
 export default async function HostPage() {
-  const session = getServerHostSession();
+  const session = await getServerHostSession();
   if (!session) redirect("/hostflow/login");
 
   const restaurant = await prisma.restaurant.findUnique({ where: { id: session.restaurantId } });

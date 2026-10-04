@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { webUrl } from "@/lib/hostflow/schemas";
 import { prisma } from "@/lib/prisma";
 import { hostContext } from "@/lib/hostflow/apiContext";
 import { senderAddressFor } from "@/lib/hostflow/guestEmails";
@@ -38,7 +39,7 @@ const patchSchema = z.object({
   // Look & feel — colours the booking widget and any email the restaurant
   // sends its guests (see guestEmails.ts).
   brandColor: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Use a 6-digit hex colour like #c9611f").optional(),
-  logoUrl: z.string().trim().url().max(500).nullable().optional(),
+  logoUrl: webUrl(500).nullable().optional(),
   address: z.string().trim().max(300).nullable().optional(),
   phone: z.string().trim().max(40).nullable().optional(),
 });

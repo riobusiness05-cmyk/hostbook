@@ -9,7 +9,9 @@ import crypto from "crypto";
 // email log row) or "l:<emailLogId>" for a test send.
 
 function secret(): string {
-  return process.env.ADMIN_SESSION_SECRET || "dev-only-unsubscribe-secret";
+  const s = process.env.ADMIN_SESSION_SECRET;
+  if (!s) throw new Error("ADMIN_SESSION_SECRET is not set.");
+  return s;
 }
 
 export function trackedLinkToken(ref: string): string {

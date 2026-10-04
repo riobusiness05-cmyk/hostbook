@@ -3,6 +3,7 @@ import { z } from "zod";
 import { hostContext, handleActionError } from "@/lib/hostflow/apiContext";
 import { analyzeFloorPlanImage } from "@/lib/floorPlanVision";
 import { HostFlowError } from "@/lib/hostflow/actions";
+import { venueQuota } from "@/lib/hostflow/quota";
 
 const MAX_BASE64_LENGTH = 6_000_000; // ~4.5MB decoded, comfortably under Vercel's request body cap
 
@@ -16,6 +17,8 @@ const bodySchema = z.object({
 export async function POST(req: NextRequest) {
   const ctx = await hostContext(req);
   if ("error" in ctx) return ctx.error;
+  const over = await venueQuota(ctx.restaurantId, "ai-vision");
+  if (over) return over;
 
   const body = await req.json().catch(() => null);
   const parsed = bodySchema.safeParse(body);

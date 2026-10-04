@@ -2,7 +2,7 @@ import crypto from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { registerSchema } from "@/lib/billing/schemas";
-import { hashPassword, createHostSessionToken, HOST_COOKIE_NAME, HOST_COOKIE_MAX_AGE_SECONDS } from "@/lib/hostAuth";
+import { hashPassword, createHostSessionToken, hashOneTimeToken, HOST_COOKIE_NAME, HOST_COOKIE_MAX_AGE_SECONDS } from "@/lib/hostAuth";
 import { startTrial } from "@/lib/billing/subscription";
 import { getOrCreateStripeCustomer } from "@/lib/stripe";
 import { sendEmail, verificationEmailHtml } from "@/lib/email";
@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
         passwordHash: hashPassword(password),
         name: ownerName,
         role: "OWNER",
-        emailVerifyToken,
+        emailVerifyToken: hashOneTimeToken(emailVerifyToken),
         emailVerifyExpiresAt: new Date(Date.now() + VERIFY_TOKEN_TTL_MS),
       },
     });

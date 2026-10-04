@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
       getOrCreateSubscriptionRow(ctx.restaurantId),
       prisma.plan.findUnique({ where: { key: parsed.data.planKey } }),
     ]);
-    if (!plan) throw new HostFlowError("Unknown plan", 404);
+    if (!plan || !plan.isActive) throw new HostFlowError("Unknown plan", 404);
     if (sub.isComplimentary) throw new HostFlowError("This account already has full complimentary access.", 409);
 
     const customerId = await getOrCreateStripeCustomer(restaurant, account, sub.stripeCustomerId);

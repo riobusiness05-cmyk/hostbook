@@ -42,36 +42,74 @@ export function verifyPassword(password: string, stored: string): boolean {
 
 // ── Session token: restaurantId|accountId|expires|sig (| never appears in a
 // cuid, number, or hex signature, so parsing is unambiguous) ────────────────
-export type HostSession = { restaurantId: string; accountId: string };
+export type HostSession = { restaurantId: string; accountId: string; version: number };
 
-export function createHostSessionToken(restaurantId: string, accountId: string): string {
+export function createHostSessionToken(restaurantId: string, accountId: string, version = 0): string {
   const expires = Date.now() + TTL_MS;
-  const payload = `${restaurantId}|${accountId}|${expires}`;
+  const payload = `${restaurantId}|${accountId}|${expires}|${version}`;
   return Buffer.from(`${payload}|${sign(payload)}`).toString("base64url");
 }
 
+/** Checks the signature and expiry only — says the token is genuine, not
+ *  that it is still welcome. Use resolveHostSession() for that. */
 export function readHostSession(token: string | undefined): HostSession | null {
   if (!token) return null;
   try {
     const decoded = Buffer.from(token, "base64url").toString("utf8");
-    const [restaurantId, accountId, expiresStr, signature] = decoded.split("|");
-    if (!restaurantId || !accountId || !expiresStr || !signature) return null;
-    const expected = sign(`${restaurantId}|${accountId}|${expiresStr}`);
+    const parts = decoded.split("|");
+    // Tokens issued before sessions were versioned have four parts; they
+    // count as version 0, which is what every account starts at.
+    const [restaurantId, accountId, expiresStr, versionStr, signature] =
+      parts.length === 4 ? [parts[0], parts[1], parts[2], undefined, parts[3]] : parts;
+    if (!restaurantId || !accountId || !expiresStr || !signature || parts.length > 5) return null;
+    const payload = versionStr === undefined ? `${restaurantId}|${accountId}|${expiresStr}` : `${restaurantId}|${accountId}|${expiresStr}|${versionStr}`;
+    const expected = sign(payload);
     const ok =
       expected.length === signature.length &&
       crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
     if (!ok) return null;
-    if (Date.now() > Number(expiresStr)) return null;
-    return { restaurantId, accountId };
+    const expires = Number(expiresStr);
+    if (Number.isNaN(expires) || Date.now() > expires) return null;
+    const version = versionStr === undefined ? 0 : Number(versionStr);
+    if (!Number.isInteger(version)) return null;
+    return { restaurantId, accountId, version };
   } catch {
     return null;
   }
+}
+
+/** A genuine token is only a session while the account still exists, still
+ *  belongs to that venue, and hasn't had its sessions revoked (password
+ *  reset bumps `sessionVersion`). One indexed read per request. */
+export async function resolveHostSession(token: string | undefined): Promise<HostSession | null> {
+  const parsed = readHostSession(token);
+  if (!parsed) return null;
+  const account = await prisma.account.findUnique({
+    where: { id: parsed.accountId },
+    select: { restaurantId: true, sessionVersion: true },
+  });
+  if (!account || account.restaurantId !== parsed.restaurantId || account.sessionVersion !== parsed.version) return null;
+  return parsed;
+}
+
+/** Ends every session this account holds, everywhere. */
+export async function revokeAllSessions(accountId: string): Promise<number> {
+  const updated = await prisma.account.update({ where: { id: accountId }, data: { sessionVersion: { increment: 1 } }, select: { sessionVersion: true } });
+  return updated.sessionVersion;
+}
+
+// ── One-time links (verify email, reset password) ───────────────────────────
+// The database holds only a hash of the token; the token itself exists only
+// in the email we sent. A read-only leak of the table yields nothing usable.
+export function hashOneTimeToken(token: string): string {
+  return crypto.createHash("sha256").update(token).digest("hex");
 }
 
 // ── Login ───────────────────────────────────────────────────────────────────
 export type AuthenticateResult = {
   restaurantId: string;
   accountId: string;
+  sessionVersion: number;
   accountName: string;
   restaurantName: string;
   // True only when this account has logged in successfully from a different
@@ -95,6 +133,7 @@ export async function authenticate(email: string, password: string, ip: string):
   return {
     restaurantId: account.restaurantId,
     accountId: account.id,
+    sessionVersion: account.sessionVersion,
     accountName: account.name,
     restaurantName: account.restaurant.name,
     isNewIp,
@@ -106,11 +145,11 @@ export const HOST_COOKIE_NAME = COOKIE;
 export const HOST_COOKIE_MAX_AGE_SECONDS = TTL_MS / 1000;
 
 /** For server components / route handlers using next/headers cookies(). */
-export function getServerHostSession(): HostSession | null {
-  return readHostSession(cookies().get(COOKIE)?.value);
+export function getServerHostSession(): Promise<HostSession | null> {
+  return resolveHostSession(cookies().get(COOKIE)?.value);
 }
 
 /** For route handlers with a NextRequest. */
-export function getRequestHostSession(req: NextRequest): HostSession | null {
-  return readHostSession(req.cookies.get(COOKIE)?.value);
+export function getRequestHostSession(req: NextRequest): Promise<HostSession | null> {
+  return resolveHostSession(req.cookies.get(COOKIE)?.value);
 }

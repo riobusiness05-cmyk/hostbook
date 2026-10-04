@@ -4,6 +4,7 @@ import { resetPasswordSchema } from "@/lib/billing/schemas";
 import {
   hashPassword,
   createHostSessionToken,
+  hashOneTimeToken,
   HOST_COOKIE_NAME,
   HOST_COOKIE_MAX_AGE_SECONDS,
 } from "@/lib/hostAuth";
@@ -25,7 +26,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Enter a valid token and a password of at least 8 characters." }, { status: 400 });
   }
 
-  const account = await prisma.account.findUnique({ where: { passwordResetToken: parsed.data.token } });
+  // Links sent just before tokens were hashed still work for their hour.
+  const account =
+    (await prisma.account.findUnique({ where: { passwordResetToken: hashOneTimeToken(parsed.data.token) } })) ??
+    (await prisma.account.findUnique({ where: { passwordResetToken: parsed.data.token } }));
   if (!account) {
     return NextResponse.json({ error: "That reset link is invalid. Request a new one." }, { status: 400 });
   }
@@ -33,18 +37,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "That reset link has expired. Request a new one." }, { status: 400 });
   }
 
-  await prisma.account.update({
+  // A reset is usually a response to "someone else may have my password",
+  // so every existing session is revoked by bumping the version; only the
+  // token issued below carries the new one.
+  const updated = await prisma.account.update({
     where: { id: account.id },
     data: {
       passwordHash: hashPassword(parsed.data.password),
       passwordResetToken: null,
       passwordResetExpiresAt: null,
+      sessionVersion: { increment: 1 },
     },
+    select: { sessionVersion: true },
   });
 
   // Reset succeeding is as good a proof of ownership as a login — sign them
   // straight in rather than making them turn around and log in again.
-  const token = createHostSessionToken(account.restaurantId, account.id);
+  const token = createHostSessionToken(account.restaurantId, account.id, updated.sessionVersion);
   const res = NextResponse.json({ ok: true });
   res.cookies.set(HOST_COOKIE_NAME, token, {
     httpOnly: true,

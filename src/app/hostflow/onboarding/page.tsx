@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 // src/app/host/page.tsx's onboardingCompletedAt redirect. Already-onboarded
 // restaurants are bounced straight to their floor instead of re-running this.
 export default async function OnboardingPage() {
-  const session = getServerHostSession();
+  const session = await getServerHostSession();
   if (!session) redirect("/hostflow/login");
 
   const restaurant = await prisma.restaurant.findUnique({ where: { id: session.restaurantId } });

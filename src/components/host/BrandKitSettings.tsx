@@ -346,7 +346,7 @@ export function BrandKitSettings({ initialSettings, premium, onUpgrade }: { init
             </button>
           </div>
           {!showSamples ? (
-            <iframe title="Live email preview" srcDoc={previewHtml} className="h-[720px] w-full bg-[#f6f4f0]" />
+            <iframe sandbox="" title="Live email preview" srcDoc={previewHtml} className="h-[720px] w-full bg-[#f6f4f0]" />
           ) : samples === null ? (
             <p className="p-4 text-sm text-neutral-400">Writing three samples…</p>
           ) : (
@@ -357,7 +357,7 @@ export function BrandKitSettings({ initialSettings, premium, onUpgrade }: { init
                     <p className="text-[11px] font-medium uppercase tracking-wider text-neutral-400">{s.label}</p>
                     <p className="text-sm font-semibold">{s.subject}</p>
                   </div>
-                  <iframe title={s.label} srcDoc={s.html} className="h-[560px] w-full bg-[#f6f4f0]" />
+                  <iframe sandbox="" title={s.label} srcDoc={s.html} className="h-[560px] w-full bg-[#f6f4f0]" />
                 </div>
               ))}
               <p className="p-3 text-[11px] text-neutral-400">Samples use what&apos;s saved — save first to see changes here.</p>

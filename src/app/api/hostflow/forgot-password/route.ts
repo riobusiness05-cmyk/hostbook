@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { NextRequest, NextResponse } from "next/server";
+import { hashOneTimeToken } from "@/lib/hostAuth";
 import { prisma } from "@/lib/prisma";
 import { forgotPasswordSchema } from "@/lib/billing/schemas";
 import { sendEmail, passwordResetEmailHtml } from "@/lib/email";
@@ -35,7 +36,7 @@ export async function POST(req: NextRequest) {
     const passwordResetToken = crypto.randomBytes(24).toString("base64url");
     await prisma.account.update({
       where: { id: account.id },
-      data: { passwordResetToken, passwordResetExpiresAt: new Date(Date.now() + RESET_TOKEN_TTL_MS) },
+      data: { passwordResetToken: hashOneTimeToken(passwordResetToken), passwordResetExpiresAt: new Date(Date.now() + RESET_TOKEN_TTL_MS) },
     });
 
     const resetUrl = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/hostflow/reset-password?token=${passwordResetToken}`;

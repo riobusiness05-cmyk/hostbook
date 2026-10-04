@@ -5,7 +5,9 @@ import crypto from "crypto";
 // and needs nothing stored to be verified.
 
 function secret(): string {
-  return process.env.ADMIN_SESSION_SECRET || "dev-only-unsubscribe-secret";
+  const s = process.env.ADMIN_SESSION_SECRET;
+  if (!s) throw new Error("ADMIN_SESSION_SECRET is not set.");
+  return s;
 }
 
 export function unsubscribeToken(restaurantId: string, email: string): string {

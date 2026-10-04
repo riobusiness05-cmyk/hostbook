@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyTrackedLinkToken } from "@/lib/trackedLinks";
-import { buildReviewUrl } from "@/lib/brandKit";
+import { buildReviewUrl, isReviewLink } from "@/lib/brandKit";
 
 // The review button in a thank-you email lands here first: record the
 // click on that email's log row, then send the guest on to the venue's
@@ -39,6 +39,11 @@ export async function GET(req: NextRequest, { params }: { params: { ref: string;
     prisma.restaurant.findUnique({ where: { id: row.restaurantId ?? "" }, select: { slug: true } }),
     prisma.restaurantSettings.findUnique({ where: { restaurantId: row.restaurantId ?? "" }, select: { googlePlaceId: true, googleReviewUrl: true } }),
   ]);
-  const target = buildReviewUrl(settings?.googlePlaceId, settings?.googleReviewUrl) ?? (restaurant ? `${appUrl}/widget/${restaurant.slug}` : `${appUrl}/hostflow`);
+  // This redirect lives on our domain, so it must never become a hop to an
+  // arbitrary site: only a Google review link counts as a destination.
+  // Anything else falls back to the venue's own booking page.
+  const fallback = restaurant ? `${appUrl}/widget/${restaurant.slug}` : `${appUrl}/hostflow`;
+  const candidate = buildReviewUrl(settings?.googlePlaceId, settings?.googleReviewUrl);
+  const target = candidate && /^https:\/\//i.test(candidate) && isReviewLink(candidate) ? candidate : fallback;
   return NextResponse.redirect(target, 302);
 }

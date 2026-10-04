@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { getRequestHostSession } from "@/lib/hostAuth";
+import { hostContext } from "@/lib/hostflow/apiContext";
 import { subscribeFloor, FloorChangeEvent } from "@/lib/hostflow/events";
 
 export const dynamic = "force-dynamic";
@@ -11,11 +11,11 @@ export const runtime = "nodejs";
 // `tick` so time-derived fields (minutes seated, wait times, rush) stay fresh
 // even with no explicit mutation, and to keep the connection alive.
 export async function GET(req: NextRequest) {
-  const session = getRequestHostSession(req);
-  if (!session) {
-    return new Response("Unauthorized", { status: 401 });
-  }
-  const restaurantId = session.restaurantId;
+  // Same gate as every other host route (session + billing access), so a
+  // lapsed venue stops receiving live events too.
+  const ctx = await hostContext(req);
+  if ("error" in ctx) return ctx.error;
+  const restaurantId = ctx.restaurantId;
 
   const encoder = new TextEncoder();
   let unsubscribe = () => {};

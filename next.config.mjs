@@ -20,6 +20,28 @@ const nextConfig = {
   // already close off the practical cross-site attack this could enable.
   async headers() {
     return [
+      // Everything except the embeddable booking widget: never frameable
+      // (clickjacking on the host/admin UIs), no MIME sniffing, tight
+      // referrer, no legacy browser features we don't use.
+      {
+        source: "/((?!widget|api/widget).*)",
+        headers: [
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+          { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
+        ],
+      },
+      // The widget is meant to be framed by restaurants' own sites.
+      {
+        source: "/(widget|api/widget)(.*)",
+        headers: [
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+        ],
+      },
       {
         source: "/api/widget/:path*",
         headers: [

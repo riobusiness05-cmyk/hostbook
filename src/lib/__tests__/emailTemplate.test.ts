@@ -4,7 +4,7 @@ import { renderTemplate, validateTemplate } from "@/lib/emailTemplate";
 describe("renderTemplate", () => {
   it("fills placeholders, escapes by default, and inserts raw with triple braces", () => {
     const out = renderTemplate("<h1>{{venue}}</h1>{{{message}}}<i>{{name}}</i>", { venue: "Tom & Jerry's", message: "<p>Hi</p>", name: "<b>x</b>" });
-    expect(out).toBe("<h1>Tom &amp; Jerry&#039;s</h1><p>Hi</p><i>&lt;b&gt;x&lt;/b&gt;</i>".replace("&#039;", "'"));
+    expect(out).toBe("<h1>Tom &amp; Jerry&#39;s</h1><p>Hi</p><i>&lt;b&gt;x&lt;/b&gt;</i>");
   });
 
   it("keeps a section only when its value is set", () => {

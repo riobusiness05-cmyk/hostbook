@@ -19,7 +19,7 @@ export async function hostContext(
   req: NextRequest,
   { requireAccess = true }: { requireAccess?: boolean } = {}
 ): Promise<{ restaurantId: string; accountId: string } | { error: NextResponse }> {
-  const session = getRequestHostSession(req);
+  const session = await getRequestHostSession(req);
   if (!session) {
     return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
   }
