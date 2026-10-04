@@ -20,7 +20,9 @@ export async function POST(req: NextRequest) {
   const ip = getClientIp(req);
   const [perIp, global] = await Promise.all([
     checkRateLimit(`admin-login:${ip}`, 15 * 60 * 1000, 5),
-    checkRateLimit("admin-login:all", 60 * 60 * 1000, 30),
+    // High enough that a stranger can't lock the operator out by spamming
+    // the form, low enough that guessing a real password is hopeless.
+    checkRateLimit("admin-login:all", 60 * 60 * 1000, 120),
   ]);
   if (perIp.limited || global.limited) {
     const retry = Math.max(perIp.retryAfterSeconds, global.retryAfterSeconds);
