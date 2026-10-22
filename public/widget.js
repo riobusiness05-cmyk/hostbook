@@ -40,6 +40,33 @@
     el.appendChild(iframe);
   }
 
-  var containers = document.querySelectorAll("[data-hostflow-restaurant]");
-  for (var i = 0; i < containers.length; i++) mount(containers[i]);
+  function mountAll() {
+    var containers = document.querySelectorAll("[data-hostflow-restaurant]");
+    for (var i = 0; i < containers.length; i++) mount(containers[i]);
+  }
+
+  // Mount whatever is on the page now…
+  mountAll();
+
+  // …and keep watching. On a React/Vue/Next site the container is often
+  // drawn AFTER this script has run (client-side rendering, a section that
+  // mounts on scroll, a page change in a single-page app), so a one-shot
+  // scan leaves the booking box empty forever.
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", mountAll);
+  }
+  window.addEventListener("load", mountAll);
+  if (typeof MutationObserver !== "undefined") {
+    var observer = new MutationObserver(function () { mountAll(); });
+    var start = function () { observer.observe(document.documentElement, { childList: true, subtree: true }); };
+    if (document.documentElement) start(); else document.addEventListener("DOMContentLoaded", start);
+  } else {
+    // Very old browsers: poll for a little while instead.
+    var tries = 0;
+    var timer = setInterval(function () { mountAll(); if (++tries > 40) clearInterval(timer); }, 500);
+  }
+
+  // Sites that render the container themselves and later want to re-mount
+  // (e.g. after a client-side route change) can call this directly.
+  window.HostFlowWidget = { mount: mountAll };
 })();
