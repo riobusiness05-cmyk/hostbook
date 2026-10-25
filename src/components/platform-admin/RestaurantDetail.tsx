@@ -10,6 +10,24 @@ import type { RestaurantDetail as RestaurantDetailData } from "@/lib/platformAdm
 import type { StripeCustomerSummary } from "@/lib/billing/subscription";
 import type { UpgradePreview } from "@/lib/billing/upgradePreview";
 
+type EmailHealth = {
+  days: number;
+  summary: Record<string, Record<string, number>>;
+  bookings: {
+    total: number;
+    withEmail: number;
+    withoutEmail: number;
+    withoutEmailBySource: Record<string, number>;
+    withEmailButNoConfirmation: { id: string; name: string; createdAt: string; source: string }[];
+  };
+  recent: { id: string; kind: string; to: string; subject: string; status: string; error: string | null; createdAt: string; openedAt: string | null; clickedAt: string | null }[];
+};
+
+const STATUS_COLOR: Record<string, string> = {
+  DELIVERED: "#22c55e", OPENED: "#22c55e", CLICKED: "#22c55e", SENT: "#3b82f6", DELAYED: "#f59e0b",
+  BOUNCED: "#ef4444", COMPLAINED: "#ef4444", FAILED: "#ef4444", SKIPPED: "#6b7280", PENDING: "#6b7280",
+};
+
 function money(cents: number, currency: string): string {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: currency.toUpperCase() }).format(cents / 100);
 }
@@ -21,6 +39,43 @@ export function RestaurantDetail({ restaurant }: { restaurant: RestaurantDetailD
   const [stripeCustomers, setStripeCustomers] = useState<StripeCustomerSummary[] | null>(null);
   const [stripeLoading, setStripeLoading] = useState(false);
   const [upgrade, setUpgrade] = useState<UpgradePreview | null>(null);
+  const [emailHealth, setEmailHealth] = useState<EmailHealth | null>(null);
+  const [emailLoading, setEmailLoading] = useState(false);
+  const [deleteSlug, setDeleteSlug] = useState("");
+
+  async function loadEmailHealth() {
+    setEmailLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/platform/email-log?restaurantId=${restaurant.id}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Couldn't load");
+      setEmailHealth(data);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setEmailLoading(false);
+    }
+  }
+
+  async function deleteVenue() {
+    if (!window.confirm(`Permanently delete ${restaurant.name} and everything in it? This cannot be undone.`)) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/platform/delete-restaurant", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ restaurantId: restaurant.id, confirmSlug: deleteSlug }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Couldn't delete");
+      window.location.href = "/hostflow/admin";
+    } catch (e) {
+      setError((e as Error).message);
+      setBusy(false);
+    }
+  }
   const [upgradeLoading, setUpgradeLoading] = useState(false);
 
   async function loadUpgradePreview() {
@@ -271,6 +326,70 @@ export function RestaurantDetail({ restaurant }: { restaurant: RestaurantDetailD
         </Card>
 
         <Card className="p-4">
+          <SectionTitle
+            action={
+              <Button size="sm" disabled={emailLoading} onClick={loadEmailHealth}>
+                {emailLoading ? "Loading…" : emailHealth ? "Refresh" : "Check email health"}
+              </Button>
+            }
+          >
+            Guest email health
+          </SectionTitle>
+          <p className="mb-3 text-xs text-neutral-500">
+            Last 30 days: what was sent, what Resend says happened to it, and how many bookings never had an email address to send to.
+          </p>
+          {emailHealth && (
+            <div className="space-y-3 text-xs">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div><p className="text-neutral-500">Bookings</p><p className="text-lg font-bold text-white">{emailHealth.bookings.total}</p></div>
+                <div><p className="text-neutral-500">With an email</p><p className="text-lg font-bold text-white">{emailHealth.bookings.withEmail}</p></div>
+                <div>
+                  <p className="text-neutral-500">No email given</p>
+                  <p className="text-lg font-bold text-amber-300">{emailHealth.bookings.withoutEmail}</p>
+                  <p className="text-[10px] text-neutral-500">{Object.entries(emailHealth.bookings.withoutEmailBySource).map(([s, n]) => `${s.toLowerCase()} ${n}`).join(" · ")}</p>
+                </div>
+                <div>
+                  <p className="text-neutral-500">Had email, no confirmation</p>
+                  <p className={"text-lg font-bold " + (emailHealth.bookings.withEmailButNoConfirmation.length ? "text-red-300" : "text-white")}>{emailHealth.bookings.withEmailButNoConfirmation.length}</p>
+                </div>
+              </div>
+              {Object.keys(emailHealth.summary).length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {Object.entries(emailHealth.summary).map(([kind, statuses]) => (
+                    <div key={kind} className="rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1.5">
+                      <span className="font-semibold text-neutral-200">{kind.replace(/_/g, " ").toLowerCase()}</span>
+                      <span className="ml-2 text-neutral-400">{Object.entries(statuses).map(([s, n]) => `${n} ${s.toLowerCase()}`).join(", ")}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {emailHealth.bookings.withEmailButNoConfirmation.length > 0 && (
+                <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-2.5 text-red-200">
+                  Bookings that had an email but never got a confirmation:{" "}
+                  {emailHealth.bookings.withEmailButNoConfirmation.slice(0, 8).map((b) => `${b.name} (${b.source.toLowerCase()}, ${formatDateTime(b.createdAt)})`).join("; ")}
+                </div>
+              )}
+              <div className="max-h-72 overflow-auto rounded-lg border border-white/10">
+                {emailHealth.recent.length === 0 ? (
+                  <p className="p-3 text-neutral-500">No emails in the last 30 days.</p>
+                ) : (
+                  emailHealth.recent.map((r) => (
+                    <div key={r.id} className="flex flex-wrap items-center gap-2 border-b border-white/5 px-2.5 py-1.5 last:border-0">
+                      <span className="w-28 shrink-0 text-neutral-500">{formatDateTime(r.createdAt)}</span>
+                      <span className="w-36 shrink-0 text-neutral-300">{r.kind.replace(/_/g, " ").toLowerCase()}</span>
+                      <span className="w-40 shrink-0 truncate font-mono text-neutral-400">{r.to}</span>
+                      <Chip color={STATUS_COLOR[r.status] ?? "#6b7280"}>{r.status.toLowerCase()}</Chip>
+                      {r.clickedAt && <Chip color="#22c55e">review clicked</Chip>}
+                      {r.error && <span className="truncate text-red-300" title={r.error}>{r.error.slice(0, 80)}</span>}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+        </Card>
+
+        <Card className="p-4">
           <SectionTitle>Blackout dates</SectionTitle>
           <p className="mb-3 text-xs text-neutral-500">
             Dates this restaurant is closed to online bookings — a full-day blackout here blocks every slot on that
@@ -315,6 +434,24 @@ export function RestaurantDetail({ restaurant }: { restaurant: RestaurantDetailD
                 </div>
               </div>
             ))}
+          </div>
+        </Card>
+        <Card className="border-red-500/20 p-4">
+          <SectionTitle>Delete venue</SectionTitle>
+          <p className="mb-3 text-xs text-neutral-500">
+            For test venues only. Removes the venue, its accounts, tables, bookings and emails permanently. Refuses any venue with a live paid or
+            complimentary subscription. Type the slug <span className="font-mono text-neutral-300">{restaurant.slug}</span> to confirm.
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              value={deleteSlug}
+              onChange={(e) => setDeleteSlug(e.target.value)}
+              placeholder={restaurant.slug}
+              className="w-72 rounded-md border border-white/15 bg-white/5 px-2 py-1.5 text-xs text-white outline-none focus:border-red-400"
+            />
+            <Button size="sm" variant="danger" disabled={busy || deleteSlug.trim() !== restaurant.slug} onClick={deleteVenue}>
+              Delete permanently
+            </Button>
           </div>
         </Card>
       </main>
