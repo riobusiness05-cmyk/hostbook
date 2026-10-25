@@ -212,6 +212,21 @@ export function EmailDesignEditor({ restaurantId, restaurantName }: { restaurant
 
   // One real email with the design in the box (saved or not) — for showing
   // an owner what their guests would get, in an actual inbox.
+  const [sendingConfirmation, setSendingConfirmation] = useState(false);
+  const sendConfirmationSample = async () => {
+    setSendingConfirmation(true); setError(null); setNote(null);
+    try {
+      const res = await fetch("/api/platform/email-design/send-confirmation-sample", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ restaurantId, to: sampleTo.trim(), guestName: sampleName.trim() || undefined }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error ?? "Couldn't send");
+      setNote(`Sample booking confirmation sent to ${d.to} — "${d.subject}".`);
+    } catch (e) { setError((e as Error).message); } finally { setSendingConfirmation(false); }
+  };
+
   const sendSample = async () => {
     if (html === null) return;
     setSending(true); setError(null); setNote(null);
@@ -328,6 +343,9 @@ export function EmailDesignEditor({ restaurantId, restaurantName }: { restaurant
             className="w-80 rounded-md border border-white/15 bg-white/5 px-2 py-1.5 text-xs text-white outline-none focus:border-sky-500"
           />
           <Button disabled={sending || !sampleTo.trim()} onClick={sendSample}>{sending ? "Sending…" : "Send sample"}</Button>
+          <Button disabled={sendingConfirmation || !sampleTo.trim()} onClick={sendConfirmationSample} title="A booking confirmation for a made-up booking — no real reservation is created">
+            {sendingConfirmation ? "Sending…" : "Send sample confirmation"}
+          </Button>
         </div>
       </div>
     </Card>
