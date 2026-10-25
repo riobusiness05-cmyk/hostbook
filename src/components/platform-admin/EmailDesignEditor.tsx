@@ -4,6 +4,130 @@ import { useEffect, useRef, useState } from "react";
 import { Button, Card, SectionTitle } from "@/components/host/ui";
 import { THANK_YOU_PLACEHOLDERS } from "@/lib/emailTemplate";
 
+type Setup = {
+  thankYouMode: "ASK" | "AUTO" | "OFF";
+  thankYouDelay: "IMMEDIATE" | "MIN_30" | "HOUR_2" | "NEXT_MORNING";
+  googleReviewUrl: string | null;
+  emailFromName: string | null;
+  emailReplyTo: string | null;
+  instagramUrl: string | null;
+  websiteUrl: string | null;
+  defaultLanguage: "en" | "es";
+  brandSignOff: string | null;
+};
+
+// What the venue would otherwise set in its own Brand kit: switch the
+// emails on, where the review button goes, who they come from.
+function GuestEmailSetup({ restaurantId, restaurantName, onSaved }: { restaurantId: string; restaurantName: string; onSaved: () => void }) {
+  const [setup, setSetup] = useState<Setup | null>(null);
+  const [premium, setPremium] = useState<boolean | null>(null);
+  const [venue, setVenue] = useState<{ address: string | null; phone: string | null; email: string | null } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  useEffect(() => {
+    fetch(`/api/platform/email-setup?restaurantId=${restaurantId}`)
+      .then((r) => r.json())
+      .then((d) => { setSetup(d.settings); setPremium(d.premium); setVenue(d.restaurant); })
+      .catch(() => setMsg({ ok: false, text: "Couldn't load this venue's email settings." }));
+  }, [restaurantId]);
+
+  const save = async () => {
+    if (!setup) return;
+    setBusy(true); setMsg(null);
+    try {
+      const res = await fetch("/api/platform/email-setup", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ restaurantId, ...setup, googleReviewUrl: setup.googleReviewUrl || null, emailFromName: setup.emailFromName || null, emailReplyTo: setup.emailReplyTo || null, instagramUrl: setup.instagramUrl || null, websiteUrl: setup.websiteUrl || null, brandSignOff: setup.brandSignOff || null }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error ?? "Couldn't save");
+      setSetup(d.settings); setPremium(d.premium);
+      setMsg({ ok: true, text: setup.thankYouMode === "OFF" ? "Saved. Emails are off for this venue." : `Saved. ${restaurantName}'s thank-you emails are live (${setup.thankYouMode === "ASK" ? "staff are asked after each visit" : "sent automatically"}).` });
+      onSaved();
+    } catch (e) { setMsg({ ok: false, text: (e as Error).message }); } finally { setBusy(false); }
+  };
+
+  const field = "w-full rounded-md border border-white/15 bg-white/5 px-2 py-1.5 text-xs text-white outline-none focus:border-sky-500";
+  const set = <K extends keyof Setup>(k: K, v: Setup[K]) => setSetup((s) => (s ? { ...s, [k]: v } : s));
+
+  return (
+    <Card className="p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <SectionTitle>Guest email setup</SectionTitle>
+        {premium !== null && (
+          <span className={"rounded-md px-1.5 py-0.5 text-xs font-semibold " + (premium ? "bg-emerald-500/15 text-emerald-400" : "bg-amber-500/15 text-amber-300")}>
+            {premium ? "Premium — can send" : "Not on Premium — can't send yet"}
+          </span>
+        )}
+      </div>
+      <p className="mb-3 text-xs text-neutral-500">
+        The venue sees these same settings in their own Brand kit. Set them here to get a venue live without their login.
+        Footer address and phone come from the venue profile{venue ? ` (${venue.address || "no address"} · ${venue.phone || "no phone"})` : ""}.
+      </p>
+      {!setup ? (
+        <p className="text-xs text-neutral-500">Loading…</p>
+      ) : (
+        <div className="grid gap-2 sm:grid-cols-2">
+          <label className="text-[11px] text-neutral-400">
+            Mode
+            <select className={field + " mt-1"} value={setup.thankYouMode} onChange={(e) => set("thankYouMode", e.target.value as Setup["thankYouMode"])}>
+              <option value="OFF">Off — nothing is sent</option>
+              <option value="ASK">Ask — staff are asked when a table is released</option>
+              <option value="AUTO">Auto — sent after the delay below</option>
+            </select>
+          </label>
+          <label className="text-[11px] text-neutral-400">
+            Delay (Auto mode)
+            <select className={field + " mt-1"} value={setup.thankYouDelay} onChange={(e) => set("thankYouDelay", e.target.value as Setup["thankYouDelay"])}>
+              <option value="IMMEDIATE">Straight away</option>
+              <option value="MIN_30">30 minutes later</option>
+              <option value="HOUR_2">2 hours later</option>
+              <option value="NEXT_MORNING">Next morning</option>
+            </select>
+          </label>
+          <label className="text-[11px] text-neutral-400 sm:col-span-2">
+            Google review link (the button in the email)
+            <input className={field + " mt-1"} placeholder="https://g.page/r/…/review  or  https://www.google.com/search?q=…#lrd=…,3" value={setup.googleReviewUrl ?? ""} onChange={(e) => set("googleReviewUrl", e.target.value)} />
+          </label>
+          <label className="text-[11px] text-neutral-400">
+            Sender name (From)
+            <input className={field + " mt-1"} placeholder={restaurantName} value={setup.emailFromName ?? ""} onChange={(e) => set("emailFromName", e.target.value)} />
+          </label>
+          <label className="text-[11px] text-neutral-400">
+            Reply-to email
+            <input className={field + " mt-1"} placeholder="owner@venue.com" value={setup.emailReplyTo ?? ""} onChange={(e) => set("emailReplyTo", e.target.value)} />
+          </label>
+          <label className="text-[11px] text-neutral-400">
+            Instagram link
+            <input className={field + " mt-1"} placeholder="https://instagram.com/…" value={setup.instagramUrl ?? ""} onChange={(e) => set("instagramUrl", e.target.value)} />
+          </label>
+          <label className="text-[11px] text-neutral-400">
+            Website link
+            <input className={field + " mt-1"} placeholder="https://…" value={setup.websiteUrl ?? ""} onChange={(e) => set("websiteUrl", e.target.value)} />
+          </label>
+          <label className="text-[11px] text-neutral-400">
+            Language
+            <select className={field + " mt-1"} value={setup.defaultLanguage} onChange={(e) => set("defaultLanguage", e.target.value as Setup["defaultLanguage"])}>
+              <option value="en">English</option>
+              <option value="es">Español</option>
+            </select>
+          </label>
+          <label className="text-[11px] text-neutral-400">
+            Sign-off
+            <input className={field + " mt-1"} placeholder="e.g. The Mantra family" value={setup.brandSignOff ?? ""} onChange={(e) => set("brandSignOff", e.target.value)} />
+          </label>
+        </div>
+      )}
+      {msg && <p className={"mt-3 text-xs " + (msg.ok ? "text-emerald-400" : "text-red-300")}>{msg.text}</p>}
+      <div className="mt-3">
+        <Button variant="primary" disabled={busy || !setup} onClick={save}>{busy ? "Saving…" : "Save email setup"}</Button>
+      </div>
+    </Card>
+  );
+}
+
 // Where a venue's bespoke thank-you email is designed: raw HTML on the
 // left, the venue's real sample emails on the right, re-rendered as you
 // type. Saved templates replace the built-in design for that venue.
@@ -104,8 +228,13 @@ export function EmailDesignEditor({ restaurantId, restaurantName }: { restaurant
   };
 
   const dirty = html !== null && (html || null) !== savedHtml;
+  // Re-render the samples when setup changes (review button, sign-off, language).
+  const [setupVersion, setSetupVersion] = useState(0);
+  useEffect(() => { if (html !== null) setHtml((h) => (h === null ? h : h + "")); }, [setupVersion]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
+    <>
+    <GuestEmailSetup restaurantId={restaurantId} restaurantName={restaurantName} onSaved={() => setSetupVersion((v) => v + 1)} />
     <Card className="p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <SectionTitle>Guest email design</SectionTitle>
@@ -202,5 +331,6 @@ export function EmailDesignEditor({ restaurantId, restaurantName }: { restaurant
         </div>
       </div>
     </Card>
+    </>
   );
 }
