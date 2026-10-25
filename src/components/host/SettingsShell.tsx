@@ -10,20 +10,23 @@ import { BrandKitSettings } from "./BrandKitSettings";
 import { HoursSettings } from "./HoursSettings";
 import { TableAvailabilitySettings } from "./TableAvailabilitySettings";
 import { WebsiteWidgetSettings } from "./WebsiteWidgetSettings";
+import { TeamSettings } from "./TeamSettings";
 import type { BillingState, PlanDTO } from "@/lib/billing/subscription";
 import { isPremium } from "@/lib/billing/catalogue";
 import type { SettingsDTO } from "@/lib/hostflow/floor";
-import type { HourRow, TableRow, SectionRow } from "@/lib/host/client";
+import type { HourRow, TableRow, SectionRow, HostRole } from "@/lib/host/client";
 
-type Tab = "billing" | "general" | "hours" | "tables" | "website" | "emails";
+type Tab = "billing" | "general" | "hours" | "tables" | "website" | "emails" | "team";
 
-const TABS: { id: Tab; label: string }[] = [
-  { id: "billing", label: "Billing" },
+// Owners see everything; managers everything except money and membership.
+const TABS: { id: Tab; label: string; ownerOnly?: boolean }[] = [
+  { id: "billing", label: "Billing", ownerOnly: true },
   { id: "general", label: "General" },
   { id: "hours", label: "Hours" },
   { id: "tables", label: "Tables" },
   { id: "website", label: "Website" },
   { id: "emails", label: "Brand kit" },
+  { id: "team", label: "Team", ownerOnly: true },
 ];
 
 export function SettingsShell({
@@ -36,6 +39,7 @@ export function SettingsShell({
   initialHours,
   initialTables,
   initialSections = [],
+  role = "OWNER",
   blocked = false,
   checkoutResult = null,
 }: {
@@ -48,11 +52,13 @@ export function SettingsShell({
   initialHours: HourRow[];
   initialTables: TableRow[];
   initialSections?: SectionRow[];
+  role?: HostRole;
   blocked?: boolean;
   checkoutResult?: "success" | "cancelled" | null;
 }) {
   const [theme, setTheme] = useState<"dark" | "light">("dark");
-  const [tab, setTab] = useState<Tab>("billing");
+  const isOwner = role === "OWNER";
+  const [tab, setTab] = useState<Tab>(isOwner ? "billing" : "general");
   // Kept up to date by the Billing tab, so an upgrade unlocks Premium tabs immediately.
   const [billing, setBilling] = useState(initialBilling);
 
@@ -84,7 +90,7 @@ export function SettingsShell({
             </Link>
           </div>
           <div className="mx-auto flex max-w-[900px] gap-1 overflow-x-auto px-4 pb-2">
-            {TABS.filter((t) => t.id !== "emails" || isPremium(billing)).map((t) => (
+            {TABS.filter((t) => (t.id !== "emails" || isPremium(billing)) && (!t.ownerOnly || isOwner)).map((t) => (
               <button
                 key={t.id}
                 onClick={() => setTab(t.id)}
@@ -102,7 +108,8 @@ export function SettingsShell({
         </header>
 
         <main className="mx-auto max-w-[900px] p-4">
-          {tab === "billing" && (
+          {tab === "team" && <TeamSettings viewerRole={role} />}
+          {tab === "billing" && isOwner && (
             <BillingSection
               initialBilling={initialBilling}
               onBillingChange={setBilling}

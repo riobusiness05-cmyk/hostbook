@@ -17,6 +17,8 @@ function ResetPasswordInner() {
   const params = useSearchParams();
   const router = useRouter();
   const token = params.get("token");
+  // Invited team members arrive here from their invite email.
+  const welcome = params.get("welcome") === "1";
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -70,8 +72,10 @@ function ResetPasswordInner() {
             </>
           ) : (
             <>
-              <h1 className="font-display text-2xl">Set a new password</h1>
-              <p className="mt-1 text-sm text-hf-inkMuted">At least 8 characters.</p>
+              <h1 className="font-display text-2xl">{welcome ? "Welcome — choose your password" : "Set a new password"}</h1>
+              <p className="mt-1 text-sm text-hf-inkMuted">
+                {welcome ? "You've been added to a venue on Host Flow. Pick a password (at least 8 characters) and you're in." : "At least 8 characters."}
+              </p>
 
               <form onSubmit={submit} className="mt-5 space-y-3">
                 <input
@@ -98,7 +102,7 @@ function ResetPasswordInner() {
                   disabled={busy}
                   className="w-full rounded-lg bg-brand-400 py-2.5 text-sm font-semibold text-hf-bg transition-opacity hover:opacity-90 disabled:opacity-50"
                 >
-                  {busy ? "Saving…" : "Set new password"}
+                  {busy ? "Saving…" : welcome ? "Choose password & sign in" : "Set new password"}
                 </button>
               </form>
             </>

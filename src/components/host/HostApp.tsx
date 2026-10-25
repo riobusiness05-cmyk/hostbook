@@ -43,10 +43,12 @@ export function HostApp({
   initialState,
   restaurantName,
   billing,
+  role = "OWNER",
 }: {
   initialState: FloorState;
   restaurantName: string;
   billing?: BillingState;
+  role?: "OWNER" | "MANAGER" | "STAFF";
 }) {
   const { state, status, refresh, setPaused } = useFloorStream(initialState);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -122,12 +124,14 @@ export function HostApp({
               >
                 {theme === "dark" ? "☀️" : "🌙"}
               </button>
-              <Link
-                href="/host/settings"
-                className="rounded-lg border border-black/10 px-3 py-2 text-sm hover:bg-black/5 dark:border-white/15 dark:hover:bg-white/10"
-              >
-                Settings
-              </Link>
+              {role !== "STAFF" && (
+                <Link
+                  href="/host/settings"
+                  className="rounded-lg border border-black/10 px-3 py-2 text-sm hover:bg-black/5 dark:border-white/15 dark:hover:bg-white/10"
+                >
+                  Settings
+                </Link>
+              )}
               <button
                 onClick={async () => {
                   await fetch("/api/hostflow/logout", { method: "POST" });

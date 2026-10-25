@@ -17,6 +17,8 @@ export default async function HostSettingsPage({
 }) {
   const session = await getServerHostSession();
   if (!session) redirect("/hostflow/login");
+  // Floor staff run the floor; settings are for managers and owners.
+  if (session.role === "STAFF") redirect("/host");
 
   const restaurant = await prisma.restaurant.findUnique({ where: { id: session.restaurantId } });
   if (!restaurant) redirect("/hostflow/login");
@@ -57,6 +59,7 @@ export default async function HostSettingsPage({
         sectionName: t.section?.name ?? null,
       }))}
       initialSections={sections.map((s) => ({ id: s.id, name: s.name, note: s.note, bookableOnline: s.bookableOnline, isOutdoor: s.isOutdoor, tableCount: s._count.tables }))}
+      role={session.role}
       blocked={searchParams.blocked === "1"}
       checkoutResult={searchParams.checkout === "success" || searchParams.checkout === "cancelled" ? searchParams.checkout : null}
     />

@@ -28,5 +28,5 @@ export default async function HostPage() {
   if (!restaurant.onboardingCompletedAt) redirect("/hostflow/onboarding");
 
   const initialState = await getFloorState(restaurant.id);
-  return <HostApp initialState={initialState} restaurantName={restaurant.name} billing={billing} />;
+  return <HostApp initialState={initialState} restaurantName={restaurant.name} billing={billing} role={session.role} />;
 }

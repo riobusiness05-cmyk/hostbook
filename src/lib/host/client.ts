@@ -324,6 +324,44 @@ export type TableRow = {
   sectionName: string | null;
 };
 
+// ── Team ────────────────────────────────────────────────────────────────
+export type HostRole = "OWNER" | "MANAGER" | "STAFF";
+export type TeamMember = {
+  id: string;
+  name: string;
+  email: string;
+  role: HostRole;
+  lastLoginAt: string | null;
+  createdAt: string;
+  pending: boolean;
+  isYou: boolean;
+};
+
+export async function fetchTeam(): Promise<TeamMember[]> {
+  const res = await fetch("/api/host/team", { cache: "no-store" });
+  return (await jsonOrThrow<{ members: TeamMember[] }>(res)).members;
+}
+
+export async function inviteTeamMember(input: { name: string; email: string; role: HostRole }): Promise<TeamMember> {
+  const res = await fetch("/api/host/team", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) });
+  return (await jsonOrThrow<{ member: TeamMember }>(res)).member;
+}
+
+export async function updateTeamRole(id: string, role: HostRole): Promise<void> {
+  const res = await fetch(`/api/host/team/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ role }) });
+  await jsonOrThrow(res);
+}
+
+export async function removeTeamMember(id: string): Promise<void> {
+  const res = await fetch(`/api/host/team/${id}`, { method: "DELETE" });
+  await jsonOrThrow(res);
+}
+
+export async function resendTeamInvite(id: string): Promise<void> {
+  const res = await fetch(`/api/host/team/${id}/resend`, { method: "POST" });
+  await jsonOrThrow(res);
+}
+
 export type SectionRow = {
   id: string;
   name: string;
