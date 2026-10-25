@@ -216,6 +216,7 @@ export function AdminDashboard({
 
         {/* Restaurants table */}
         <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+          <CleanupPanel restaurants={restaurants} />
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-400">All restaurants</h2>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[900px] text-left text-sm">
@@ -295,5 +296,83 @@ export function AdminDashboard({
         </div>
       </main>
     </div>
+  );
+}
+
+
+// Bulk removal of test venues. Only expired, never-paid venues are offered;
+// each one still goes through the guarded delete endpoint (which refuses
+// anything with a live or complimentary subscription), and the operator has
+// to tick each venue and type DELETE. Nothing here is automatic.
+function CleanupPanel({ restaurants }: { restaurants: RestaurantRow[] }) {
+  const candidates = restaurants.filter((r) => r.status === "EXPIRED" && !r.isComplimentary);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [confirm, setConfirm] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [results, setResults] = useState<{ name: string; ok: boolean; note: string }[] | null>(null);
+  if (candidates.length === 0) return null;
+
+  const toggle = (id: string) => setPicked((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+
+  const run = async () => {
+    if (!window.confirm(`Permanently delete ${picked.size} venue${picked.size === 1 ? "" : "s"} and everything in them? This cannot be undone.`)) return;
+    setBusy(true);
+    const out: { name: string; ok: boolean; note: string }[] = [];
+    for (const r of candidates.filter((c) => picked.has(c.id))) {
+      try {
+        const res = await fetch("/api/platform/delete-restaurant", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ restaurantId: r.id, confirmSlug: r.slug }),
+        });
+        const d = await res.json().catch(() => ({}));
+        out.push({ name: r.name, ok: res.ok, note: res.ok ? `deleted (${d.deleted?.bookings ?? 0} bookings, ${d.deleted?.accounts ?? 0} accounts)` : d.error || `failed (${res.status})` });
+      } catch (e) {
+        out.push({ name: r.name, ok: false, note: (e as Error).message });
+      }
+    }
+    setResults(out);
+    setBusy(false);
+    setTimeout(() => window.location.reload(), 2500);
+  };
+
+  return (
+    <Card className="mb-6 border-red-500/20 p-4">
+      <SectionTitle>Clean up test venues</SectionTitle>
+      <p className="mb-3 text-xs text-neutral-500">
+        Expired, never-paid venues. Tick the ones that were only ever tests, type DELETE, and they are removed for good — accounts, tables,
+        bookings and emails. Anything with a paid or complimentary subscription is never offered here and is refused by the server anyway.
+      </p>
+      <div className="mb-3 grid gap-1 sm:grid-cols-2 lg:grid-cols-3">
+        {candidates.map((r) => (
+          <label key={r.id} className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1.5 text-xs">
+            <input type="checkbox" checked={picked.has(r.id)} onChange={() => toggle(r.id)} disabled={busy} />
+            <span className="truncate font-semibold text-white">{r.name}</span>
+            <span className="ml-auto shrink-0 text-neutral-500">{formatDate(r.createdAt)}</span>
+          </label>
+        ))}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="button" className="text-xs text-sky-400 hover:underline" onClick={() => setPicked(new Set(candidates.map((c) => c.id)))} disabled={busy}>Select all</button>
+        <button type="button" className="text-xs text-neutral-400 hover:underline" onClick={() => setPicked(new Set())} disabled={busy}>Clear</button>
+        <input
+          value={confirm}
+          onChange={(e) => setConfirm(e.target.value)}
+          placeholder="type DELETE"
+          className="ml-auto w-36 rounded-md border border-white/15 bg-white/5 px-2 py-1.5 text-xs text-white outline-none focus:border-red-400"
+        />
+        <Button size="sm" variant="danger" disabled={busy || picked.size === 0 || confirm !== "DELETE"} onClick={run}>
+          {busy ? "Deleting…" : `Delete ${picked.size} venue${picked.size === 1 ? "" : "s"}`}
+        </Button>
+      </div>
+      {results && (
+        <div className="mt-3 space-y-1 text-xs">
+          {results.map((r) => (
+            <p key={r.name} className={r.ok ? "text-emerald-400" : "text-red-300"}>{r.name}: {r.note}</p>
+          ))}
+          <p className="text-neutral-500">Refreshing…</p>
+        </div>
+      )}
+    </Card>
   );
 }
