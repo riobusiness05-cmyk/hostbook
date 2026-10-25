@@ -46,11 +46,15 @@ export async function GET(req: NextRequest, { params }: { params: { slug: string
   const [detailed, sections] = await Promise.all([
     getSlotAvailability({ restaurant, dateStr: parsed.data.date, partySize: parsed.data.partySize, onlineOnly: true }),
     prisma.section.findMany({
-      where: { restaurantId: restaurant.id, bookableOnline: true, tables: { some: { isActive: true } } },
+      where: { restaurantId: restaurant.id, tables: { some: { isActive: true } } },
       orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-      select: { name: true, note: true },
+      select: { name: true, note: true, bookableOnline: true },
     }),
   ]);
+  // A venue that has written an area note or closed an area to online
+  // booking gets the descriptive chooser (full areas shown as full).
+  // Everyone else keeps the original compact chooser, untouched.
+  const areasCustomised = sections.some((s) => s.note || !s.bookableOnline);
 
   // `slots` stays a plain list of times for existing consumers; `areasByTime`
   // is what lets the form offer "where would you like to sit?" with only the
@@ -62,6 +66,7 @@ export async function GET(req: NextRequest, { params }: { params: { slug: string
     areasByTime: Object.fromEntries(detailed.map((s) => [s.time, s.areas])),
     // Every area a guest may choose, in the venue's order, with its
     // one-line description — so a full area is shown as full, not hidden.
-    areas: sections.map((s) => ({ name: s.name, note: s.note })),
+    areas: sections.filter((s) => s.bookableOnline).map((s) => ({ name: s.name, note: s.note })),
+    areasCustomised,
   });
 }

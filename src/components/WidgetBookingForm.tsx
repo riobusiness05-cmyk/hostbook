@@ -44,6 +44,7 @@ export function WidgetBookingForm({
   const [areasByTime, setAreasByTime] = useState<Record<string, string[]>>({});
   // Every area the venue lets guests choose, with its one-line description.
   const [areas, setAreas] = useState<{ name: string; note: string | null }[]>([]);
+  const [areasCustomised, setAreasCustomised] = useState(false);
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
   const [area, setArea] = useState<string>("");
   const [checking, setChecking] = useState(false);
@@ -76,6 +77,7 @@ export function WidgetBookingForm({
       setSlots(data.slots);
       setAreasByTime(data.areasByTime ?? {});
       setAreas(Array.isArray(data.areas) ? data.areas : []);
+      setAreasCustomised(!!data.areasCustomised);
       if (data.slots.length === 0) {
         setStatus({ type: "error", message: "No tables open for that date/party size. Try another date." });
       }
@@ -244,7 +246,33 @@ export function WidgetBookingForm({
         </div>
       )}
 
-      {selectedTime && venueHasAreas && (
+      {selectedTime && venueHasAreas && !areasCustomised && (
+        <div className="mt-4">
+          <p className="mb-2 text-xs font-medium text-neutral-500">Where would you like to sit?</p>
+          <div className="flex flex-wrap gap-1.5">
+            {["", ...openAreas].map((a) => {
+              const isSelected = area === a;
+              return (
+                <button
+                  key={a || "__any"}
+                  type="button"
+                  onClick={() => setArea(a)}
+                  className="rounded-md border px-2.5 py-1 text-xs font-medium transition-colors"
+                  style={
+                    isSelected
+                      ? { backgroundColor: brandColor, borderColor: brandColor, color: "#fff" }
+                      : { borderColor: "#e5e5e5", color: "#404040" }
+                  }
+                >
+                  {a || "No preference"}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {selectedTime && venueHasAreas && areasCustomised && (
         <div className="mt-4">
           <p className="mb-2 text-xs font-medium text-neutral-500">Where would you like to sit?</p>
           <div className="grid gap-1.5 sm:grid-cols-2">
