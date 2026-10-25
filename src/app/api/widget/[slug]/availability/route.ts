@@ -3,6 +3,7 @@ import { getRestaurantBySlug } from "@/lib/restaurant";
 import { getSlotAvailability } from "@/lib/availability";
 import { availabilityQuerySchema } from "@/types";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
+import { prisma } from "@/lib/prisma";
 
 // Without this, Next.js can treat a GET route handler as statically
 // cacheable and serve a stale response without ever re-invoking this
@@ -42,11 +43,14 @@ export async function GET(req: NextRequest, { params }: { params: { slug: string
     return NextResponse.json({ error: "Invalid query", details: parsed.error.flatten() }, { status: 400 });
   }
 
-  const detailed = await getSlotAvailability({
-    restaurant,
-    dateStr: parsed.data.date,
-    partySize: parsed.data.partySize,
-  });
+  const [detailed, sections] = await Promise.all([
+    getSlotAvailability({ restaurant, dateStr: parsed.data.date, partySize: parsed.data.partySize, onlineOnly: true }),
+    prisma.section.findMany({
+      where: { restaurantId: restaurant.id, bookableOnline: true, tables: { some: { isActive: true } } },
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+      select: { name: true, note: true },
+    }),
+  ]);
 
   // `slots` stays a plain list of times for existing consumers; `areasByTime`
   // is what lets the form offer "where would you like to sit?" with only the
@@ -56,5 +60,8 @@ export async function GET(req: NextRequest, { params }: { params: { slug: string
     partySize: parsed.data.partySize,
     slots: detailed.map((s) => s.time),
     areasByTime: Object.fromEntries(detailed.map((s) => [s.time, s.areas])),
+    // Every area a guest may choose, in the venue's order, with its
+    // one-line description — so a full area is shown as full, not hidden.
+    areas: sections.map((s) => ({ name: s.name, note: s.note })),
   });
 }

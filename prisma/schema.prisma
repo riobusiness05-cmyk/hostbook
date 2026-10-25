@@ -114,6 +114,10 @@ model Section {
   sortOrder    Int        @default(0)
   isOutdoor    Boolean    @default(false) // Terrace / Garden — a valid "move outside to eat" destination
   room         String     @default("Main Room") // physical room this section belongs to (floor-plan switcher)
+  // Guest-facing: can this area be chosen (or landed in) by an online
+  // booking, and a one-liner shown under its name ("Singers' stage visible").
+  bookableOnline Boolean  @default(true)
+  note           String?
 
   tables       DiningTable[]
   staff        StaffMember[]

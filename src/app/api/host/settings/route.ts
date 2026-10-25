@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const ctx = await hostContext(req);
+  const ctx = await hostContext(req, { role: "MANAGER" });
   if ("error" in ctx) return ctx.error;
   const body = await req.json().catch(() => null);
   const parsed = settingsSchema.safeParse(body);

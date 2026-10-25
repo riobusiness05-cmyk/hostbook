@@ -11,7 +11,7 @@ import { resolveMonthlyPriceId } from "@/lib/billing/plans";
 // Ensures a Stripe customer exists first so the resulting subscription is
 // always linked back to our Subscription row via stripeCustomerId.
 export async function POST(req: NextRequest) {
-  const ctx = await hostContext(req, { requireAccess: false });
+  const ctx = await hostContext(req, { requireAccess: false, role: "OWNER" });
   if ("error" in ctx) return ctx.error;
 
   if (!isStripeConfigured()) {

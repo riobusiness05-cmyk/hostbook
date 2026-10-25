@@ -158,6 +158,7 @@ export async function createReservationForRestaurant(
         time: input.time,
         partySize: input.partySize,
         seatingPreference: input.seatingPreference,
+        onlineOnly: input.source === "WEB_FORM",
         db: tx,
       });
       if (!found) throw new NoAvailabilityError();
@@ -302,11 +303,24 @@ export async function createReservationForRestaurant(
   } catch (err) {
     if (err instanceof NoAvailabilityError) {
       const area = input.seatingPreference && input.seatingPreference !== "No preference" ? input.seatingPreference : null;
+      // Blame the area only when the area is the problem. If the whole
+      // time is gone (service pacing cap, last table anywhere taken) the
+      // guest should be sent to another time, not round the other areas.
+      const elsewhere = area
+        ? await findAvailableTable({
+            restaurant,
+            dateStr: input.date,
+            time: input.time,
+            partySize: input.partySize,
+            onlineOnly: input.source === "WEB_FORM",
+          }).catch(() => null)
+        : null;
       return {
         ok: false,
-        error: area
-          ? `${area} has no room left at ${input.time}. Please pick another area or time.`
-          : "That time is no longer available. Please suggest a different time or ask what's open.",
+        error:
+          area && elsewhere
+            ? `${area} is fully booked at ${input.time} — please try another area or time.`
+            : "That time is no longer available. Please pick a different time.",
       };
     }
     // Two near-simultaneous requests carrying the same idempotency key can
@@ -542,6 +556,7 @@ export async function rescheduleReservationById(
         time: newTime,
         partySize,
         seatingPreference: reservation.seatingPreference ?? undefined,
+        onlineOnly: reservation.source === "WEB_FORM",
         // Otherwise this reservation's own current slot reads as a conflict
         // against itself, and e.g. just bumping party size at the same time
         // gets bounced to a different table (or rejected) for no reason.

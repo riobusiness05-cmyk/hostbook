@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getRequestHostSession } from "@/lib/hostAuth";
+import { getRequestHostSession, type HostRole } from "@/lib/hostAuth";
 import { getBillingState } from "@/lib/billing/subscription";
 import { HostFlowError } from "./actions";
 
@@ -15,13 +15,28 @@ import { HostFlowError } from "./actions";
 // own routes (checkout/portal/cancel/resume/status) opt out via
 // `requireAccess: false` so a blocked account can still see its status and
 // pay — everything else is cut off the moment access lapses.
+export type HostCtx = { restaurantId: string; accountId: string; role: HostRole };
+
+// What each role may do. STAFF run the floor; MANAGER also shapes the
+// venue (hours, tables, settings, emails); OWNER also controls money and
+// who has access.
+export const ROLE_RANK: Record<HostRole, number> = { STAFF: 0, MANAGER: 1, OWNER: 2 };
+
 export async function hostContext(
   req: NextRequest,
-  { requireAccess = true }: { requireAccess?: boolean } = {}
-): Promise<{ restaurantId: string; accountId: string } | { error: NextResponse }> {
+  { requireAccess = true, role }: { requireAccess?: boolean; role?: HostRole } = {}
+): Promise<HostCtx | { error: NextResponse }> {
   const session = await getRequestHostSession(req);
   if (!session) {
     return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
+  }
+  if (role && ROLE_RANK[session.role] < ROLE_RANK[role]) {
+    return {
+      error: NextResponse.json(
+        { error: role === "OWNER" ? "Only the owner can do that." : "Only a manager or the owner can do that." },
+        { status: 403 }
+      ),
+    };
   }
   if (requireAccess) {
     const billing = await getBillingState(session.restaurantId);
@@ -34,7 +49,7 @@ export async function hostContext(
       };
     }
   }
-  return { restaurantId: session.restaurantId, accountId: session.accountId };
+  return { restaurantId: session.restaurantId, accountId: session.accountId, role: session.role };
 }
 
 // Uniform error handling for mutation handlers.

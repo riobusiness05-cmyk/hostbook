@@ -42,6 +42,8 @@ export function WidgetBookingForm({
   // time — a full area simply isn't offered, and a chosen one is honoured
   // by the server, not treated as a hint.
   const [areasByTime, setAreasByTime] = useState<Record<string, string[]>>({});
+  // Every area the venue lets guests choose, with its one-line description.
+  const [areas, setAreas] = useState<{ name: string; note: string | null }[]>([]);
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
   const [area, setArea] = useState<string>("");
   const [checking, setChecking] = useState(false);
@@ -73,6 +75,7 @@ export function WidgetBookingForm({
       }
       setSlots(data.slots);
       setAreasByTime(data.areasByTime ?? {});
+      setAreas(Array.isArray(data.areas) ? data.areas : []);
       if (data.slots.length === 0) {
         setStatus({ type: "error", message: "No tables open for that date/party size. Try another date." });
       }
@@ -144,8 +147,14 @@ export function WidgetBookingForm({
   }
 
   // Only worth asking when the venue actually has more than one area.
-  const venueHasAreas = new Set(Object.values(areasByTime).flat()).size >= 2;
+  const venueHasAreas = areas.length >= 2 || new Set(Object.values(areasByTime).flat()).size >= 2;
   const openAreas = selectedTime ? areasByTime[selectedTime] ?? [] : [];
+  // Areas in the venue's order; anything open at this time that the list
+  // doesn't know about (older servers) is appended so nothing is hidden.
+  const areaChoices = [
+    ...areas,
+    ...openAreas.filter((n) => !areas.some((a) => a.name === n)).map((n) => ({ name: n, note: null as string | null })),
+  ];
 
   function pickTime(time: string) {
     setSelectedTime(time);
@@ -238,26 +247,38 @@ export function WidgetBookingForm({
       {selectedTime && venueHasAreas && (
         <div className="mt-4">
           <p className="mb-2 text-xs font-medium text-neutral-500">Where would you like to sit?</p>
-          <div className="flex flex-wrap gap-1.5">
-            {["", ...openAreas].map((a) => {
-              const isSelected = area === a;
+          <div className="grid gap-1.5 sm:grid-cols-2">
+            {[{ name: "", note: null as string | null }, ...areaChoices].map((a) => {
+              const isAny = a.name === "";
+              const isFull = !isAny && !openAreas.includes(a.name);
+              const isSelected = area === a.name;
               return (
                 <button
-                  key={a || "__any"}
+                  key={a.name || "__any"}
                   type="button"
-                  onClick={() => setArea(a)}
-                  className="rounded-md border px-2.5 py-1 text-xs font-medium transition-colors"
+                  disabled={isFull}
+                  aria-disabled={isFull}
+                  onClick={() => !isFull && setArea(a.name)}
+                  className="rounded-lg border px-3 py-2 text-left transition-colors disabled:cursor-not-allowed"
                   style={
                     isSelected
                       ? { backgroundColor: brandColor, borderColor: brandColor, color: "#fff" }
-                      : { borderColor: "#e5e5e5", color: "#404040" }
+                      : isFull
+                        ? { borderColor: "#eeeeee", color: "#a3a3a3", backgroundColor: "#fafafa" }
+                        : { borderColor: "#e5e5e5", color: "#262626" }
                   }
                 >
-                  {a || "No preference"}
+                  <span className="block text-xs font-semibold">{isAny ? "No preference" : a.name}</span>
+                  {isFull ? (
+                    <span className="block text-[11px]">Fully booked at {selectedTime} — try another area</span>
+                  ) : a.note ? (
+                    <span className="block text-[11px]" style={{ color: isSelected ? "rgba(255,255,255,0.85)" : "#737373" }}>{a.note}</span>
+                  ) : null}
                 </button>
               );
             })}
           </div>
+          {area && <p className="mt-1.5 text-[11px] text-neutral-500">Your table will be in {area} — we never move a booking to a different area.</p>}
         </div>
       )}
 

@@ -21,7 +21,7 @@ export default async function HostSettingsPage({
   const restaurant = await prisma.restaurant.findUnique({ where: { id: session.restaurantId } });
   if (!restaurant) redirect("/hostflow/login");
 
-  const [billing, plans, settings, hours, tables] = await Promise.all([
+  const [billing, plans, settings, hours, tables, sections] = await Promise.all([
     getBillingState(restaurant.id),
     listActivePlans(),
     getSettings(restaurant.id),
@@ -30,6 +30,11 @@ export default async function HostSettingsPage({
       where: { restaurantId: restaurant.id },
       include: { section: true },
       orderBy: { tableNumber: "asc" },
+    }),
+    prisma.section.findMany({
+      where: { restaurantId: restaurant.id },
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+      include: { _count: { select: { tables: true } } },
     }),
   ]);
 
@@ -51,6 +56,7 @@ export default async function HostSettingsPage({
         isActive: t.isActive,
         sectionName: t.section?.name ?? null,
       }))}
+      initialSections={sections.map((s) => ({ id: s.id, name: s.name, note: s.note, bookableOnline: s.bookableOnline, isOutdoor: s.isOutdoor, tableCount: s._count.tables }))}
       blocked={searchParams.blocked === "1"}
       checkoutResult={searchParams.checkout === "success" || searchParams.checkout === "cancelled" ? searchParams.checkout : null}
     />

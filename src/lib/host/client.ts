@@ -324,6 +324,29 @@ export type TableRow = {
   sectionName: string | null;
 };
 
+export type SectionRow = {
+  id: string;
+  name: string;
+  note: string | null;
+  bookableOnline: boolean;
+  isOutdoor: boolean;
+  tableCount: number;
+};
+
+export async function fetchSections(): Promise<SectionRow[]> {
+  const res = await fetch("/api/host/sections", { cache: "no-store" });
+  return (await jsonOrThrow<{ sections: SectionRow[] }>(res)).sections;
+}
+
+export async function updateSection(id: string, patch: Partial<Pick<SectionRow, "name" | "note" | "bookableOnline" | "isOutdoor">>): Promise<void> {
+  const res = await fetch(`/api/host/sections/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  await jsonOrThrow(res);
+}
+
 export async function fetchAllTables(): Promise<TableRow[]> {
   const res = await fetch("/api/host/tables", { cache: "no-store" });
   const data = await jsonOrThrow<{ tables: TableRow[] }>(res);

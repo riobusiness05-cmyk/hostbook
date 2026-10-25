@@ -15,7 +15,7 @@ const bodySchema = z.object({
 // Detection only — never writes to the database. The host reviews/edits the
 // result client-side and only real tables get created via the /apply route.
 export async function POST(req: NextRequest) {
-  const ctx = await hostContext(req);
+  const ctx = await hostContext(req, { role: "MANAGER" });
   if ("error" in ctx) return ctx.error;
   const over = await venueQuota(ctx.restaurantId, "ai-vision");
   if (over) return over;

@@ -42,7 +42,9 @@ export function verifyPassword(password: string, stored: string): boolean {
 
 // ── Session token: restaurantId|accountId|expires|sig (| never appears in a
 // cuid, number, or hex signature, so parsing is unambiguous) ────────────────
-export type HostSession = { restaurantId: string; accountId: string; version: number };
+export type HostRole = "OWNER" | "MANAGER" | "STAFF";
+export const HOST_ROLES: HostRole[] = ["OWNER", "MANAGER", "STAFF"];
+export type HostSession = { restaurantId: string; accountId: string; version: number; role: HostRole };
 
 export function createHostSessionToken(restaurantId: string, accountId: string, version = 0): string {
   const expires = Date.now() + TTL_MS;
@@ -72,7 +74,9 @@ export function readHostSession(token: string | undefined): HostSession | null {
     if (Number.isNaN(expires) || Date.now() > expires) return null;
     const version = versionStr === undefined ? 0 : Number(versionStr);
     if (!Number.isInteger(version)) return null;
-    return { restaurantId, accountId, version };
+    // Role is filled in by resolveHostSession from the database — never
+    // from the token, so a role change takes effect on the next request.
+    return { restaurantId, accountId, version, role: "STAFF" };
   } catch {
     return null;
   }
@@ -86,10 +90,17 @@ export async function resolveHostSession(token: string | undefined): Promise<Hos
   if (!parsed) return null;
   const account = await prisma.account.findUnique({
     where: { id: parsed.accountId },
-    select: { restaurantId: true, sessionVersion: true },
+    select: { restaurantId: true, sessionVersion: true, role: true },
   });
   if (!account || account.restaurantId !== parsed.restaurantId || account.sessionVersion !== parsed.version) return null;
-  return parsed;
+  return { ...parsed, role: normalizeRole(account.role) };
+}
+
+/** Accounts created before roles existed carry "MANAGER" (the old column
+ *  default) or "OWNER" (registration). Anything unknown is treated as the
+ *  least-privileged role. */
+export function normalizeRole(role: string | null | undefined): HostRole {
+  return role === "OWNER" || role === "MANAGER" || role === "STAFF" ? role : "STAFF";
 }
 
 /** Ends every session this account holds, everywhere. */

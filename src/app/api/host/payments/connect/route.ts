@@ -9,7 +9,7 @@ import { createOrGetConnectOnboardingLink } from "@/lib/stripeConnect";
 // the platform's SaaS billing (restaurant paying Host Flow). This is for
 // no-show protection (guest paying the restaurant directly).
 export async function POST(req: NextRequest) {
-  const ctx = await hostContext(req);
+  const ctx = await hostContext(req, { role: "OWNER" });
   if ("error" in ctx) return ctx.error;
 
   if (!isStripeConfigured()) {

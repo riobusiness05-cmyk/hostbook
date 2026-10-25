@@ -53,7 +53,7 @@ function dimensionsFor(shape: "ROUND" | "SQUARE" | "RECT", seats: number): { wid
 }
 
 export async function POST(req: NextRequest) {
-  const ctx = await hostContext(req);
+  const ctx = await hostContext(req, { role: "MANAGER" });
   if ("error" in ctx) return ctx.error;
 
   const body = await req.json().catch(() => null);

@@ -335,6 +335,7 @@ export async function getAvailableSlots(params: {
   partySize: number;
   intervalMinutes?: number;
   area?: string | null;
+  onlineOnly?: boolean;
 }): Promise<string[]> {
   const detailed = await getSlotAvailability(params);
   const area = params.area && params.area !== "No preference" ? params.area : null;
@@ -347,8 +348,10 @@ export async function getSlotAvailability(params: {
   dateStr: string;
   partySize: number;
   intervalMinutes?: number;
+  /** True for guests booking online: only areas opened to online booking count. */
+  onlineOnly?: boolean;
 }): Promise<SlotAvailability[]> {
-  const { restaurant, dateStr, partySize } = params;
+  const { restaurant, dateStr, partySize, onlineOnly = false } = params;
 
   const settings = await getSettings(restaurant.id);
   const intervalMinutes = params.intervalMinutes ?? settings.bookingIntervalMinutes;
@@ -373,6 +376,7 @@ export async function getSlotAvailability(params: {
     earliestMinute,
     maxBookingsPer15Min: settings.maxBookingsPer15Min,
     tableMergingEnabled: settings.tableMergingEnabled,
+    onlineOnly,
   });
 }
 
@@ -387,13 +391,14 @@ async function computeSlots(params: {
   earliestMinute: number;
   maxBookingsPer15Min: number;
   tableMergingEnabled: boolean;
+  onlineOnly: boolean;
 }): Promise<SlotAvailability[]> {
-  const { restaurant, dateStr, partySize, intervalMinutes, hours, blackouts, earliestMinute, maxBookingsPer15Min, tableMergingEnabled } = params;
+  const { restaurant, dateStr, partySize, intervalMinutes, hours, blackouts, earliestMinute, maxBookingsPer15Min, tableMergingEnabled, onlineOnly } = params;
 
   // Not pre-filtered by capacity: a party too big for any single table may
   // still fit a combo of tables (see findTableCombo below), so every active,
   // in-service table stays a candidate until the per-slot check below.
-  const tables = await prisma.diningTable.findMany({
+  const allTables = await prisma.diningTable.findMany({
     where: {
       restaurantId: restaurant.id,
       isActive: true,
@@ -401,6 +406,9 @@ async function computeSlots(params: {
     },
     include: { section: true },
   });
+  // A guest booking online only ever sees — and only ever lands in — areas
+  // the venue opened to online booking. Staff see everything.
+  const tables = onlineOnly ? allTables.filter((t) => !t.section || t.section.bookableOnline) : allTables;
   if (tables.length === 0) return [];
 
   // The venue's named areas, in the order the host laid them out, so the
@@ -516,9 +524,11 @@ export async function findAvailableTable(params: {
   partySize: number;
   seatingPreference?: string;
   excludeReservationId?: string;
+  /** True for guests booking online: never land them in an area closed to online booking. */
+  onlineOnly?: boolean;
   db?: Prisma.TransactionClient;
 }): Promise<{ table: TableWithSection; comboTables: TableWithSection[] } | null> {
-  const { restaurant, dateStr, time, partySize, seatingPreference, excludeReservationId, db = prisma } = params;
+  const { restaurant, dateStr, time, partySize, seatingPreference, excludeReservationId, onlineOnly = false, db = prisma } = params;
 
   const settings = await getSettings(restaurant.id);
   if (daysUntil(dateStr, restaurant.timezone) > settings.bookingWindowDays) return null; // beyond how far ahead online booking is allowed
@@ -554,7 +564,14 @@ export async function findAvailableTable(params: {
   // the search; any other text is just a note for staff.
   const prefArea = seatingPreference && seatingPreference !== "No preference" ? seatingPreference : null;
   const prefSection = prefArea ? await db.section.findFirst({ where: { restaurantId: restaurant.id, name: prefArea } }) : null;
-  const areaFilter = prefSection ? { sectionId: prefSection.id } : {};
+  // A guest asked for an area that isn't open to online booking (stale
+  // form, or someone poking the API): that's "full", never a quiet move.
+  if (onlineOnly && prefSection && !prefSection.bookableOnline) return null;
+  const areaFilter = prefSection
+    ? { sectionId: prefSection.id }
+    : onlineOnly
+      ? { OR: [{ sectionId: null }, { section: { bookableOnline: true } }] }
+      : {};
 
   const orderedTables = await db.diningTable.findMany({
     where: {

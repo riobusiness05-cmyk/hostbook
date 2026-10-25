@@ -12,7 +12,7 @@ import { prisma } from "@/lib/prisma";
 // (trial, expired) go through Checkout with the plan they want instead —
 // the billing page decides which of the two to call.
 export async function POST(req: NextRequest) {
-  const ctx = await hostContext(req, { requireAccess: false });
+  const ctx = await hostContext(req, { requireAccess: false, role: "OWNER" });
   if ("error" in ctx) return ctx.error;
 
   if (!isStripeConfigured()) {

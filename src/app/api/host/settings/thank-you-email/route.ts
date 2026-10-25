@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
 const testSchema = z.object({ to: z.string().trim().email().optional() });
 
 export async function POST(req: NextRequest) {
-  const ctx = await hostContext(req);
+  const ctx = await hostContext(req, { role: "MANAGER" });
   if ("error" in ctx) return ctx.error;
   if (!(await hasPremiumFeatures(ctx.restaurantId))) {
     return NextResponse.json({ error: "Guest thank-you emails are part of the Premium plan." }, { status: 403 });

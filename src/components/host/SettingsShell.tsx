@@ -13,7 +13,7 @@ import { WebsiteWidgetSettings } from "./WebsiteWidgetSettings";
 import type { BillingState, PlanDTO } from "@/lib/billing/subscription";
 import { isPremium } from "@/lib/billing/catalogue";
 import type { SettingsDTO } from "@/lib/hostflow/floor";
-import type { HourRow, TableRow } from "@/lib/host/client";
+import type { HourRow, TableRow, SectionRow } from "@/lib/host/client";
 
 type Tab = "billing" | "general" | "hours" | "tables" | "website" | "emails";
 
@@ -35,6 +35,7 @@ export function SettingsShell({
   initialSettings,
   initialHours,
   initialTables,
+  initialSections = [],
   blocked = false,
   checkoutResult = null,
 }: {
@@ -46,6 +47,7 @@ export function SettingsShell({
   initialSettings: SettingsDTO;
   initialHours: HourRow[];
   initialTables: TableRow[];
+  initialSections?: SectionRow[];
   blocked?: boolean;
   checkoutResult?: "success" | "cancelled" | null;
 }) {
@@ -112,7 +114,7 @@ export function SettingsShell({
           )}
           {tab === "general" && <GeneralSettings initialSettings={initialSettings} />}
           {tab === "hours" && <HoursSettings initialHours={initialHours} />}
-          {tab === "tables" && <TableAvailabilitySettings initialTables={initialTables} />}
+          {tab === "tables" && <TableAvailabilitySettings initialTables={initialTables} initialSections={initialSections} />}
           {tab === "website" && <WebsiteWidgetSettings restaurantSlug={restaurantSlug} />}
           {tab === "emails" && (
             <BrandKitSettings initialSettings={initialSettings} premium={isPremium(billing)} onUpgrade={() => setTab("billing")} />

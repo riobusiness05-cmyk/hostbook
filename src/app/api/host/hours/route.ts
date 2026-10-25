@@ -30,7 +30,7 @@ const putSchema = z.object({
 
 // Bulk upsert all 7 days at once — simplest UX for the settings page.
 export async function PUT(req: NextRequest) {
-  const ctx = await hostContext(req);
+  const ctx = await hostContext(req, { role: "MANAGER" });
   if ("error" in ctx) return ctx.error;
   const body = await req.json().catch(() => null);
   const parsed = putSchema.safeParse(body);

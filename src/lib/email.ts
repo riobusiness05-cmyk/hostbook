@@ -24,7 +24,8 @@ export type EmailKind =
   | "THANK_YOU"
   | "THANK_YOU_TEST"
   | "PAYMENT_FAILED"
-  | "PAYMENT_REQUIRED";
+  | "PAYMENT_REQUIRED"
+  | "TEAM_INVITE";
 
 export async function sendEmail(params: {
   to: string;
@@ -248,6 +249,25 @@ export function passwordResetEmailHtml(resetUrl: string, ownerName: string): str
     emailFallbackLink(resetUrl) +
     emailParagraph("If you didn't request this, you can safely ignore this email — your password won't change.");
   return emailLayout({ previewText: "Reset your Host Flow password — this link expires in 1 hour.", bodyHtml: body });
+}
+
+export function teamInviteEmailHtml(params: {
+  setPasswordUrl: string;
+  restaurantName: string;
+  invitedBy: string | null;
+  name: string;
+  role: string;
+}): string {
+  const roleText = params.role === "OWNER" ? "an owner" : params.role === "MANAGER" ? "a manager" : "floor staff";
+  const body =
+    emailHeading(`Welcome to ${escapeHtml(params.restaurantName)} on Host Flow`) +
+    emailParagraph(
+      `Hi ${escapeHtml(params.name.trim().split(/\s+/)[0] || params.name)}, ${params.invitedBy ? `${escapeHtml(params.invitedBy)} has` : "you've been"} added ${params.invitedBy ? "you" : ""} to ${escapeHtml(params.restaurantName)}'s floor dashboard as ${roleText}. Choose a password to get started — this link works for 7 days.`
+    ) +
+    emailButton(params.setPasswordUrl, "Choose my password") +
+    emailFallbackLink(params.setPasswordUrl) +
+    emailParagraph("Afterwards, sign in any time at hostflow.space with this email address.");
+  return emailLayout({ previewText: `You've been added to ${params.restaurantName} on Host Flow.`, bodyHtml: body });
 }
 
 export function reservationConfirmationHtml(params: {

@@ -3,7 +3,7 @@ import { hostContext, handleActionError } from "@/lib/hostflow/apiContext";
 import { resetFloorPlan } from "@/lib/hostflow/actions";
 
 export async function POST(req: NextRequest) {
-  const ctx = await hostContext(req);
+  const ctx = await hostContext(req, { role: "MANAGER" });
   if ("error" in ctx) return ctx.error;
 
   try {

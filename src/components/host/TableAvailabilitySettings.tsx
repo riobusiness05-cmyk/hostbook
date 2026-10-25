@@ -3,11 +3,57 @@
 import { useState } from "react";
 import { Button, Card, SectionTitle } from "./ui";
 import * as api from "@/lib/host/client";
-import type { TableRow } from "@/lib/host/client";
+import type { TableRow, SectionRow } from "@/lib/host/client";
 import { FloorPlanImport } from "./FloorPlanImport";
 
-export function TableAvailabilitySettings({ initialTables }: { initialTables: TableRow[] }) {
+// One row per area: what guests see on the booking form and whether they
+// may choose it. Saves field by field on blur/toggle — no save button to forget.
+function AreaRow({ section, onSaved, onError }: { section: SectionRow; onSaved: (s: SectionRow) => void; onError: (m: string) => void }) {
+  const [name, setName] = useState(section.name);
+  const [note, setNote] = useState(section.note ?? "");
+  const [busy, setBusy] = useState(false);
+  const save = async (patch: Partial<Pick<SectionRow, "name" | "note" | "bookableOnline" | "isOutdoor">>) => {
+    setBusy(true);
+    try {
+      await api.updateSection(section.id, patch);
+      onSaved({ ...section, ...patch, note: patch.note === undefined ? section.note : patch.note || null });
+    } catch (e) {
+      onError((e as Error).message);
+      setName(section.name);
+      setNote(section.note ?? "");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const field = "w-full rounded-lg border border-black/10 bg-white px-3 py-2 text-sm text-neutral-900 outline-none focus:border-amber-500 dark:border-white/15 dark:bg-white/5 dark:text-white";
+  return (
+    <div className={"grid gap-2 rounded-xl border border-black/5 p-3 dark:border-white/10 sm:grid-cols-[1fr_1.4fr_auto] sm:items-center " + (busy ? "opacity-60" : "")}>
+      <div>
+        <label className="mb-1 block text-[11px] uppercase tracking-wide text-neutral-500">Area name</label>
+        <input className={field} value={name} onChange={(e) => setName(e.target.value)} onBlur={() => name.trim() && name.trim() !== section.name && save({ name: name.trim() })} />
+        <p className="mt-1 text-[11px] text-neutral-500">{section.tableCount} table{section.tableCount === 1 ? "" : "s"}</p>
+      </div>
+      <div>
+        <label className="mb-1 block text-[11px] uppercase tracking-wide text-neutral-500">Shown under the name (optional)</label>
+        <input className={field} placeholder="e.g. Singers' stage visible from here" maxLength={120} value={note} onChange={(e) => setNote(e.target.value)} onBlur={() => (note.trim() || null) !== (section.note ?? null) && save({ note: note.trim() || null })} />
+      </div>
+      <div className="flex flex-col gap-1.5 text-sm">
+        <label className="flex items-center gap-2">
+          <input type="checkbox" checked={section.bookableOnline} onChange={(e) => save({ bookableOnline: e.target.checked })} />
+          Guests can book this area online
+        </label>
+        <label className="flex items-center gap-2 text-neutral-500">
+          <input type="checkbox" checked={section.isOutdoor} onChange={(e) => save({ isOutdoor: e.target.checked })} />
+          Outdoor
+        </label>
+      </div>
+    </div>
+  );
+}
+
+export function TableAvailabilitySettings({ initialTables, initialSections = [] }: { initialTables: TableRow[]; initialSections?: SectionRow[] }) {
   const [tables, setTables] = useState(initialTables);
+  const [sections, setSections] = useState(initialSections);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
@@ -30,6 +76,26 @@ export function TableAvailabilitySettings({ initialTables }: { initialTables: Ta
     <div className="space-y-4">
       {error && (
         <Card className="border-red-500/30 bg-red-500/10 p-4 text-sm text-red-600 dark:text-red-400">{error}</Card>
+      )}
+
+      {sections.length > 0 && (
+        <Card className="p-5">
+          <SectionTitle>Areas on the booking form</SectionTitle>
+          <p className="mb-3 text-sm text-neutral-500">
+            Guests booking online choose one of these. A chosen area is a promise — if it&apos;s full at that time they&apos;re told so and asked to pick
+            another, never moved elsewhere. Untick an area to keep it for walk-ins and staff bookings only.
+          </p>
+          <div className="space-y-2">
+            {sections.map((s) => (
+              <AreaRow
+                key={s.id}
+                section={s}
+                onSaved={(next) => setSections((prev) => prev.map((x) => (x.id === next.id ? next : x)))}
+                onError={setError}
+              />
+            ))}
+          </div>
+        </Card>
       )}
 
       <Card className="p-5">
