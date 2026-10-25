@@ -5,10 +5,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { HostFlowLogo } from "@/components/HostFlowLogo";
 
-const DEMOS = [
-  { label: "The Colonial", email: "colonial@hostflow.app", password: "colonial123" },
-  { label: "The Harbour", email: "harbour@hostflow.app", password: "harbour123" },
-];
 
 export default function HostFlowLogin() {
   const router = useRouter();
@@ -86,27 +82,6 @@ export default function HostFlowLogin() {
               {busy ? "Signing in…" : "Sign in"}
             </button>
           </form>
-        </div>
-
-        {/* Demo venues */}
-        <div className="mt-5 rounded-2xl border border-hf-line bg-hf-surface/40 p-4">
-          <p className="mb-2 font-mono text-xs uppercase tracking-wide text-hf-inkFaint">Demo venues — tap to fill</p>
-          <div className="grid grid-cols-2 gap-2">
-            {DEMOS.map((d) => (
-              <button
-                key={d.email}
-                onClick={() => {
-                  setEmail(d.email);
-                  setPassword(d.password);
-                  setError(null);
-                }}
-                className="rounded-lg border border-hf-line px-3 py-2 text-left text-xs text-hf-inkMuted transition-colors hover:border-brand-400/50 hover:bg-hf-surfaceHi"
-              >
-                <div className="font-semibold text-hf-ink">{d.label}</div>
-                <div className="mt-0.5 truncate text-hf-inkFaint">{d.email}</div>
-              </button>
-            ))}
-          </div>
         </div>
 
         <p className="mt-6 text-center text-sm text-hf-inkMuted">

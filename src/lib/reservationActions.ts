@@ -226,11 +226,11 @@ export async function createReservationForRestaurant(
         const emailSettings = await getSettings(restaurant.id);
         const result = await sendEmail({
           to: input.customerEmail,
-          subject: `You're booked at ${restaurant.name}`,
+          subject: `You're booked at ${emailSettings.emailFromName?.trim() || restaurant.name}`,
           ...senderIdentityFor(restaurant, emailSettings),
           meta: { kind: "BOOKING_CONFIRMATION", restaurantId: restaurant.id },
           html: reservationConfirmationHtml({
-            restaurantName: restaurant.name,
+            restaurantName: emailSettings.emailFromName?.trim() || restaurant.name,
             brandColor: restaurant.brandColor,
             address: restaurant.address,
             customerName: input.customerName,
@@ -433,11 +433,11 @@ export async function bookSpecificTable(
         const emailSettings = await getSettings(restaurant.id);
         const result = await sendEmail({
           to: customerEmail,
-          subject: `You're booked at ${restaurant.name}`,
+          subject: `You're booked at ${emailSettings.emailFromName?.trim() || restaurant.name}`,
           ...senderIdentityFor(restaurant, emailSettings),
           meta: { kind: "BOOKING_CONFIRMATION", restaurantId: restaurant.id },
           html: reservationConfirmationHtml({
-            restaurantName: restaurant.name,
+            restaurantName: emailSettings.emailFromName?.trim() || restaurant.name,
             brandColor: restaurant.brandColor,
             address: restaurant.address,
             customerName: params.customerName,
