@@ -246,6 +246,15 @@ export function WidgetBookingForm({
         </div>
       )}
 
+      {noShowProtection && !selectedTime && (
+        <div className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/[0.06] px-3 py-2.5 text-xs text-neutral-700">
+          <span className="font-semibold">A card is needed to hold your table.</span>{" "}
+          {noShowProtection.minPartySize > 1 ? `For tables of ${noShowProtection.minPartySize} or more, you` : "You"} add it right here when you book — nothing is
+          charged if you come. If the table is left empty, a no-show fee of{" "}
+          {(noShowProtection.feeCents / 100).toLocaleString(undefined, { style: "currency", currency: "EUR" })} per person applies.
+        </div>
+      )}
+
       {selectedTime && venueHasAreas && !areasCustomised && (
         <div className="mt-4">
           <p className="mb-2 text-xs font-medium text-neutral-500">Where would you like to sit?</p>
@@ -326,10 +335,16 @@ export function WidgetBookingForm({
           />
           {requiresCard && noShowProtection && (
             <div className="rounded-lg border border-amber-500/30 bg-amber-500/[0.06] p-3">
+              <p className="mb-1 text-xs font-semibold text-neutral-800">Card to hold your table</p>
               <p className="mb-2 text-xs text-neutral-600">
-                A card is required to hold this table. If you don&apos;t show up, a{" "}
-                {(noShowProtection.feeCents / 100).toLocaleString(undefined, { style: "currency", currency: "EUR" })}{" "}
-                no-show fee will be charged — nothing is charged otherwise.
+                Nothing is charged now, and nothing at all if you come. If the table is left empty, a no-show fee of{" "}
+                {(noShowProtection.feeCents / 100).toLocaleString(undefined, { style: "currency", currency: "EUR" })} per person
+                {partySize > 1 && (
+                  <>
+                    {" "}({((noShowProtection.feeCents * partySize) / 100).toLocaleString(undefined, { style: "currency", currency: "EUR" })} for {partySize} guests)
+                  </>
+                )}{" "}
+                is charged to this card. Need to cancel? Use the link in your confirmation email.
               </p>
               <NoShowCardField ref={cardFieldRef} setupIntentUrl={`/api/widget/${slug}/setup-intent`} />
             </div>
