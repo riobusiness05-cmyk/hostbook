@@ -42,6 +42,39 @@ export function RestaurantDetail({ restaurant }: { restaurant: RestaurantDetailD
   const [emailHealth, setEmailHealth] = useState<EmailHealth | null>(null);
   const [emailLoading, setEmailLoading] = useState(false);
   const [deleteSlug, setDeleteSlug] = useState("");
+  const [cloneSources, setCloneSources] = useState<{ id: string; name: string; slug: string; tables: number; sections: number }[] | null>(null);
+  const [cloneFrom, setCloneFrom] = useState("");
+  const [cloneParts, setCloneParts] = useState({ floorPlan: true, hours: true, settings: true, emailDesign: true, profile: true });
+  const [cloneResult, setCloneResult] = useState<string | null>(null);
+
+  async function loadCloneSources() {
+    const res = await fetch("/api/platform/clone-setup");
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) setCloneSources((data.venues ?? []).filter((v: { id: string }) => v.id !== restaurant.id));
+  }
+
+  async function runClone() {
+    const src = cloneSources?.find((v) => v.id === cloneFrom);
+    if (!src) return;
+    const parts = Object.entries(cloneParts).filter(([, on]) => on).map(([k]) => k).join(", ");
+    if (!window.confirm(`Copy ${parts} from "${src.name}" onto "${restaurant.name}"? The chosen parts on ${restaurant.name} are replaced.`)) return;
+    setBusy(true); setError(null); setCloneResult(null);
+    try {
+      const res = await fetch("/api/platform/clone-setup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fromRestaurantId: cloneFrom, toRestaurantId: restaurant.id, parts: cloneParts }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Couldn't copy");
+      setCloneResult(Object.entries(data.done).map(([k, v]) => `${k}: ${v}`).join(" · "));
+      setTimeout(() => window.location.reload(), 2000);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function loadEmailHealth() {
     setEmailLoading(true);
@@ -436,6 +469,35 @@ export function RestaurantDetail({ restaurant }: { restaurant: RestaurantDetailD
             ))}
           </div>
         </Card>
+        <Card className="p-4">
+          <SectionTitle action={!cloneSources ? <Button size="sm" onClick={loadCloneSources}>Choose a venue…</Button> : undefined}>Copy setup from another venue</SectionTitle>
+          <p className="mb-3 text-xs text-neutral-500">
+            Puts another venue&apos;s floor plan (areas and tables), opening hours, settings, email design and look &amp; feel onto this one. For a
+            freshly signed-up account that should match one you prepared. Accounts, bookings and billing are never touched. Refuses to replace a
+            floor plan when this venue already has bookings.
+          </p>
+          {cloneSources && (
+            <div className="space-y-2 text-xs">
+              <select value={cloneFrom} onChange={(e) => setCloneFrom(e.target.value)} className="w-full max-w-md rounded-md border border-white/15 bg-neutral-900 px-2 py-1.5 text-white">
+                <option value="">Copy from…</option>
+                {cloneSources.map((v) => (
+                  <option key={v.id} value={v.id}>{v.name} — {v.sections} areas, {v.tables} tables</option>
+                ))}
+              </select>
+              <div className="flex flex-wrap gap-3">
+                {([["floorPlan", "Floor plan (areas + tables)"], ["hours", "Opening hours"], ["settings", "Settings (pacing, no-show, brand kit, areas notes)"], ["emailDesign", "Email design"], ["profile", "Look & feel, timezone, party size"]] as const).map(([k, label]) => (
+                  <label key={k} className="flex items-center gap-1.5 text-neutral-300">
+                    <input type="checkbox" checked={cloneParts[k]} onChange={(e) => setCloneParts((p) => ({ ...p, [k]: e.target.checked }))} />
+                    {label}
+                  </label>
+                ))}
+              </div>
+              <Button size="sm" variant="primary" disabled={busy || !cloneFrom} onClick={runClone}>Copy onto {restaurant.name}</Button>
+              {cloneResult && <p className="text-emerald-400">Done — {cloneResult}. Refreshing…</p>}
+            </div>
+          )}
+        </Card>
+
         <Card className="border-red-500/20 p-4">
           <SectionTitle>Delete venue</SectionTitle>
           <p className="mb-3 text-xs text-neutral-500">
