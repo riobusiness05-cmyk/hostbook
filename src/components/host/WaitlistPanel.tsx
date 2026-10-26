@@ -1,5 +1,7 @@
 "use client";
 
+import { GuestContact } from "./GuestContact";
+
 import { useState } from "react";
 import type { FloorState } from "@/lib/hostflow/floor";
 import { Button, Card, Chip, SectionTitle } from "./ui";
@@ -91,6 +93,7 @@ export function WaitlistPanel({ state, refresh }: { state: FloorState; refresh: 
                   )}
                 </p>
                 {w.accessibilityNeeds && <p className="mt-0.5 text-xs text-sky-600 dark:text-sky-400">♿ {w.accessibilityNeeds}</p>}
+                <div className="mt-0.5 text-neutral-600 dark:text-neutral-300"><GuestContact phone={w.phone} email={null} compact /></div>
                 {w.notes && <p className="mt-0.5 text-xs text-neutral-400">{w.notes}</p>}
               </div>
             </div>

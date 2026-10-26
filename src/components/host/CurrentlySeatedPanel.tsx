@@ -1,5 +1,7 @@
 "use client";
 
+import { GuestContact } from "./GuestContact";
+
 import type { FloorState } from "@/lib/hostflow/floor";
 import { Card, SectionTitle } from "./ui";
 import { cx, minutesLabel, timeOfDay } from "@/lib/host/format";
@@ -42,6 +44,7 @@ export function CurrentlySeatedPanel({ state, onSelectTable }: { state: FloorSta
                     Party {s.partySize}
                     {t.section ? ` · ${t.section.name}` : ""}
                   </p>
+                  <div className="mt-0.5 text-neutral-600 dark:text-neutral-300"><GuestContact phone={s.guestPhone} email={s.guestEmail} compact /></div>
                 </div>
                 <span
                   className={cx(

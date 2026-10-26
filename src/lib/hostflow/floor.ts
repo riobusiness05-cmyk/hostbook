@@ -26,6 +26,8 @@ export type SessionDTO = {
   currentBill: number | null;
   source: string;
   waitingForOutdoor: boolean;
+  guestEmail: string | null;
+  guestPhone: string | null;
 };
 
 export type ReservationDTO = {
@@ -477,6 +479,8 @@ export async function getFloorState(restaurantId: string): Promise<FloorState> {
           currentBill: s.currentBill,
           source: s.source,
           waitingForOutdoor: s.waitingForOutdoor,
+      guestEmail: s.guestEmail ?? null,
+      guestPhone: null,
         }
       : null;
     const reservation = r ? toReservationDTO(r) : null;

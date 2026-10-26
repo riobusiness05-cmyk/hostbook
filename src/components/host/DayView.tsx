@@ -1,5 +1,7 @@
 "use client";
 
+import { GuestContact } from "./GuestContact";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { DayPlan } from "@/lib/hostflow/dayplan";
 import { fetchDayPlan } from "@/lib/host/client";
@@ -114,6 +116,7 @@ export function DayView({ date, dateLabel }: { date: string; dateLabel: string }
                       <span className="text-base font-bold tabular-nums text-neutral-900 dark:text-white">{b.time}</span>
                       <span className="truncate text-sm font-medium text-neutral-700 dark:text-neutral-200">{b.customerName}</span>
                     </div>
+                    <div className="basis-full text-neutral-600 dark:text-neutral-300"><GuestContact phone={b.customerPhone} email={b.customerEmail} notes={b.notes} compact /></div>
                     <button
                       onClick={() => b.tableId && setSelectedTableId(b.tableId)}
                       disabled={!b.tableNumber}
