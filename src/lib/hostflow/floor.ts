@@ -40,6 +40,11 @@ export type ReservationDTO = {
   occasion: string | null;
   seatingPreference: string | null;
   accessibilityNeeds: string | null;
+  // How staff reach the guest — the thing they need most when confirming a
+  // big party or chasing a late one.
+  customerPhone: string | null;
+  customerEmail: string | null;
+  notes: string | null;
   // The guest saved a card at booking time, so a no-show fee *can* be
   // charged — what the no-show confirmation uses to offer charge/waive.
   hasCardOnFile: boolean;
@@ -417,6 +422,9 @@ export async function getFloorState(restaurantId: string): Promise<FloorState> {
       occasion: r.occasion,
       seatingPreference: r.seatingPreference,
       accessibilityNeeds: r.accessibilityNeeds,
+      customerPhone: r.customerPhone,
+      customerEmail: r.customerEmail,
+      notes: r.notes,
       hasCardOnFile: !!r.stripePaymentMethodId,
       tableId: r.tableId,
       comboTableNumbers: r.comboTables

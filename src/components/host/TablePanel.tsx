@@ -1,5 +1,7 @@
 "use client";
 
+import { GuestContact } from "./GuestContact";
+
 import { useEffect, useState } from "react";
 import type { FloorState, TableDTO } from "@/lib/hostflow/floor";
 import { STATUS_META } from "@/lib/hostflow/constants";
@@ -240,6 +242,7 @@ export function TablePanel({
         {r && !s && (
           <DetailBlock title="Reservation">
             <Row label="Name">{r.customerName}</Row>
+                <GuestContact phone={r.customerPhone} email={r.customerEmail} notes={r.notes} compact />
             <Row label="Party size">{r.partySize}</Row>
             <Row label="Time">{timeOfDay(r.reservationTime, state.timezone)} · {r.isLate ? `${minutesLabel(Math.abs(r.minutesUntil))} late` : `in ${minutesLabel(r.minutesUntil)}`}</Row>
             {r.occasion && <Row label="Occasion">{r.occasion}</Row>}
@@ -252,6 +255,7 @@ export function TablePanel({
         {ur && !s && !r && (
           <DetailBlock title="Booked later today">
             <Row label="Name">{ur.customerName}</Row>
+                <GuestContact phone={ur.customerPhone} email={ur.customerEmail} notes={ur.notes} compact />
             <Row label="Party size">{ur.partySize}</Row>
             <Row label="Time">{timeOfDay(ur.reservationTime, state.timezone)} · in {minutesLabel(ur.minutesUntil)}</Row>
             {ur.occasion && <Row label="Occasion">{ur.occasion}</Row>}

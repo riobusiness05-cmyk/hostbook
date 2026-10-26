@@ -22,6 +22,9 @@ export type DayBooking = {
   seatingPreference: string | null;
   isVip: boolean;
   status: string;
+  customerPhone: string | null;
+  customerEmail: string | null;
+  notes: string | null;
 };
 
 export type DayMetrics = {
@@ -187,6 +190,9 @@ export async function getDayPlan(restaurantId: string, dateStr: string): Promise
       seatingPreference: r.seatingPreference,
       isVip: r.isVip,
       status: r.status,
+      customerPhone: r.customerPhone,
+      customerEmail: r.customerEmail,
+      notes: r.notes,
     };
   });
 
