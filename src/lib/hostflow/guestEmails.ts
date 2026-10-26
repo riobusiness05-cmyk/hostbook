@@ -30,13 +30,26 @@ export function senderAddressFor(restaurant: Pick<Restaurant, "slug">): string {
   return `${restaurant.slug}@${sendingDomain()}`;
 }
 
+const FREEMAIL = /@(gmail|googlemail|hotmail|outlook|live|msn|yahoo|ymail|icloud|me|aol|proton|protonmail|gmx|mail)\.(com|co\.uk|es|fr|de|it|net|org|ch)$/i;
+
+/** A Reply-To on a personal webmail address behind a hostflow.space From
+ *  reads as forged to spam filters (SpamAssassin FREEMAIL_FORGED_REPLYTO,
+ *  −2.5) and Gmail scores it the same way. So: only a reply-to on the
+ *  venue's own domain is used. Guests who want to reach the venue have the
+ *  phone number in the footer. */
+export function usableReplyTo(address: string | null | undefined): string | undefined {
+  const a = address?.trim();
+  if (!a || FREEMAIL.test(a)) return undefined;
+  return a;
+}
+
 export function senderIdentityFor(
   restaurant: Pick<Restaurant, "slug" | "name" | "email">,
   settings: Pick<SettingsDTO, "emailFromName" | "emailReplyTo">
 ): { from: { name: string; address: string }; replyTo?: string } {
   return {
     from: { name: settings.emailFromName?.trim() || restaurant.name, address: senderAddressFor(restaurant) },
-    replyTo: settings.emailReplyTo?.trim() || restaurant.email?.trim() || undefined,
+    replyTo: usableReplyTo(settings.emailReplyTo) ?? usableReplyTo(restaurant.email),
   };
 }
 

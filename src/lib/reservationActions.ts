@@ -13,7 +13,7 @@ import {
 } from "@/lib/availability";
 import { notify } from "@/lib/hostflow/actions";
 import { emitFloorChange } from "@/lib/hostflow/events";
-import { sendEmail, reservationConfirmationHtml, ownerBookingNotificationHtml } from "@/lib/email";
+import { sendEmail, reservationConfirmationHtml, reservationConfirmationText, ownerBookingNotificationHtml } from "@/lib/email";
 import { getSettings } from "@/lib/hostflow/floor";
 import { verifyGuestCardSetup } from "@/lib/stripeConnect";
 import { senderIdentityFor } from "@/lib/hostflow/guestEmails";
@@ -229,6 +229,15 @@ export async function createReservationForRestaurant(
           subject: `You're booked at ${emailSettings.emailFromName?.trim() || restaurant.name}`,
           ...senderIdentityFor(restaurant, emailSettings),
           meta: { kind: "BOOKING_CONFIRMATION", restaurantId: restaurant.id },
+          text: reservationConfirmationText({
+            restaurantName: emailSettings.emailFromName?.trim() || restaurant.name,
+            address: restaurant.address,
+            customerName: input.customerName,
+            date: input.date,
+            time: input.time,
+            partySize: input.partySize,
+            manageUrl,
+          }),
           html: reservationConfirmationHtml({
             restaurantName: emailSettings.emailFromName?.trim() || restaurant.name,
             brandColor: restaurant.brandColor,
@@ -436,6 +445,15 @@ export async function bookSpecificTable(
           subject: `You're booked at ${emailSettings.emailFromName?.trim() || restaurant.name}`,
           ...senderIdentityFor(restaurant, emailSettings),
           meta: { kind: "BOOKING_CONFIRMATION", restaurantId: restaurant.id },
+          text: reservationConfirmationText({
+            restaurantName: emailSettings.emailFromName?.trim() || restaurant.name,
+            address: restaurant.address,
+            customerName: params.customerName,
+            date: params.date,
+            time: params.time,
+            partySize: params.partySize,
+            manageUrl,
+          }),
           html: reservationConfirmationHtml({
             restaurantName: emailSettings.emailFromName?.trim() || restaurant.name,
             brandColor: restaurant.brandColor,

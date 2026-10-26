@@ -271,6 +271,33 @@ export function teamInviteEmailHtml(params: {
   return emailLayout({ previewText: `You've been added to ${params.restaurantName} on Host Flow.`, bodyHtml: body });
 }
 
+/** Plain-text twin of the confirmation — multipart mail scores better and reads fine in any client. */
+export function reservationConfirmationText(params: {
+  restaurantName: string;
+  address: string | null;
+  customerName: string;
+  date: string;
+  time: string;
+  partySize: number;
+  manageUrl: string;
+}): string {
+  const first = params.customerName.trim().split(/\s+/)[0] || params.customerName;
+  return [
+    `You're booked, ${first}`,
+    ``,
+    `Your table at ${params.restaurantName} is confirmed:`,
+    `Date: ${params.date}`,
+    `Time: ${params.time}`,
+    `Party: ${params.partySize}`,
+    params.address ? `Where: ${params.address}` : null,
+    ``,
+    `Need to change or cancel? ${params.manageUrl}`,
+    ``,
+    `See you soon,`,
+    params.restaurantName,
+  ].filter((l) => l !== null).join("\n");
+}
+
 export function reservationConfirmationHtml(params: {
   restaurantName: string;
   brandColor: string;
