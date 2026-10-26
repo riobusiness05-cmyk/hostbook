@@ -769,7 +769,7 @@ function ReserveForm({
           />
         </Field>
         <Field label="Phone (optional)">
-          <input className={inputCls} value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="For a confirmation call/text" />
+          <input className={inputCls} value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="Required — so you can confirm with them" type="tel" />
         </Field>
         <Field label="Email (optional — confirmation now, thank-you after)">
           <input className={inputCls} type="email" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} placeholder="guest@example.com" />
@@ -787,7 +787,7 @@ function ReserveForm({
         <Button
           variant="primary"
           className="flex-1"
-          disabled={busy || !customerName.trim() || !time || partySize < table.seatsMin}
+          disabled={busy || !customerName.trim() || !time || partySize < table.seatsMin || customerPhone.trim().length < 6}
           onClick={() => onSubmit({ date, time, partySize, customerName: customerName.trim(), customerPhone: customerPhone.trim(), customerEmail: customerEmail.trim(), occasion })}
         >
           Reserve

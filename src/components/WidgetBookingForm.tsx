@@ -323,8 +323,8 @@ export function WidgetBookingForm({
         <form onSubmit={submitReservation} className="mt-4 space-y-2.5">
           <input required placeholder="Full name" value={name} onChange={(e) => setName(e.target.value)} className={inputCls} />
           <div className="grid grid-cols-2 gap-2.5">
-            <input placeholder="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} />
-            <input placeholder="Phone" value={phone} onChange={(e) => setPhone(e.target.value)} className={inputCls} />
+            <input required placeholder="Email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} />
+            <input required placeholder="Phone" type="tel" autoComplete="tel" minLength={6} value={phone} onChange={(e) => setPhone(e.target.value)} className={inputCls} />
           </div>
           <textarea
             placeholder="Allergies, occasion, seating notes… (optional)"
@@ -351,7 +351,7 @@ export function WidgetBookingForm({
           )}
           <button
             type="submit"
-            disabled={submitting || !name.trim()}
+            disabled={submitting || !name.trim() || !email.trim() || phone.trim().length < 6}
             className="w-full rounded-lg py-2.5 text-sm font-semibold text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
             style={{ backgroundColor: brandColor }}
           >

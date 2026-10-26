@@ -39,6 +39,11 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     // widget embedded on a third-party site should only ever be able to
     // create ordinary web-form bookings, not claim to be e.g. an admin- or
     // phone-taken one.
+    // A guest the venue can't reach is a booking the venue can't confirm:
+    // online bookings always carry a phone number and an email.
+    if (!parsed.data.customerPhone?.trim() || !parsed.data.customerEmail?.trim()) {
+      return NextResponse.json({ error: "Please add a phone number and an email so the restaurant can reach you about your booking." }, { status: 400 });
+    }
     result = await createReservationForRestaurant(restaurant, { ...parsed.data, source: "WEB_FORM" });
   } catch (err) {
     console.error("[widget reservations]", params.slug, "booking failed", err);
