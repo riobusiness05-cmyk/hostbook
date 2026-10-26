@@ -19,11 +19,27 @@ export async function checkRateLimit(
 ): Promise<{ limited: boolean; retryAfterSeconds: number }> {
   const windowStart = new Date(Math.floor(Date.now() / windowMs) * windowMs);
 
-  const hit = await prisma.rateLimitHit.upsert({
-    where: { key_windowStart: { key, windowStart } },
-    create: { key, windowStart, count: 1 },
-    update: { count: { increment: 1 } },
-  });
+  // Two requests opening the same window at the same instant can both try
+  // to insert it (a unique-constraint race on Postgres, a locked file on
+  // SQLite). The limiter protects the app; it must never be the thing that
+  // fails a booking — so retry briefly, then fail OPEN and log.
+  let hit: { count: number } | null = null;
+  for (let attempt = 0; attempt < 3 && !hit; attempt++) {
+    try {
+      hit = await prisma.rateLimitHit.upsert({
+        where: { key_windowStart: { key, windowStart } },
+        create: { key, windowStart, count: 1 },
+        update: { count: { increment: 1 } },
+      });
+    } catch (err) {
+      if (attempt === 2) {
+        console.error("[rateLimit] counter unavailable, allowing request", key, (err as Error).message?.slice(0, 120));
+        return { limited: false, retryAfterSeconds: 0 };
+      }
+      await new Promise((r) => setTimeout(r, 30 + Math.random() * 70));
+    }
+  }
+  if (!hit) return { limited: false, retryAfterSeconds: 0 };
 
   // Best-effort, low-probability cleanup of old windows — cheap enough to
   // run inline instead of needing a separate cron just to stop this table

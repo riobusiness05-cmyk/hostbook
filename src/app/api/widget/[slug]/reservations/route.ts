@@ -43,8 +43,8 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
   } catch (err) {
     console.error("[widget reservations]", params.slug, "booking failed", err);
     return NextResponse.json(
-      { error: "We couldn't complete that booking — please try again in a moment." },
-      { status: 500 }
+      { error: "It's busy right now and we couldn't confirm that in time — please try again." },
+      { status: 503, headers: { "Retry-After": "2" } }
     );
   }
 

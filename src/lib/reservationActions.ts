@@ -44,14 +44,36 @@ class NoAvailabilityError extends Error {}
  * `reservation.create` that follows it, without needing a DB-level
  * exclusion constraint.
  */
-async function withSerializableRetry<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
-  try {
-    return await prisma.$transaction(fn, { isolationLevel: "Serializable" });
-  } catch (err) {
-    const isConflict = err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2034";
-    if (!isConflict) throw err;
-    return await prisma.$transaction(fn, { isolationLevel: "Serializable" });
+// Serializable transactions are how two guests can't get the same table:
+// the loser of a race fails and must try again. On a busy night a dozen
+// people can hit "Confirm" in the same second, so one retry isn't enough.
+// Up to 6 attempts with jittered backoff; only real contention is retried
+// (serialization failures, transaction timeouts under lock, a locked
+// SQLite file in dev), never a logic error.
+const RETRY_ATTEMPTS = 6;
+function isContention(err: unknown): boolean {
+  if (err instanceof Prisma.PrismaClientKnownRequestError) {
+    // P2034 = serialization/deadlock, P2028 = transaction timed out / closed
+    return err.code === "P2034" || err.code === "P2028";
   }
+  const msg = err instanceof Error ? err.message : String(err);
+  return /could not serialize|deadlock|database is locked|SQLITE_BUSY|Transaction already closed|Unable to start a transaction/i.test(msg);
+}
+export async function withSerializableRetry<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < RETRY_ATTEMPTS; attempt++) {
+    try {
+      // maxWait: how long to wait for a connection/lock to open the
+      // transaction; timeout: how long the transaction itself may run.
+      return await prisma.$transaction(fn, { isolationLevel: "Serializable", maxWait: 10_000, timeout: 20_000 });
+    } catch (err) {
+      lastErr = err;
+      if (!isContention(err) || attempt === RETRY_ATTEMPTS - 1) throw err;
+      const base = 40 * 2 ** attempt; // 40, 80, 160, 320, 640 ms …
+      await new Promise((r) => setTimeout(r, base + Math.random() * base));
+    }
+  }
+  throw lastErr;
 }
 
 type CreatedReservationDTO = {
