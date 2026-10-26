@@ -22,13 +22,15 @@ function GuestEmailSetup({ restaurantId, restaurantName, onSaved }: { restaurant
   const [setup, setSetup] = useState<Setup | null>(null);
   const [premium, setPremium] = useState<boolean | null>(null);
   const [venue, setVenue] = useState<{ address: string | null; phone: string | null; email: string | null } | null>(null);
+  const [address, setAddress] = useState("");
+  const [phone, setPhone] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   useEffect(() => {
     fetch(`/api/platform/email-setup?restaurantId=${restaurantId}`)
       .then((r) => r.json())
-      .then((d) => { setSetup(d.settings); setPremium(d.premium); setVenue(d.restaurant); })
+      .then((d) => { setSetup(d.settings); setPremium(d.premium); setVenue(d.restaurant); setAddress(d.restaurant?.address ?? ""); setPhone(d.restaurant?.phone ?? ""); })
       .catch(() => setMsg({ ok: false, text: "Couldn't load this venue's email settings." }));
   }, [restaurantId]);
 
@@ -39,11 +41,11 @@ function GuestEmailSetup({ restaurantId, restaurantName, onSaved }: { restaurant
       const res = await fetch("/api/platform/email-setup", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ restaurantId, ...setup, googleReviewUrl: setup.googleReviewUrl || null, emailFromName: setup.emailFromName || null, emailReplyTo: setup.emailReplyTo || null, instagramUrl: setup.instagramUrl || null, websiteUrl: setup.websiteUrl || null, brandSignOff: setup.brandSignOff || null }),
+        body: JSON.stringify({ restaurantId, ...setup, address: address.trim() || null, phone: phone.trim() || null, googleReviewUrl: setup.googleReviewUrl || null, emailFromName: setup.emailFromName || null, emailReplyTo: setup.emailReplyTo || null, instagramUrl: setup.instagramUrl || null, websiteUrl: setup.websiteUrl || null, brandSignOff: setup.brandSignOff || null }),
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error ?? "Couldn't save");
-      setSetup(d.settings); setPremium(d.premium);
+      setSetup(d.settings); setPremium(d.premium); setVenue(d.restaurant);
       setMsg({ ok: true, text: setup.thankYouMode === "OFF" ? "Saved. Emails are off for this venue." : `Saved. ${restaurantName}'s thank-you emails are live (${setup.thankYouMode === "ASK" ? "staff are asked after each visit" : "sent automatically"}).` });
       onSaved();
     } catch (e) { setMsg({ ok: false, text: (e as Error).message }); } finally { setBusy(false); }
@@ -64,7 +66,7 @@ function GuestEmailSetup({ restaurantId, restaurantName, onSaved }: { restaurant
       </div>
       <p className="mb-3 text-xs text-neutral-500">
         The venue sees these same settings in their own Brand kit. Set them here to get a venue live without their login.
-        Footer address and phone come from the venue profile{venue ? ` (${venue.address || "no address"} · ${venue.phone || "no phone"})` : ""}.
+        The address and phone go in the email footer and help the emails land in the inbox rather than spam.
       </p>
       {!setup ? (
         <p className="text-xs text-neutral-500">Loading…</p>
@@ -106,6 +108,14 @@ function GuestEmailSetup({ restaurantId, restaurantName, onSaved }: { restaurant
           <label className="text-[11px] text-neutral-400">
             Website link
             <input className={field + " mt-1"} placeholder="https://…" value={setup.websiteUrl ?? ""} onChange={(e) => set("websiteUrl", e.target.value)} />
+          </label>
+          <label className="text-[11px] text-neutral-400 sm:col-span-2">
+            Venue address (email footer)
+            <input className={field + " mt-1"} placeholder="Street, town, postcode" value={address} onChange={(e) => setAddress(e.target.value)} />
+          </label>
+          <label className="text-[11px] text-neutral-400">
+            Venue phone
+            <input className={field + " mt-1"} placeholder="+34 …" value={phone} onChange={(e) => setPhone(e.target.value)} />
           </label>
           <label className="text-[11px] text-neutral-400">
             Language

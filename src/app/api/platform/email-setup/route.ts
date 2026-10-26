@@ -25,6 +25,9 @@ const patchSchema = z.object({
   websiteUrl: webUrl(300).nullable().optional(),
   defaultLanguage: z.enum(["en", "es"]).optional(),
   brandSignOff: z.string().trim().max(120).nullable().optional(),
+  // Venue profile, not settings — shown in the email footer.
+  address: z.string().trim().max(300).nullable().optional(),
+  phone: z.string().trim().max(40).nullable().optional(),
 });
 
 async function snapshot(restaurantId: string) {
@@ -52,7 +55,13 @@ export async function PATCH(req: NextRequest) {
     const first = parsed.error.issues[0];
     return NextResponse.json({ error: first ? `${first.path.join(".")}: ${first.message}` : "Invalid request" }, { status: 400 });
   }
-  const { restaurantId, ...patch } = parsed.data;
+  const { restaurantId, address, phone, ...patch } = parsed.data;
+  if (address !== undefined || phone !== undefined) {
+    await prisma.restaurant.update({
+      where: { id: restaurantId },
+      data: { ...(address !== undefined ? { address: address || null } : {}), ...(phone !== undefined ? { phone: phone || null } : {}) },
+    });
+  }
   // Same rule the venue's own page enforces: sending needs Premium.
   if (patch.thankYouMode && patch.thankYouMode !== "OFF" && !(await hasPremiumFeatures(restaurantId))) {
     return NextResponse.json({ error: "This venue isn't on Premium — thank-you emails can't be switched on until they upgrade." }, { status: 403 });

@@ -90,5 +90,20 @@ export async function POST(req: NextRequest) {
 
   // "Clicked" is a fact, not a delivery state — the row reads Opened.
   await prisma.emailLog.update({ where: { id: row.id }, data: { status: status === "CLICKED" ? "OPENED" : status, error, ...stamps } });
+
+  // An address that hard-bounced or reported us as spam is never written
+  // to again by that venue: sending to it hurts every other guest's
+  // deliverability. Soft (transient) bounces are left alone. Only
+  // guest-facing kinds — a bounced owner alert mustn't silence the owner.
+  const hardBounce = status === "BOUNCED" && (bounce?.type ?? "").toLowerCase() !== "transient";
+  const guestKinds = new Set(["THANK_YOU", "THANK_YOU_TEST", "BOOKING_CONFIRMATION", "BOOKING_CONFIRMATION_TEST"]);
+  if ((hardBounce || status === "COMPLAINED") && row.restaurantId && guestKinds.has(row.kind)) {
+    const email = row.to.trim().toLowerCase();
+    await prisma.emailSuppression.upsert({
+      where: { restaurantId_email: { restaurantId: row.restaurantId, email } },
+      create: { restaurantId: row.restaurantId, email, reason: status },
+      update: { reason: status },
+    });
+  }
   return NextResponse.json({ ok: true });
 }
