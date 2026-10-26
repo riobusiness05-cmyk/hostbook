@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
     where: {
       restaurantId,
       reservationTime: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
-      ...(q ? { customerName: { contains: q, mode: "insensitive" } } : {}),
+      ...(q ? { customerName: { contains: q } } : {}),
       ...(minParty > 0 ? { partySize: { gte: minParty } } : {}),
     },
     orderBy: { reservationTime: "asc" },

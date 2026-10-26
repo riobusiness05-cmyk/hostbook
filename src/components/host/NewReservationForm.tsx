@@ -183,7 +183,7 @@ export function NewReservationForm({
       {time && (
         <div className="space-y-2 border-t border-black/5 pt-3 dark:border-white/10">
           <input className={input} placeholder="Guest name" value={name} onChange={(e) => setName(e.target.value)} />
-          <input className={input} placeholder="Phone (optional)" value={phone} onChange={(e) => setPhone(e.target.value)} />
+          <input className={input} required type="tel" minLength={6} placeholder="Phone — required, so you can confirm with them" value={phone} onChange={(e) => setPhone(e.target.value)} />
           <input className={input} type="email" placeholder="Email (optional — confirmation now, thank-you after)" value={email} onChange={(e) => setEmail(e.target.value)} />
           <div className="grid grid-cols-2 gap-2">
             <select className={input} value={occasion} onChange={(e) => setOccasion(e.target.value)}>
@@ -218,7 +218,7 @@ export function NewReservationForm({
         <Button variant="primary" className="flex-1" disabled={!time || !name.trim() || saving} onClick={book}>
           {saving ? "Booking…" : "Create booking"}
         </Button>
-        <Button variant="ghost" onClick={onCancel} disabled={saving}>Cancel</Button>
+        <Button variant="ghost" onClick={onCancel} disabled={saving || phone.trim().length < 6}>Cancel</Button>
       </div>
     </div>
   );
