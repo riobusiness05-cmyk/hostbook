@@ -47,6 +47,9 @@ export type ReservationDTO = {
   customerPhone: string | null;
   customerEmail: string | null;
   notes: string | null;
+  // Day-before reminder: sent? did the guest tap "coming"?
+  reminderSentAt: string | null;
+  guestConfirmedAt: string | null;
   // The guest saved a card at booking time, so a no-show fee *can* be
   // charged — what the no-show confirmation uses to offer charge/waive.
   hasCardOnFile: boolean;
@@ -231,6 +234,7 @@ export type SettingsDTO = {
   emailReplyTo: string | null;
   thankYouMode: string;
   thankYouDelay: string;
+  reminderEmailsEnabled: boolean;
   brandPrimary: string | null;
   brandFont: string;
   brandTone: string;
@@ -302,6 +306,7 @@ export async function getSettings(restaurantId: string): Promise<SettingsDTO> {
     emailReplyTo: s.emailReplyTo,
     thankYouMode: s.thankYouMode,
     thankYouDelay: s.thankYouDelay,
+    reminderEmailsEnabled: s.reminderEmailsEnabled,
     brandPrimary: s.brandPrimary,
     brandFont: s.brandFont,
     brandTone: s.brandTone,
@@ -427,6 +432,8 @@ export async function getFloorState(restaurantId: string): Promise<FloorState> {
       customerPhone: r.customerPhone,
       customerEmail: r.customerEmail,
       notes: r.notes,
+      reminderSentAt: r.reminderSentAt?.toISOString() ?? null,
+      guestConfirmedAt: r.guestConfirmedAt?.toISOString() ?? null,
       hasCardOnFile: !!r.stripePaymentMethodId,
       tableId: r.tableId,
       comboTableNumbers: r.comboTables

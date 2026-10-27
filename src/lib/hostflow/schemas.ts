@@ -123,6 +123,7 @@ export const settingsSchema = z.object({
   emailReplyTo: z.string().trim().email().max(200).nullable().optional(),
   thankYouMode: z.enum(["ASK", "AUTO", "OFF"]).optional(),
   thankYouDelay: z.enum(["IMMEDIATE", "MIN_30", "HOUR_2", "NEXT_MORNING"]).optional(),
+  reminderEmailsEnabled: z.boolean().optional(),
   brandPrimary: hexColour.nullable().optional(),
   brandFont: z.enum(["CLASSIC_SERIF", "MODERN_SANS", "ELEGANT_SCRIPT"]).optional(),
   brandTone: z.enum(["WARM_FAMILY", "UPSCALE", "FUN_LIVELY", "BEACH_BAR"]).optional(),

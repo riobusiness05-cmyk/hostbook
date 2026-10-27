@@ -12,12 +12,13 @@ import { emitFloorChange } from "@/lib/hostflow/events";
 // Brand kit — exposed to the platform operator so a venue can be set up
 // for them end to end (design + review link + mode) without their login.
 
-const FIELDS = ["thankYouMode", "thankYouDelay", "googleReviewUrl", "emailFromName", "emailReplyTo", "instagramUrl", "websiteUrl", "defaultLanguage", "brandSignOff"] as const;
+const FIELDS = ["thankYouMode", "thankYouDelay", "reminderEmailsEnabled", "googleReviewUrl", "emailFromName", "emailReplyTo", "instagramUrl", "websiteUrl", "defaultLanguage", "brandSignOff"] as const;
 
 const patchSchema = z.object({
   restaurantId: z.string().min(1),
   thankYouMode: z.enum(["ASK", "AUTO", "OFF"]).optional(),
   thankYouDelay: z.enum(["IMMEDIATE", "MIN_30", "HOUR_2", "NEXT_MORNING"]).optional(),
+  reminderEmailsEnabled: z.boolean().optional(),
   googleReviewUrl: webUrl(500).nullable().optional(),
   emailFromName: z.string().trim().min(1).max(80).nullable().optional(),
   emailReplyTo: z.string().trim().email().max(200).nullable().optional(),

@@ -252,7 +252,10 @@ model Reservation {
   idempotencyKey   String?      @unique
 
   confirmationSentAt DateTime?
+  // Day-before reminder with one-tap "I'm coming" / "cancel" (see
+  // src/lib/hostflow/reminders.ts). guestConfirmedAt = they tapped "coming".
   reminderSentAt     DateTime?
+  guestConfirmedAt   DateTime?
   // Set when the restaurant owner's new-booking notification email succeeds
   // (never set for source: "ADMIN" bookings — the owner made those themselves).
   ownerNotifiedAt    DateTime?
@@ -490,6 +493,8 @@ model RestaurantSettings {
 
   // ── Brand kit + post-visit email behaviour (Settings → Brand kit) ──────
   thankYouMode          String   @default("OFF")        // ASK (staff confirm) | AUTO (queued on release) | OFF
+  // Day-before reminder emails to guests with a booking email (all plans).
+  reminderEmailsEnabled Boolean  @default(true)
   thankYouDelay         String   @default("IMMEDIATE")  // IMMEDIATE | MIN_30 | HOUR_2 | NEXT_MORNING (10:00 venue time)
   brandPrimary          String?  // null = Restaurant.brandColor
   brandFont             String   @default("MODERN_SANS")  // CLASSIC_SERIF | MODERN_SANS | ELEGANT_SCRIPT

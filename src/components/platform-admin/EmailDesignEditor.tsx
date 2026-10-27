@@ -7,6 +7,7 @@ import { THANK_YOU_PLACEHOLDERS } from "@/lib/emailTemplate";
 type Setup = {
   thankYouMode: "ASK" | "AUTO" | "OFF";
   thankYouDelay: "IMMEDIATE" | "MIN_30" | "HOUR_2" | "NEXT_MORNING";
+  reminderEmailsEnabled: boolean;
   googleReviewUrl: string | null;
   emailFromName: string | null;
   emailReplyTo: string | null;
@@ -88,6 +89,10 @@ function GuestEmailSetup({ restaurantId, restaurantName, onSaved }: { restaurant
               <option value="HOUR_2">2 hours later</option>
               <option value="NEXT_MORNING">Next morning</option>
             </select>
+          </label>
+          <label className="flex items-center gap-2 text-[11px] text-neutral-300 sm:col-span-2">
+            <input type="checkbox" checked={setup.reminderEmailsEnabled} onChange={(e) => set("reminderEmailsEnabled", e.target.checked)} />
+            Send a reminder the day before each booking with one-tap &quot;I&apos;m coming&quot; / &quot;cancel&quot; (all plans)
           </label>
           <label className="text-[11px] text-neutral-400 sm:col-span-2">
             Google review link (the button in the email)

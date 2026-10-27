@@ -25,6 +25,8 @@ export type DayBooking = {
   customerPhone: string | null;
   customerEmail: string | null;
   notes: string | null;
+  reminderSentAt: string | null;
+  guestConfirmedAt: string | null;
 };
 
 export type DayMetrics = {
@@ -193,6 +195,8 @@ export async function getDayPlan(restaurantId: string, dateStr: string): Promise
       customerPhone: r.customerPhone,
       customerEmail: r.customerEmail,
       notes: r.notes,
+      reminderSentAt: r.reminderSentAt?.toISOString() ?? null,
+      guestConfirmedAt: r.guestConfirmedAt?.toISOString() ?? null,
     };
   });
 

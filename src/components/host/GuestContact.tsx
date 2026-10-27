@@ -3,6 +3,13 @@
 // Phone and email for a booking, as links a host can tap on an iPad:
 // tel: dials, mailto: opens a draft. Shown wherever a booking is shown, so
 // "I need to confirm this party" never means hunting for the number.
+/** Where the guest stands after the day-before reminder. */
+export function AttendanceChip({ guestConfirmedAt, reminderSentAt }: { guestConfirmedAt: string | null; reminderSentAt: string | null }) {
+  if (guestConfirmedAt) return <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">✓ Confirmed coming</span>;
+  if (reminderSentAt) return <span className="rounded bg-neutral-500/15 px-1.5 py-0.5 text-[11px] font-medium text-neutral-600 dark:text-neutral-300">Reminder sent · no reply</span>;
+  return null;
+}
+
 export function GuestContact({ phone, email, notes, compact = false }: { phone: string | null; email: string | null; notes?: string | null; compact?: boolean }) {
   if (!phone && !email && !notes) {
     return <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300">No contact details</span>;

@@ -1,6 +1,6 @@
 "use client";
 
-import { GuestContact } from "./GuestContact";
+import { GuestContact, AttendanceChip } from "./GuestContact";
 import { useEffect, useMemo, useState } from "react";
 import type { FloorState, ReservationDTO } from "@/lib/hostflow/floor";
 import { Button, Card, Chip, SectionTitle } from "./ui";
@@ -269,6 +269,7 @@ export function ReservationsPanel({
                     )}
                     {r.occasion && <span>· {r.occasion}</span>}
                     {r.seatingPreference && <span>· {r.seatingPreference}</span>}
+                    <AttendanceChip guestConfirmedAt={r.guestConfirmedAt} reminderSentAt={r.reminderSentAt} />
                   </div>
                   <div className="mt-1 text-neutral-600 dark:text-neutral-300">
                     <GuestContact phone={r.customerPhone} email={r.customerEmail} notes={r.notes} />

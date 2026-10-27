@@ -26,7 +26,8 @@ export type EmailKind =
   | "PAYMENT_FAILED"
   | "PAYMENT_REQUIRED"
   | "TEAM_INVITE"
-  | "BOOKING_CONFIRMATION_TEST";
+  | "BOOKING_CONFIRMATION_TEST"
+  | "BOOKING_REMINDER";
 
 export async function sendEmail(params: {
   to: string;

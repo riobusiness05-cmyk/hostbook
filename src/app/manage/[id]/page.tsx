@@ -33,6 +33,19 @@ export default function ManageBookingPage() {
   const [error, setError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [confirmingCancel, setConfirmingCancel] = useState(false);
+  const [attendance, setAttendance] = useState<"idle" | "saving" | "confirmed" | "failed">("idle");
+  const wantsConfirm = searchParams.get("confirm") === "1";
+
+  async function confirmAttendance() {
+    if (!token) return;
+    setAttendance("saving");
+    try {
+      const res = await fetch(`/api/booking/${params.id}/confirm?t=${encodeURIComponent(token)}`, { method: "POST" });
+      setAttendance(res.ok ? "confirmed" : "failed");
+    } catch {
+      setAttendance("failed");
+    }
+  }
 
   useEffect(() => {
     if (!token) {
@@ -46,9 +59,13 @@ export default function ManageBookingPage() {
         if (!res.ok) throw new Error(data.error || "Booking not found");
         setReservation(data.reservation);
         setRestaurantName(data.restaurantName);
+        // Arrived from the reminder's "Yes, we're coming" button.
+        if (wantsConfirm && data.reservation?.status === "CONFIRMED") void confirmAttendance();
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
+    // confirmAttendance/wantsConfirm are read once on load, deliberately.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.id, token]);
 
   async function cancelBooking() {
@@ -101,7 +118,27 @@ export default function ManageBookingPage() {
                 </dl>
 
                 {reservation.status === "CONFIRMED" && (
-                  <div className="mt-5">
+                  <div className="mt-4">
+                    {attendance === "confirmed" ? (
+                      <p className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm font-medium text-green-800">
+                        Thank you — you&apos;re confirmed. See you then!
+                      </p>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={confirmAttendance}
+                        disabled={attendance === "saving"}
+                        className="w-full rounded-lg bg-neutral-900 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                      >
+                        {attendance === "saving" ? "Confirming…" : "Yes, we're coming"}
+                      </button>
+                    )}
+                    {attendance === "failed" && <p className="mt-2 text-xs text-red-600">Couldn&apos;t save that — please try again.</p>}
+                  </div>
+                )}
+
+                {reservation.status === "CONFIRMED" && (
+                  <div className="mt-3">
                     {!confirmingCancel ? (
                       <button
                         type="button"
