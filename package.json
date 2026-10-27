@@ -5,7 +5,7 @@
   "description": "Host Flow AI resellable booking + AI chatbot template for restaurants and bars.",
   "scripts": {
     "dev": "next dev",
-    "build": "prisma db push --skip-generate && next build",
+    "build": "node scripts/db-deploy.mjs && next build",
     "start": "next start",
     "lint": "next lint",
     "db:generate": "prisma generate",
