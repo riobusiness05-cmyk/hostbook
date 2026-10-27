@@ -87,3 +87,21 @@ body {
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
   background-repeat: repeat;
 }
+
+
+/* ── Tablet mode (Host Flow floor on an iPad at the stand) ──────────────────
+   Bigger type and 44px+ touch targets everywhere, 16px inputs so iOS doesn't
+   zoom the page when a field is tapped. Toggled from the floor header and
+   remembered per device (localStorage "hf-tablet"). */
+.hf-tablet { font-size: 17px; }
+.hf-tablet button,
+.hf-tablet [role="button"],
+.hf-tablet a[href^="/host"] { min-height: 44px; }
+.hf-tablet input:not([type="checkbox"]):not([type="radio"]),
+.hf-tablet select,
+.hf-tablet textarea { min-height: 44px; font-size: 16px; }
+.hf-tablet input[type="checkbox"],
+.hf-tablet input[type="radio"] { width: 22px; height: 22px; }
+.hf-tablet .text-xs { font-size: 0.85rem; line-height: 1.25rem; }
+.hf-tablet .text-\[11px\] { font-size: 0.8rem; }
+.hf-tablet .text-sm { font-size: 1rem; line-height: 1.5rem; }

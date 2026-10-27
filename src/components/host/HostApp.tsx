@@ -54,6 +54,23 @@ export function HostApp({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tab, setTab] = useState<RailTab>("waitlist");
   const [theme, setTheme] = useState<"dark" | "light">("dark");
+  // Tablet mode: bigger tap targets and type for an iPad at the stand, and
+  // the screen is kept awake while the floor is open. Remembered per device.
+  const [tablet, setTablet] = useState(false);
+  useEffect(() => {
+    try { setTablet(localStorage.getItem("hf-tablet") === "1"); } catch { /* storage unavailable */ }
+  }, []);
+  useEffect(() => {
+    try { localStorage.setItem("hf-tablet", tablet ? "1" : "0"); } catch { /* ignore */ }
+    if (!tablet) return;
+    let lock: { release: () => Promise<void> } | null = null;
+    const nav = navigator as Navigator & { wakeLock?: { request: (t: "screen") => Promise<{ release: () => Promise<void> }> } };
+    const grab = async () => { try { lock = (await nav.wakeLock?.request("screen")) ?? null; } catch { /* not allowed */ } };
+    void grab();
+    const onVis = () => { if (document.visibilityState === "visible") void grab(); };
+    document.addEventListener("visibilitychange", onVis);
+    return () => { document.removeEventListener("visibilitychange", onVis); void lock?.release(); };
+  }, [tablet]);
   const [clock, setClock] = useState<string>("");
 
   // Theme persistence
@@ -94,7 +111,7 @@ export function HostApp({
   const unread = state.notifications.filter((n) => !n.isRead).length;
 
   return (
-    <div className={cx(theme === "dark" && "dark")}>
+    <div className={cx(theme === "dark" && "dark", tablet && "hf-tablet")}>
       <div className="min-h-screen bg-neutral-100 text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
         {/* Top bar */}
         <header className="sticky top-0 z-30 border-b border-black/5 bg-white/80 backdrop-blur-xl dark:border-white/10 dark:bg-neutral-950/80">
@@ -117,6 +134,17 @@ export function HostApp({
                 {isToday ? clock : ""}
               </span>
               {isToday && <ConnBadge status={status} />}
+              <button
+                onClick={() => setTablet((t) => !t)}
+                className={cx(
+                  "rounded-lg border px-2.5 py-2 text-xs font-semibold",
+                  tablet ? "border-amber-500/40 bg-amber-500/15 text-amber-700 dark:text-amber-300" : "border-black/10 text-neutral-500 hover:bg-black/5 dark:border-white/15 dark:hover:bg-white/10"
+                )}
+                title="Bigger buttons and text for an iPad at the stand; keeps the screen awake"
+                aria-pressed={tablet}
+              >
+                {tablet ? "Tablet mode on" : "Tablet mode"}
+              </button>
               <button
                 onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
                 className="rounded-lg border border-black/10 p-2 text-neutral-500 hover:bg-black/5 dark:border-white/15 dark:hover:bg-white/10"
@@ -150,6 +178,11 @@ export function HostApp({
             </div>
           </div>
         </header>
+        {status === "offline" && (
+          <div role="alert" className="border-b border-red-500/30 bg-red-500/10 px-4 py-2 text-center text-sm font-medium text-red-700 dark:text-red-300">
+            No connection. You&apos;re seeing the last known floor — seating, releasing and bookings won&apos;t save until the Wi-Fi is back. It reconnects by itself.
+          </div>
+        )}
 
         <main className="mx-auto max-w-[1880px] space-y-3 p-3 sm:p-4">
           <BillingBanner billing={billing} />
@@ -305,8 +338,9 @@ function BillingBanner({ billing }: { billing?: BillingState }) {
   return null;
 }
 
-function ConnBadge({ status }: { status: "connecting" | "live" | "polling" }) {
+function ConnBadge({ status }: { status: "connecting" | "live" | "polling" | "offline" }) {
   const map = {
+    offline: { label: "Offline", color: "bg-red-500", text: "text-red-600 dark:text-red-400" },
     live: { label: "Live", color: "bg-emerald-500", text: "text-emerald-600 dark:text-emerald-400" },
     polling: { label: "Syncing", color: "bg-amber-500", text: "text-amber-600 dark:text-amber-400" },
     connecting: { label: "Connecting", color: "bg-neutral-400", text: "text-neutral-500" },

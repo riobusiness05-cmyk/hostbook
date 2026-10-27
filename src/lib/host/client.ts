@@ -8,6 +8,19 @@ import type { TableAction } from "@/lib/hostflow/schemas";
 import type { BillingState, PlanDTO } from "@/lib/billing/subscription";
 import type { InvoiceSummary, PaymentMethodSummary } from "@/lib/stripe";
 
+// Every call goes through here so a dropped connection says what it is.
+const rawFetch = typeof window !== "undefined" ? window.fetch.bind(window) : fetch;
+async function fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  try {
+    return await rawFetch(input, init);
+  } catch (err) {
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      throw new Error("No connection — the change wasn't saved. Check the Wi-Fi and try again.");
+    }
+    throw new Error(`Couldn't reach Host Flow — ${(err as Error).message || "network error"}. Try again.`);
+  }
+}
+
 async function jsonOrThrow<T>(res: Response): Promise<T> {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {

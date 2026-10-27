@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { FloorState } from "@/lib/hostflow/floor";
 import { fetchFloor } from "./client";
 
-type Status = "connecting" | "live" | "polling";
+type Status = "connecting" | "live" | "polling" | "offline";
 
 // How often the server's heartbeat "tick" (and the polling fallback below)
 // forces a refetch — the bound on worst-case staleness when a mutation's
@@ -116,6 +116,27 @@ export function useFloorStream(initial: FloorState) {
 
     connectSSE();
 
+    // Wi-Fi drops are the normal failure on a floor iPad. Say so plainly,
+    // keep showing the last known floor, and the instant the network is back
+    // reconnect and pull a fresh state — no reload, no lost context.
+    const onOffline = () => {
+      if (destroyed) return;
+      es?.close();
+      es = null;
+      stopPolling();
+      clearReconnect();
+      setStatus("offline");
+    };
+    const onOnline = () => {
+      if (destroyed) return;
+      setStatus("connecting");
+      refresh({ force: true });
+      connectSSE();
+    };
+    window.addEventListener("offline", onOffline);
+    window.addEventListener("online", onOnline);
+    if (typeof navigator !== "undefined" && navigator.onLine === false) onOffline();
+
     // Catch up immediately when the tab regains focus instead of waiting for
     // the next tick/poll — the most common real way staleness actually gets
     // noticed (someone switches back to the floor after being away).
@@ -130,6 +151,8 @@ export function useFloorStream(initial: FloorState) {
       stopPolling();
       clearReconnect();
       document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("offline", onOffline);
+      window.removeEventListener("online", onOnline);
     };
   }, [refresh]);
 
