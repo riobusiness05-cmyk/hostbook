@@ -734,3 +734,10 @@ model ScheduledEmail {
 
   @@index([status, sendAt])
 }
+
+// Operational key/value state (e.g. the health-check heartbeat).
+model PlatformSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
